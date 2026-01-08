@@ -3,6 +3,7 @@ import { StyleSheet, View, Pressable, Platform, ActivityIndicator } from "react-
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { WebView } from "react-native-webview";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -31,23 +32,6 @@ type NavigationProp = NativeStackNavigationProp<MapStackParamList>;
 
 type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
-interface GeoJSONFeature {
-  type: "Feature";
-  properties: {
-    district: number;
-    name: string;
-  };
-  geometry: {
-    type: "Polygon" | "MultiPolygon";
-    coordinates: number[][][] | number[][][][];
-  };
-}
-
-interface GeoJSONCollection {
-  type: "FeatureCollection";
-  features: GeoJSONFeature[];
-}
-
 interface Official {
   id: string;
   name: string;
@@ -74,75 +58,17 @@ const springConfig: WithSpringConfig = {
   stiffness: 180,
 };
 
-const LAYER_COLORS: Record<DistrictType, { fill: string; stroke: string; selectedFill: string }> = {
-  tx_senate: { fill: "rgba(74, 144, 226, 0.3)", stroke: "#4A90E2", selectedFill: "rgba(74, 144, 226, 0.6)" },
-  tx_house: { fill: "rgba(233, 75, 60, 0.3)", stroke: "#E94B3C", selectedFill: "rgba(233, 75, 60, 0.6)" },
-  us_congress: { fill: "rgba(80, 200, 120, 0.3)", stroke: "#50C878", selectedFill: "rgba(80, 200, 120, 0.6)" },
+const LAYER_COLORS: Record<DistrictType, { fill: string; stroke: string }> = {
+  tx_senate: { fill: "rgba(74, 144, 226, 0.3)", stroke: "#4A90E2" },
+  tx_house: { fill: "rgba(233, 75, 60, 0.3)", stroke: "#E94B3C" },
+  us_congress: { fill: "rgba(80, 200, 120, 0.3)", stroke: "#50C878" },
 };
-
-let MapView: any = null;
-let Polygon: any = null;
-let PROVIDER_DEFAULT: any = null;
-
-if (Platform.OS !== "web") {
-  const RNMaps = require("react-native-maps");
-  MapView = RNMaps.default;
-  Polygon = RNMaps.Polygon;
-  PROVIDER_DEFAULT = RNMaps.PROVIDER_DEFAULT;
-}
-
-interface Region {
-  latitude: number;
-  longitude: number;
-  latitudeDelta: number;
-  longitudeDelta: number;
-}
-
-const TEXAS_REGION: Region = {
-  latitude: 31.0,
-  longitude: -100.0,
-  latitudeDelta: 12.0,
-  longitudeDelta: 12.0,
-};
-
-function convertGeoJSONToPolygons(geojson: GeoJSONCollection): Array<{
-  district: number;
-  coordinates: Array<{ latitude: number; longitude: number }>;
-}> {
-  const polygons: Array<{
-    district: number;
-    coordinates: Array<{ latitude: number; longitude: number }>;
-  }> = [];
-
-  for (const feature of geojson.features) {
-    const { district } = feature.properties;
-    const { geometry } = feature;
-
-    if (geometry.type === "Polygon") {
-      const coords = (geometry.coordinates as number[][][])[0].map(([lng, lat]) => ({
-        latitude: lat,
-        longitude: lng,
-      }));
-      polygons.push({ district, coordinates: coords });
-    } else if (geometry.type === "MultiPolygon") {
-      for (const polygon of geometry.coordinates as number[][][][]) {
-        const coords = polygon[0].map(([lng, lat]) => ({
-          latitude: lat,
-          longitude: lng,
-        }));
-        polygons.push({ district, coordinates: coords });
-      }
-    }
-  }
-
-  return polygons;
-}
 
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const { theme } = useTheme();
-  const mapRef = useRef<any>(null);
+  const webViewRef = useRef<WebView>(null);
 
   const [overlays, setOverlays] = useState<OverlayPreferences>({
     senate: false,
@@ -152,12 +78,11 @@ export default function MapScreen() {
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<SelectedDistrict | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
-
-  const [senateGeoJSON, setSenateGeoJSON] = useState<GeoJSONCollection | null>(null);
-  const [houseGeoJSON, setHouseGeoJSON] = useState<GeoJSONCollection | null>(null);
-  const [congressGeoJSON, setCongressGeoJSON] = useState<GeoJSONCollection | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [geoJSONData, setGeoJSONData] = useState<{
+    tx_senate: any;
+    tx_house: any;
+    us_congress: any;
+  }>({ tx_senate: null, tx_house: null, us_congress: null });
 
   const layerButtonScale = useSharedValue(1);
 
@@ -170,7 +95,7 @@ export default function MapScreen() {
       const url = new URL(`/api/geojson/${layerType}`, getApiUrl());
       const response = await fetch(url.toString());
       if (!response.ok) throw new Error("Failed to fetch GeoJSON");
-      return await response.json() as GeoJSONCollection;
+      return await response.json();
     } catch (error) {
       console.error(`Error fetching ${layerType} GeoJSON:`, error);
       return null;
@@ -193,19 +118,17 @@ export default function MapScreen() {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS === "web") return;
-    
     const loadGeoJSON = async () => {
-      setLoading(true);
       const [senate, house, congress] = await Promise.all([
         fetchGeoJSON("tx_senate"),
         fetchGeoJSON("tx_house"),
         fetchGeoJSON("us_congress"),
       ]);
-      setSenateGeoJSON(senate);
-      setHouseGeoJSON(house);
-      setCongressGeoJSON(congress);
-      setLoading(false);
+      setGeoJSONData({
+        tx_senate: senate,
+        tx_house: house,
+        us_congress: congress,
+      });
     };
     loadGeoJSON();
   }, [fetchGeoJSON]);
@@ -216,6 +139,13 @@ export default function MapScreen() {
       const newOverlays = { ...overlays, [type]: !overlays[type] };
       setOverlays(newOverlays);
       await saveOverlayPreferences(newOverlays);
+      
+      if (webViewRef.current) {
+        webViewRef.current.injectJavaScript(`
+          window.toggleLayer('${type}', ${!overlays[type]});
+          true;
+        `);
+      }
     },
     [overlays]
   );
@@ -260,38 +190,7 @@ export default function MapScreen() {
     transform: [{ scale: layerButtonScale.value }],
   }));
 
-  const handleMapReady = () => {
-    setMapReady(true);
-  };
-
   const activeOverlayCount = Object.values(overlays).filter(Boolean).length;
-
-  const renderPolygons = (
-    geojson: GeoJSONCollection | null,
-    layerType: DistrictType,
-    isVisible: boolean
-  ) => {
-    if (!geojson || !isVisible || !Polygon) return null;
-
-    const polygons = convertGeoJSONToPolygons(geojson);
-    const colors = LAYER_COLORS[layerType];
-
-    return polygons.map((polygon, index) => {
-      const isSelected = selectedDistrict?.type === layerType && selectedDistrict.number === polygon.district;
-      
-      return (
-        <Polygon
-          key={`${layerType}-${polygon.district}-${index}`}
-          coordinates={polygon.coordinates}
-          fillColor={isSelected ? colors.selectedFill : colors.fill}
-          strokeColor={colors.stroke}
-          strokeWidth={isSelected ? 3 : 1}
-          tappable
-          onPress={() => handleDistrictPress(layerType, polygon.district)}
-        />
-      );
-    });
-  };
 
   const getDistrictLabel = (type: DistrictType): string => {
     switch (type) {
@@ -301,77 +200,135 @@ export default function MapScreen() {
     }
   };
 
-  if (Platform.OS === "web") {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.backgroundRoot, paddingTop: insets.top }]}>
-        <View style={styles.webFallback}>
-          <Feather name="map" size={64} color={theme.secondaryText} />
-          <ThemedText type="h2" style={{ color: theme.text, marginTop: Spacing.lg, textAlign: "center" }}>
-            Map View
-          </ThemedText>
-          <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.sm, textAlign: "center" }}>
-            Open in Expo Go to view the interactive map with district overlays.
-          </ThemedText>
-          <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.lg, textAlign: "center" }}>
-            Available districts: TX House (150), TX Senate (31), US Congress (38)
-          </ThemedText>
-        </View>
-      </View>
-    );
-  }
+  const handleWebViewMessage = useCallback(async (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === "districtClick") {
+        await handleDistrictPress(data.districtType, data.districtNumber);
+      } else if (data.type === "mapReady") {
+        setMapReady(true);
+      }
+    } catch (error) {
+      console.error("Error parsing WebView message:", error);
+    }
+  }, [handleDistrictPress]);
+
+  const mapHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    #map { width: 100%; height: 100%; }
+    .leaflet-control-attribution { display: none; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    const map = L.map('map', {
+      center: [31.0, -100.0],
+      zoom: 6,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    const layers = {
+      senate: null,
+      house: null,
+      congress: null
+    };
+
+    const layerColors = {
+      tx_senate: { fill: 'rgba(74, 144, 226, 0.3)', stroke: '#4A90E2' },
+      tx_house: { fill: 'rgba(233, 75, 60, 0.3)', stroke: '#E94B3C' },
+      us_congress: { fill: 'rgba(80, 200, 120, 0.3)', stroke: '#50C878' }
+    };
+
+    const geoJSONData = ${JSON.stringify(geoJSONData)};
+
+    function createLayer(type, data, colors) {
+      if (!data) return null;
+      return L.geoJSON(data, {
+        style: {
+          fillColor: colors.fill,
+          color: colors.stroke,
+          weight: 1,
+          fillOpacity: 0.3
+        },
+        onEachFeature: function(feature, layer) {
+          layer.on('click', function() {
+            const districtType = type === 'senate' ? 'tx_senate' : 
+                                 type === 'house' ? 'tx_house' : 'us_congress';
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'districtClick',
+              districtType: districtType,
+              districtNumber: feature.properties.district
+            }));
+          });
+        }
+      });
+    }
+
+    // Initialize layers
+    layers.senate = createLayer('senate', geoJSONData.tx_senate, layerColors.tx_senate);
+    layers.house = createLayer('house', geoJSONData.tx_house, layerColors.tx_house);
+    layers.congress = createLayer('congress', geoJSONData.us_congress, layerColors.us_congress);
+
+    // Apply initial visibility
+    const initialOverlays = ${JSON.stringify(overlays)};
+    if (initialOverlays.senate && layers.senate) layers.senate.addTo(map);
+    if (initialOverlays.house && layers.house) layers.house.addTo(map);
+    if (initialOverlays.congress && layers.congress) layers.congress.addTo(map);
+
+    window.toggleLayer = function(type, visible) {
+      const layer = layers[type];
+      if (!layer) return;
+      if (visible) {
+        layer.addTo(map);
+      } else {
+        map.removeLayer(layer);
+      }
+    };
+
+    // Notify React Native that map is ready
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapReady' }));
+  </script>
+</body>
+</html>
+  `;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      {mapError ? (
-        <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
-          <Feather name="alert-circle" size={48} color="#E94B3C" />
-          <ThemedText type="body" style={{ color: theme.text, marginTop: Spacing.md, textAlign: "center" }}>
-            {mapError}
-          </ThemedText>
-          <Pressable 
-            onPress={() => setMapError(null)}
-            style={[styles.retryButton, { backgroundColor: theme.primary }]}
-          >
-            <ThemedText type="body" style={{ color: "#FFFFFF" }}>Retry</ThemedText>
-          </Pressable>
-        </View>
-      ) : (
-        <>
-          {MapView ? (
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              provider={PROVIDER_DEFAULT}
-              initialRegion={TEXAS_REGION}
-              onMapReady={handleMapReady}
-              showsUserLocation
-              showsMyLocationButton={false}
-              showsCompass={false}
-              loadingEnabled
-              loadingIndicatorColor={theme.primary}
-            >
-              {renderPolygons(senateGeoJSON, "tx_senate", overlays.senate)}
-              {renderPolygons(houseGeoJSON, "tx_house", overlays.house)}
-              {renderPolygons(congressGeoJSON, "us_congress", overlays.congress)}
-            </MapView>
-          ) : (
-            <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
-              <ThemedText type="body" style={{ color: theme.text }}>
-                Map component not available
-              </ThemedText>
-            </View>
-          )}
+      <WebView
+        ref={webViewRef}
+        source={{ html: mapHtml }}
+        style={styles.map}
+        onMessage={handleWebViewMessage}
+        javaScriptEnabled
+        domStorageEnabled
+        scrollEnabled={false}
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+      />
 
-          {loading || !mapReady ? (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color={theme.primary} />
-              <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.sm }}>
-                Loading map data...
-              </ThemedText>
-            </View>
-          ) : null}
-        </>
-      )}
+      {!mapReady ? (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.sm }}>
+            Loading map...
+          </ThemedText>
+        </View>
+      ) : null}
 
       <Animated.View
         style={[
@@ -512,24 +469,6 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  webFallback: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: Spacing.xl,
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: Spacing.xl,
-  },
-  retryButton: {
-    marginTop: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,

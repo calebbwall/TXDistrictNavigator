@@ -4,18 +4,17 @@
 A mobile application for Texas citizens to view legislative districts, search for representatives, and manage private notes about officials. Built with Expo + React Native and Express.js backend.
 
 ## Current State
-**MVP Complete** - Full rosters with react-native-maps for native platforms.
+**MVP Complete** - Full rosters with WebView-based Leaflet map (Expo Go compatible).
 
 ### MVP Features:
-- **Map Screen**: Interactive react-native-maps with tappable GeoJSON polygon overlays for TX Senate (31), TX House (150), and US Congress (38). Color-coded layers with toggle controls. Web shows fallback message since react-native-maps requires native platform.
+- **Map Screen**: Interactive Leaflet map via WebView with tappable GeoJSON polygon overlays for TX Senate (31), TX House (150), and US Congress (38). Color-coded layers with toggle controls. Works in Expo Go on iOS/Android and on web.
 - **Search Screen**: Search officials by ZIP code, name, or draw-to-search (simulated)
 - **Official Profiles**: View public info (offices, staff, contact) and manage private notes
 - **Profile Screen**: Saved officials list and default overlay preferences
 - **Local Persistence**: AsyncStorage for saved officials, private notes, and preferences
 
 ### MVP Scope Notes:
-- Map uses react-native-maps (works in Expo Go on iOS/Android)
-- Web version shows informative fallback with district counts
+- Map uses WebView with Leaflet/OpenStreetMap (works in Expo Go on all platforms)
 - Backend serves GeoJSON polygons and full officials rosters
 - Draw-to-search is simulated (real geometry capture is next phase)
 - No authentication required (all data stored locally on device)
@@ -42,7 +41,7 @@ A mobile application for Texas citizens to view legislative districts, search fo
 - `server/data/officials.ts` - Full officials rosters (150 TX House, 31 TX Senate, 38 US Congress)
 - `server/data/geojson.ts` - GeoJSON polygon generation for district boundaries
 - `server/routes.ts` - API endpoints for GeoJSON and officials data
-- `client/screens/MapScreen.tsx` - Map with polygon overlays (platform-specific import)
+- `client/screens/MapScreen.tsx` - WebView with Leaflet map and polygon overlays
 - `client/lib/mockData.ts` - Client-side mock data for offline support
 - `client/lib/storage.ts` - AsyncStorage utilities
 - `client/constants/theme.ts` - Color palette and design tokens
@@ -69,8 +68,8 @@ A mobile application for Texas citizens to view legislative districts, search fo
 
 ## Running the App
 - **Development**: Use the Start App workflow
-- **Expo Go**: Scan QR code to test on physical device (native map with polygons)
-- **Web**: Access at port 8081 (shows fallback message)
+- **Expo Go**: Scan QR code to test on physical device (WebView map works everywhere)
+- **Web**: Access at port 8081
 
 ## Next Phase Features
 1. Real district GeoJSON from official Texas sources
@@ -81,8 +80,7 @@ A mobile application for Texas citizens to view legislative districts, search fo
 6. Real draw-to-search with geometry capture
 
 ## Recent Changes
-- 2026-01-08: Implemented react-native-maps with GeoJSON polygon overlays
+- 2026-01-08: Switched to WebView-based Leaflet map for Expo Go compatibility
 - 2026-01-08: Added backend API endpoints for GeoJSON and officials data
 - 2026-01-08: Generated full rosters (150 TX House, 31 TX Senate, 38 US Congress)
-- 2026-01-08: Fixed platform-specific imports to prevent web bundler errors
-- 2026-01-08: Added web fallback message for map view
+- 2026-01-08: Removed react-native-maps (requires development build, not Expo Go)
