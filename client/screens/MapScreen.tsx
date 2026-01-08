@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { StyleSheet, View, Pressable } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import { StyleSheet, View, Pressable, ScrollView, Dimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import MapView, { Polygon, Marker, PROVIDER_DEFAULT } from "react-native-maps";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -49,12 +48,9 @@ const springConfig: WithSpringConfig = {
   stiffness: 180,
 };
 
-const TEXAS_REGION = {
-  latitude: 31.0,
-  longitude: -99.5,
-  latitudeDelta: 10,
-  longitudeDelta: 10,
-};
+const { width: screenWidth } = Dimensions.get("window");
+const GRID_SIZE = 6;
+const CELL_SIZE = (screenWidth - Spacing.lg * 2 - (GRID_SIZE - 1) * 4) / GRID_SIZE;
 
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
@@ -62,7 +58,6 @@ export default function MapScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NavigationProp>();
   const { theme } = useTheme();
-  const mapRef = useRef<MapView>(null);
 
   const [overlays, setOverlays] = useState<OverlayPreferences>({
     senate: false,
@@ -91,7 +86,7 @@ export default function MapScreen() {
     [overlays]
   );
 
-  const handlePolygonPress = useCallback(
+  const handleDistrictPress = useCallback(
     (polygon: DistrictPolygon) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (
@@ -104,15 +99,6 @@ export default function MapScreen() {
           type: polygon.districtType,
           number: polygon.districtNumber,
         });
-        mapRef.current?.animateToRegion(
-          {
-            latitude: polygon.center.latitude,
-            longitude: polygon.center.longitude,
-            latitudeDelta: 2,
-            longitudeDelta: 2,
-          },
-          300
-        );
       }
     },
     [selectedDistrict]
@@ -133,11 +119,6 @@ export default function MapScreen() {
   const handleLayerButtonPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setShowLayerPanel(!showLayerPanel);
-  };
-
-  const handleRecenter = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    mapRef.current?.animateToRegion(TEXAS_REGION, 500);
   };
 
   const layerButtonStyle = useAnimatedStyle(() => ({
@@ -166,80 +147,154 @@ export default function MapScreen() {
 
   const activeOverlayCount = Object.values(overlays).filter(Boolean).length;
 
-  const getPolygonColor = (type: DistrictType, isSelected: boolean) => {
-    const colors = {
-      senate: { fill: theme.overlaySenate, stroke: theme.senateBorder },
-      house: { fill: theme.overlayHouse, stroke: theme.houseBorder },
-      congress: { fill: theme.overlayCongress, stroke: theme.congressBorder },
-    };
-    return {
-      fillColor: isSelected ? colors[type].fill : `${colors[type].fill}40`,
-      strokeColor: colors[type].stroke,
-    };
+  const getDistrictColor = (type: DistrictType) => {
+    switch (type) {
+      case "senate":
+        return { bg: theme.overlaySenate, border: theme.senateBorder };
+      case "house":
+        return { bg: theme.overlayHouse, border: theme.houseBorder };
+      case "congress":
+        return { bg: theme.overlayCongress, border: theme.congressBorder };
+    }
   };
 
-  const renderPolygons = (polygons: DistrictPolygon[], type: DistrictType) => {
+  const renderDistrictGrid = (polygons: DistrictPolygon[], type: DistrictType) => {
+    const colors = getDistrictColor(type);
     return polygons.map((polygon) => {
       const isSelected =
         selectedDistrict?.type === type &&
         selectedDistrict.number === polygon.districtNumber;
-      const colors = getPolygonColor(type, isSelected);
+      const row = Math.floor((polygon.districtNumber - 1) / GRID_SIZE);
+      const col = (polygon.districtNumber - 1) % GRID_SIZE;
 
       return (
-        <React.Fragment key={polygon.id}>
-          <Polygon
-            coordinates={polygon.coordinates}
-            fillColor={colors.fillColor}
-            strokeColor={colors.strokeColor}
-            strokeWidth={isSelected ? 3 : 1}
-            tappable
-            onPress={() => handlePolygonPress(polygon)}
-          />
-          <Marker
-            coordinate={polygon.center}
-            anchor={{ x: 0.5, y: 0.5 }}
-            onPress={() => handlePolygonPress(polygon)}
+        <Pressable
+          key={polygon.id}
+          onPress={() => handleDistrictPress(polygon)}
+          style={[
+            styles.districtCell,
+            {
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+              backgroundColor: isSelected ? colors.bg : `${colors.bg}60`,
+              borderColor: isSelected ? colors.border : `${colors.border}80`,
+              borderWidth: isSelected ? 2 : 1,
+              left: col * (CELL_SIZE + 4),
+              top: row * (CELL_SIZE + 4),
+            },
+          ]}
+        >
+          <ThemedText
+            type="small"
+            style={{
+              color: "#FFFFFF",
+              fontWeight: isSelected ? "700" : "500",
+              textShadowColor: "rgba(0,0,0,0.5)",
+              textShadowOffset: { width: 0, height: 1 },
+              textShadowRadius: 2,
+            }}
           >
-            <View
-              style={[
-                styles.markerContainer,
-                {
-                  backgroundColor: isSelected
-                    ? colors.strokeColor
-                    : `${colors.strokeColor}CC`,
-                  borderColor: "#FFFFFF",
-                  borderWidth: isSelected ? 2 : 1,
-                },
-              ]}
-            >
-              <ThemedText
-                type="small"
-                style={{ color: "#FFFFFF", fontWeight: "700" }}
-              >
-                {polygon.districtNumber}
-              </ThemedText>
-            </View>
-          </Marker>
-        </React.Fragment>
+            {polygon.districtNumber}
+          </ThemedText>
+        </Pressable>
       );
     });
   };
 
+  const activePolygons = [
+    ...(overlays.senate ? senatePolygons : []),
+    ...(overlays.house ? housePolygons : []),
+    ...(overlays.congress ? congressPolygons : []),
+  ];
+
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        provider={PROVIDER_DEFAULT}
-        initialRegion={TEXAS_REGION}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        mapType="standard"
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.mapContainer,
+          {
+            paddingTop: headerHeight + Spacing.lg,
+            paddingBottom: tabBarHeight + (selectedDistrictData ? 200 : Spacing.lg),
+          },
+        ]}
       >
-        {overlays.senate ? renderPolygons(senatePolygons, "senate") : null}
-        {overlays.house ? renderPolygons(housePolygons, "house") : null}
-        {overlays.congress ? renderPolygons(congressPolygons, "congress") : null}
-      </MapView>
+        <View style={[styles.mapPlaceholder, { backgroundColor: theme.backgroundDefault }]}>
+          <View style={styles.texasOutline}>
+            <ThemedText type="h2" style={{ color: theme.primary, marginBottom: Spacing.sm }}>
+              Texas Districts
+            </ThemedText>
+            <ThemedText
+              type="small"
+              style={{ color: theme.secondaryText, textAlign: "center", marginBottom: Spacing.lg }}
+            >
+              Tap a district to view representative info
+            </ThemedText>
+          </View>
+
+          {activeOverlayCount === 0 ? (
+            <View style={styles.emptyState}>
+              <Feather name="layers" size={48} color={theme.secondaryText} />
+              <ThemedText
+                type="body"
+                style={{ color: theme.secondaryText, marginTop: Spacing.md, textAlign: "center" }}
+              >
+                No layers selected
+              </ThemedText>
+              <ThemedText
+                type="small"
+                style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}
+              >
+                Tap the layers button to show district overlays
+              </ThemedText>
+            </View>
+          ) : (
+            <View style={styles.gridContainer}>
+              {overlays.senate ? (
+                <View style={styles.layerSection}>
+                  <View style={[styles.layerHeader, { borderColor: theme.senateBorder }]}>
+                    <View style={[styles.layerDot, { backgroundColor: theme.overlaySenate }]} />
+                    <ThemedText type="small" style={{ fontWeight: "600" }}>
+                      TX Senate (24 Districts)
+                    </ThemedText>
+                  </View>
+                  <View style={styles.districtGrid}>
+                    {renderDistrictGrid(senatePolygons, "senate")}
+                  </View>
+                </View>
+              ) : null}
+
+              {overlays.house ? (
+                <View style={styles.layerSection}>
+                  <View style={[styles.layerHeader, { borderColor: theme.houseBorder }]}>
+                    <View style={[styles.layerDot, { backgroundColor: theme.overlayHouse }]} />
+                    <ThemedText type="small" style={{ fontWeight: "600" }}>
+                      TX House (24 Districts)
+                    </ThemedText>
+                  </View>
+                  <View style={styles.districtGrid}>
+                    {renderDistrictGrid(housePolygons, "house")}
+                  </View>
+                </View>
+              ) : null}
+
+              {overlays.congress ? (
+                <View style={styles.layerSection}>
+                  <View style={[styles.layerHeader, { borderColor: theme.congressBorder }]}>
+                    <View style={[styles.layerDot, { backgroundColor: theme.overlayCongress }]} />
+                    <ThemedText type="small" style={{ fontWeight: "600" }}>
+                      US Congress (24 Districts)
+                    </ThemedText>
+                  </View>
+                  <View style={styles.districtGrid}>
+                    {renderDistrictGrid(congressPolygons, "congress")}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          )}
+        </View>
+      </ScrollView>
 
       <Animated.View
         style={[
@@ -270,21 +325,6 @@ export default function MapScreen() {
               </Animated.Text>
             </View>
           ) : null}
-        </Pressable>
-      </Animated.View>
-
-      <Animated.View
-        style={[
-          styles.recenterButton,
-          {
-            bottom: tabBarHeight + Spacing.lg + (selectedDistrictData ? 180 : 0),
-            backgroundColor: theme.cardBackground,
-          },
-          Shadows.md,
-        ]}
-      >
-        <Pressable onPress={handleRecenter} style={styles.layerButtonInner}>
-          <Feather name="crosshair" size={20} color={theme.text} />
         </Pressable>
       </Animated.View>
 
@@ -327,29 +367,6 @@ export default function MapScreen() {
         </Animated.View>
       ) : null}
 
-      {activeOverlayCount === 0 ? (
-        <Animated.View
-          entering={FadeIn.duration(300)}
-          exiting={FadeOut.duration(200)}
-          style={[
-            styles.emptyOverlay,
-            {
-              top: headerHeight + Spacing.sm + 56,
-              backgroundColor: `${theme.cardBackground}E6`,
-            },
-            Shadows.sm,
-          ]}
-        >
-          <Feather name="info" size={14} color={theme.secondaryText} />
-          <ThemedText
-            type="small"
-            style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
-          >
-            Tap the layer button to show districts
-          </ThemedText>
-        </Animated.View>
-      ) : null}
-
       {selectedDistrictData ? (
         <Animated.View
           entering={SlideInDown.springify().damping(18)}
@@ -377,17 +394,58 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  map: {
+  scrollView: {
     flex: 1,
   },
-  layerButton: {
-    position: "absolute",
-    right: Spacing.lg,
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.sm,
+  mapContainer: {
+    paddingHorizontal: Spacing.lg,
   },
-  recenterButton: {
+  mapPlaceholder: {
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    minHeight: 400,
+  },
+  texasOutline: {
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.xxl,
+  },
+  gridContainer: {
+    gap: Spacing.xl,
+  },
+  layerSection: {
+    marginBottom: Spacing.lg,
+  },
+  layerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.sm,
+    paddingBottom: Spacing.xs,
+    borderBottomWidth: 2,
+  },
+  layerDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: Spacing.xs,
+  },
+  districtGrid: {
+    position: "relative",
+    height: 4 * (CELL_SIZE + 4),
+    width: "100%",
+  },
+  districtCell: {
+    position: "absolute",
+    borderRadius: BorderRadius.xs,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  layerButton: {
     position: "absolute",
     right: Spacing.lg,
     width: 44,
@@ -425,21 +483,5 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: Spacing.lg,
     right: Spacing.lg,
-  },
-  emptyOverlay: {
-    position: "absolute",
-    left: Spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-  },
-  markerContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });
