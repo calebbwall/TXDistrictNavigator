@@ -1,26 +1,26 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import ProfileScreen from "@/screens/ProfileScreen";
+import SearchScreen from "@/screens/SearchScreen";
 import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
-export type ProfileStackParamList = {
-  Profile: undefined;
+export type SearchStackParamList = {
+  Search: undefined;
   OfficialProfile: { officialId: string };
 };
 
-const Stack = createNativeStackNavigator<ProfileStackParamList>();
+const Stack = createNativeStackNavigator<SearchStackParamList>();
 
-export default function ProfileStackNavigator() {
+export default function SearchStackNavigator() {
   const screenOptions = useScreenOptions();
 
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen
-        name="Profile"
-        component={ProfileScreen}
+        name="Search"
+        component={SearchScreen}
         options={{
-          headerTitle: "Profile",
+          headerTitle: "Search",
         }}
       />
       <Stack.Screen

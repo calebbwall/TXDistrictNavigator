@@ -1,26 +1,27 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import ProfileScreen from "@/screens/ProfileScreen";
+import MapScreen from "@/screens/MapScreen";
 import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
+import { HeaderTitle } from "@/components/HeaderTitle";
 
-export type ProfileStackParamList = {
-  Profile: undefined;
+export type MapStackParamList = {
+  Map: undefined;
   OfficialProfile: { officialId: string };
 };
 
-const Stack = createNativeStackNavigator<ProfileStackParamList>();
+const Stack = createNativeStackNavigator<MapStackParamList>();
 
-export default function ProfileStackNavigator() {
+export default function MapStackNavigator() {
   const screenOptions = useScreenOptions();
 
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen
-        name="Profile"
-        component={ProfileScreen}
+        name="Map"
+        component={MapScreen}
         options={{
-          headerTitle: "Profile",
+          headerTitle: () => <HeaderTitle title="Texas Districts" />,
         }}
       />
       <Stack.Screen
