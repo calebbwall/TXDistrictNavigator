@@ -41,132 +41,127 @@ export interface Official {
   };
 }
 
+const senateNames = [
+  "Bryan Hughes", "Bob Hall", "Robert Nichols", "Brandon Creighton",
+  "Charles Schwertner", "Carol Alvarado", "Paul Bettencourt", "Angela Paxton",
+  "Kelly Hancock", "Phil King", "Larry Taylor", "Jane Nelson",
+  "Borris Miles", "Sarah Eckhardt", "John Whitmire", "Nathan Johnson",
+  "Joan Huffman", "Lois Kolkhorst", "Roland Gutierrez", "Juan Hinojosa",
+  "Judith Zaffirini", "Brian Birdwell", "Royce West", "Drew Springer"
+];
+
+const houseNames = [
+  "Gary VanDeaver", "Bryan Slaton", "Cecil Bell Jr.", "Keith Bell",
+  "Cole Hefner", "Matt Schaefer", "Jay Dean", "Cody Harris",
+  "Chris Paddie", "Travis Clardy", "Kyle Kacal", "Ben Leman",
+  "Trent Ashby", "James White", "Steve Toth", "Will Metcalf",
+  "John Cyrier", "Ernest Bailes", "James Frank", "Terry Wilson",
+  "Dade Phelan", "Mayes Middleton", "Briscoe Cain", "Greg Bonnen"
+];
+
+const congressNames = [
+  "Nathaniel Moran", "Dan Crenshaw", "Keith Self", "Pat Fallon",
+  "Lance Gooden", "Jake Ellzey", "Lizzie Fletcher", "Morgan Luttrell",
+  "Al Green", "Michael McCaul", "August Pfluger", "Kay Granger",
+  "Ronny Jackson", "Randy Weber", "Monica De La Cruz", "Veronica Escobar",
+  "Pete Sessions", "Sheila Jackson Lee", "Jodey Arrington", "Joaquin Castro",
+  "Chip Roy", "Troy Nehls", "Tony Gonzales", "Henry Cuellar"
+];
+
+function generateDistricts(type: DistrictType, names: string[]): District[] {
+  const prefix = type === "senate" ? "s" : type === "house" ? "h" : "c";
+  return names.map((name, i) => ({
+    id: `${prefix}-${i + 1}`,
+    districtType: type,
+    districtNumber: i + 1,
+    name,
+  }));
+}
+
 export const mockDistricts: District[] = [
-  { id: "s-1", districtType: "senate", districtNumber: 1, name: "Bryan Hughes" },
-  { id: "s-2", districtType: "senate", districtNumber: 2, name: "Bob Hall" },
-  { id: "s-3", districtType: "senate", districtNumber: 3, name: "Robert Nichols" },
-  { id: "s-4", districtType: "senate", districtNumber: 4, name: "Brandon Creighton" },
-  { id: "s-5", districtType: "senate", districtNumber: 5, name: "Charles Schwertner" },
-  { id: "s-6", districtType: "senate", districtNumber: 6, name: "Carol Alvarado" },
-  { id: "s-7", districtType: "senate", districtNumber: 7, name: "Paul Bettencourt" },
-  { id: "s-8", districtType: "senate", districtNumber: 8, name: "Angela Paxton" },
-  { id: "h-1", districtType: "house", districtNumber: 1, name: "Gary VanDeaver" },
-  { id: "h-2", districtType: "house", districtNumber: 2, name: "Bryan Slaton" },
-  { id: "h-3", districtType: "house", districtNumber: 3, name: "Cecil Bell Jr." },
-  { id: "h-4", districtType: "house", districtNumber: 4, name: "Keith Bell" },
-  { id: "h-5", districtType: "house", districtNumber: 5, name: "Cole Hefner" },
-  { id: "h-6", districtType: "house", districtNumber: 6, name: "Matt Schaefer" },
-  { id: "h-7", districtType: "house", districtNumber: 7, name: "Jay Dean" },
-  { id: "h-8", districtType: "house", districtNumber: 8, name: "Cody Harris" },
-  { id: "c-1", districtType: "congress", districtNumber: 1, name: "Nathaniel Moran" },
-  { id: "c-2", districtType: "congress", districtNumber: 2, name: "Dan Crenshaw" },
-  { id: "c-3", districtType: "congress", districtNumber: 3, name: "Keith Self" },
-  { id: "c-4", districtType: "congress", districtNumber: 4, name: "Pat Fallon" },
-  { id: "c-5", districtType: "congress", districtNumber: 5, name: "Lance Gooden" },
-  { id: "c-6", districtType: "congress", districtNumber: 6, name: "Jake Ellzey" },
-  { id: "c-7", districtType: "congress", districtNumber: 7, name: "Lizzie Fletcher" },
-  { id: "c-8", districtType: "congress", districtNumber: 8, name: "Morgan Luttrell" },
+  ...generateDistricts("senate", senateNames),
+  ...generateDistricts("house", houseNames),
+  ...generateDistricts("congress", congressNames),
+];
+
+function generateOfficial(
+  index: number,
+  fullName: string,
+  officeType: "tx_senate" | "tx_house" | "us_house",
+  districtId: string,
+  city: string,
+  occupation: string
+): Official {
+  const prefix = officeType === "tx_senate" ? "sen" : officeType === "tx_house" ? "rep" : "cong";
+  return {
+    id: `off-${prefix}-${index}`,
+    fullName,
+    officeType,
+    districtId,
+    photoUrl: null,
+    city,
+    occupation,
+    offices: [
+      {
+        id: `o-${prefix}-${index}-1`,
+        officeKind: "capitol",
+        address: officeType === "us_house"
+          ? "Washington, DC 20515"
+          : "P.O. Box 12068, Capitol Station, Austin, TX 78711",
+        phone: `(512) 463-0${100 + index}`,
+      },
+      {
+        id: `o-${prefix}-${index}-2`,
+        officeKind: "district",
+        address: `${city}, TX`,
+        phone: `(512) 555-${String(1000 + index).slice(-4)}`,
+      },
+    ],
+    staff: [
+      { id: `st-${prefix}-${index}-1`, name: "Staff Member", role: "Chief of Staff" },
+    ],
+  };
+}
+
+const senateCities = [
+  "Mineola", "Edgewood", "Jacksonville", "Conroe", "Georgetown",
+  "Houston", "Houston", "McKinney", "North Richland Hills", "Weatherford",
+  "Friendswood", "Flower Mound", "Houston", "Austin", "Houston",
+  "Dallas", "Houston", "Brenham", "San Antonio", "McAllen",
+  "Laredo", "Granbury", "Dallas", "Muenster"
+];
+
+const houseCities = [
+  "New Boston", "Royse City", "Magnolia", "Forney", "Gilmer",
+  "Tyler", "Longview", "Palestine", "Marshall", "Nacogdoches",
+  "College Station", "Brenham", "Lufkin", "Hillister", "The Woodlands",
+  "Conroe", "Lockhart", "Shepherd", "Wichita Falls", "Marble Falls",
+  "Beaumont", "Galveston", "Deer Park", "Friendswood"
+];
+
+const congressCities = [
+  "Tyler", "Houston", "McKinney", "Sherman", "Terrell",
+  "Waxahachie", "Houston", "Conroe", "Houston", "Austin",
+  "San Angelo", "Fort Worth", "Amarillo", "Friendswood", "Edinburg",
+  "El Paso", "Waco", "Houston", "Lubbock", "San Antonio",
+  "San Antonio", "Richmond", "San Antonio", "Laredo"
+];
+
+const occupations = [
+  "Attorney", "Business Owner", "Educator", "Engineer", "Retired Military",
+  "Rancher", "Real Estate", "Healthcare", "Finance", "Public Service"
 ];
 
 export const mockOfficials: Official[] = [
-  {
-    id: "off-1",
-    fullName: "Bryan Hughes",
-    officeType: "tx_senate",
-    districtId: "s-1",
-    photoUrl: null,
-    city: "Mineola",
-    occupation: "Attorney",
-    offices: [
-      { id: "o-1", officeKind: "capitol", address: "P.O. Box 12068, Capitol Station, Austin, TX 78711", phone: "(512) 463-0101" },
-      { id: "o-2", officeKind: "district", address: "110 N. College Avenue, Suite 207, Tyler, TX 75702", phone: "(903) 581-1776" },
-    ],
-    staff: [
-      { id: "st-1", name: "John Smith", role: "Chief of Staff" },
-      { id: "st-2", name: "Jane Doe", role: "Legislative Director" },
-    ],
-  },
-  {
-    id: "off-2",
-    fullName: "Bob Hall",
-    officeType: "tx_senate",
-    districtId: "s-2",
-    photoUrl: null,
-    city: "Edgewood",
-    occupation: "Retired Military",
-    offices: [
-      { id: "o-3", officeKind: "capitol", address: "P.O. Box 12068, Capitol Station, Austin, TX 78711", phone: "(512) 463-0102" },
-      { id: "o-4", officeKind: "district", address: "6537 Horizon Rd., Suite A, Rockwall, TX 75032", phone: "(972) 722-0081" },
-    ],
-    staff: [
-      { id: "st-3", name: "Michael Brown", role: "Chief of Staff" },
-    ],
-  },
-  {
-    id: "off-3",
-    fullName: "Gary VanDeaver",
-    officeType: "tx_house",
-    districtId: "h-1",
-    photoUrl: null,
-    city: "New Boston",
-    occupation: "Educator",
-    offices: [
-      { id: "o-5", officeKind: "capitol", address: "P.O. Box 2910, Austin, TX 78768", phone: "(512) 463-0692" },
-      { id: "o-6", officeKind: "district", address: "301 Main Street, Suite 101, Texarkana, TX 75501", phone: "(903) 628-0361" },
-    ],
-    staff: [
-      { id: "st-4", name: "Sarah Wilson", role: "District Director" },
-    ],
-  },
-  {
-    id: "off-4",
-    fullName: "Nathaniel Moran",
-    officeType: "us_house",
-    districtId: "c-1",
-    photoUrl: null,
-    city: "Tyler",
-    occupation: "Attorney",
-    offices: [
-      { id: "o-7", officeKind: "capitol", address: "1541 Longworth HOB, Washington, DC 20515", phone: "(202) 225-3035" },
-      { id: "o-8", officeKind: "district", address: "420 Shelley Dr, Suite 200, Tyler, TX 75701", phone: "(903) 561-6349" },
-    ],
-    staff: [
-      { id: "st-5", name: "David Anderson", role: "Chief of Staff" },
-      { id: "st-6", name: "Lisa Thompson", role: "Communications Director" },
-    ],
-  },
-  {
-    id: "off-5",
-    fullName: "Dan Crenshaw",
-    officeType: "us_house",
-    districtId: "c-2",
-    photoUrl: null,
-    city: "Houston",
-    occupation: "Former Navy SEAL",
-    offices: [
-      { id: "o-9", officeKind: "capitol", address: "413 Cannon HOB, Washington, DC 20515", phone: "(202) 225-6565" },
-      { id: "o-10", officeKind: "district", address: "9720 Cypresswood Dr., Suite 206, Houston, TX 77070", phone: "(281) 640-7720" },
-    ],
-    staff: [
-      { id: "st-7", name: "Justin Hollis", role: "Chief of Staff" },
-    ],
-  },
-  {
-    id: "off-6",
-    fullName: "Carol Alvarado",
-    officeType: "tx_senate",
-    districtId: "s-6",
-    photoUrl: null,
-    city: "Houston",
-    occupation: "Businesswoman",
-    offices: [
-      { id: "o-11", officeKind: "capitol", address: "P.O. Box 12068, Capitol Station, Austin, TX 78711", phone: "(512) 463-0106" },
-      { id: "o-12", officeKind: "district", address: "4802 Travis St., Suite 201, Houston, TX 77002", phone: "(713) 864-2521" },
-    ],
-    staff: [
-      { id: "st-8", name: "Maria Garcia", role: "Chief of Staff" },
-    ],
-  },
+  ...senateNames.map((name, i) =>
+    generateOfficial(i + 1, name, "tx_senate", `s-${i + 1}`, senateCities[i] || "Austin", occupations[i % occupations.length])
+  ),
+  ...houseNames.map((name, i) =>
+    generateOfficial(i + 1, name, "tx_house", `h-${i + 1}`, houseCities[i] || "Austin", occupations[i % occupations.length])
+  ),
+  ...congressNames.map((name, i) =>
+    generateOfficial(i + 1, name, "us_house", `c-${i + 1}`, congressCities[i] || "Austin", occupations[i % occupations.length])
+  ),
 ];
 
 export function getDistrictsByType(type: DistrictType): District[] {

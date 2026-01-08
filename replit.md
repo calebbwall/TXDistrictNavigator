@@ -4,17 +4,19 @@
 A mobile application for Texas citizens to view legislative districts, search for representatives, and manage private notes about officials. Built with Expo + React Native and Express.js backend.
 
 ## Current State
-**MVP Complete** - Core functionality implemented with mock data and local storage.
+**MVP Complete** - Core functionality with react-native-maps and mock data.
 
 ### MVP Features:
-- **Map Screen**: Interactive placeholder map with district overlay toggles (TX Senate, TX House, US Congress)
+- **Map Screen**: Interactive native map (Apple/Google Maps via react-native-maps) with district polygon overlays for TX Senate, TX House, and US Congress (24 districts each)
 - **Search Screen**: Search officials by ZIP code, name, or draw-to-search (simulated)
 - **Official Profiles**: View public info (offices, staff, contact) and manage private notes
 - **Profile Screen**: Saved officials list and default overlay preferences
 - **Local Persistence**: AsyncStorage for saved officials, private notes, and preferences
 
 ### MVP Scope Notes:
-- Map uses a placeholder with interactive markers (Mapbox integration is next phase)
+- Native map uses react-native-maps; web shows informative fallback with Expo Go instructions
+- Platform-specific files: MapScreen.tsx (native), MapScreen.web.tsx (web)
+- 24 mock districts per chamber with generated polygon grid across Texas
 - Draw-to-search is simulated (real geometry capture is next phase)
 - No authentication required (all data stored locally on device)
 - Private notes stored in AsyncStorage (not encrypted - device security applies)
@@ -68,5 +70,8 @@ A mobile application for Texas citizens to view legislative districts, search fo
 7. Real draw-to-search with geometry capture
 
 ## Recent Changes
+- 2026-01-08: Added react-native-maps for native iOS/Android with 24 district polygons per chamber
+- 2026-01-08: Platform-specific MapScreen files to avoid bundler issues on web
+- 2026-01-08: Expanded mock data to 24 officials per chamber with real Texas legislator names
 - 2026-01-08: MVP complete with mock data and local storage
 - 2026-01-08: Fixed saved officials state sync using useFocusEffect

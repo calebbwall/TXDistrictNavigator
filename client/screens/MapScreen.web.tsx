@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { StyleSheet, View, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import MapView, { Polygon, Marker, PROVIDER_DEFAULT } from "react-native-maps";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -29,12 +28,6 @@ import {
   type DistrictType,
 } from "@/lib/mockData";
 import {
-  senatePolygons,
-  housePolygons,
-  congressPolygons,
-  type DistrictPolygon,
-} from "@/lib/districtPolygons";
-import {
   getOverlayPreferences,
   saveOverlayPreferences,
   type OverlayPreferences,
@@ -49,20 +42,12 @@ const springConfig: WithSpringConfig = {
   stiffness: 180,
 };
 
-const TEXAS_REGION = {
-  latitude: 31.0,
-  longitude: -99.5,
-  latitudeDelta: 10,
-  longitudeDelta: 10,
-};
-
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NavigationProp>();
   const { theme } = useTheme();
-  const mapRef = useRef<MapView>(null);
 
   const [overlays, setOverlays] = useState<OverlayPreferences>({
     senate: false,
@@ -91,33 +76,6 @@ export default function MapScreen() {
     [overlays]
   );
 
-  const handlePolygonPress = useCallback(
-    (polygon: DistrictPolygon) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      if (
-        selectedDistrict?.type === polygon.districtType &&
-        selectedDistrict.number === polygon.districtNumber
-      ) {
-        setSelectedDistrict(null);
-      } else {
-        setSelectedDistrict({
-          type: polygon.districtType,
-          number: polygon.districtNumber,
-        });
-        mapRef.current?.animateToRegion(
-          {
-            latitude: polygon.center.latitude,
-            longitude: polygon.center.longitude,
-            latitudeDelta: 2,
-            longitudeDelta: 2,
-          },
-          300
-        );
-      }
-    },
-    [selectedDistrict]
-  );
-
   const handleCloseDistrictCard = useCallback(() => {
     setSelectedDistrict(null);
   }, []);
@@ -133,11 +91,6 @@ export default function MapScreen() {
   const handleLayerButtonPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setShowLayerPanel(!showLayerPanel);
-  };
-
-  const handleRecenter = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    mapRef.current?.animateToRegion(TEXAS_REGION, 500);
   };
 
   const layerButtonStyle = useAnimatedStyle(() => ({
@@ -166,80 +119,43 @@ export default function MapScreen() {
 
   const activeOverlayCount = Object.values(overlays).filter(Boolean).length;
 
-  const getPolygonColor = (type: DistrictType, isSelected: boolean) => {
-    const colors = {
-      senate: { fill: theme.overlaySenate, stroke: theme.senateBorder },
-      house: { fill: theme.overlayHouse, stroke: theme.houseBorder },
-      congress: { fill: theme.overlayCongress, stroke: theme.congressBorder },
-    };
-    return {
-      fillColor: isSelected ? colors[type].fill : `${colors[type].fill}40`,
-      strokeColor: colors[type].stroke,
-    };
-  };
-
-  const renderPolygons = (polygons: DistrictPolygon[], type: DistrictType) => {
-    return polygons.map((polygon) => {
-      const isSelected =
-        selectedDistrict?.type === type &&
-        selectedDistrict.number === polygon.districtNumber;
-      const colors = getPolygonColor(type, isSelected);
-
-      return (
-        <React.Fragment key={polygon.id}>
-          <Polygon
-            coordinates={polygon.coordinates}
-            fillColor={colors.fillColor}
-            strokeColor={colors.strokeColor}
-            strokeWidth={isSelected ? 3 : 1}
-            tappable
-            onPress={() => handlePolygonPress(polygon)}
-          />
-          <Marker
-            coordinate={polygon.center}
-            anchor={{ x: 0.5, y: 0.5 }}
-            onPress={() => handlePolygonPress(polygon)}
-          >
-            <View
-              style={[
-                styles.markerContainer,
-                {
-                  backgroundColor: isSelected
-                    ? colors.strokeColor
-                    : `${colors.strokeColor}CC`,
-                  borderColor: "#FFFFFF",
-                  borderWidth: isSelected ? 2 : 1,
-                },
-              ]}
-            >
-              <ThemedText
-                type="small"
-                style={{ color: "#FFFFFF", fontWeight: "700" }}
-              >
-                {polygon.districtNumber}
-              </ThemedText>
-            </View>
-          </Marker>
-        </React.Fragment>
-      );
-    });
-  };
-
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        provider={PROVIDER_DEFAULT}
-        initialRegion={TEXAS_REGION}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        mapType="standard"
-      >
-        {overlays.senate ? renderPolygons(senatePolygons, "senate") : null}
-        {overlays.house ? renderPolygons(housePolygons, "house") : null}
-        {overlays.congress ? renderPolygons(congressPolygons, "congress") : null}
-      </MapView>
+      <View style={[styles.webFallback, { backgroundColor: theme.backgroundDefault }]}>
+        <Feather name="map" size={48} color={theme.secondaryText} />
+        <ThemedText
+          type="body"
+          style={{ color: theme.secondaryText, marginTop: Spacing.md, textAlign: "center" }}
+        >
+          Interactive map with district overlays
+        </ThemedText>
+        <ThemedText
+          type="small"
+          style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}
+        >
+          Scan the QR code to view on your phone with Expo Go
+        </ThemedText>
+        <View style={[styles.featureList, { marginTop: Spacing.lg }]}>
+          <View style={styles.featureItem}>
+            <Feather name="check-circle" size={16} color={theme.primary} />
+            <ThemedText type="small" style={{ marginLeft: Spacing.xs }}>
+              TX Senate, House, and US Congress districts
+            </ThemedText>
+          </View>
+          <View style={styles.featureItem}>
+            <Feather name="check-circle" size={16} color={theme.primary} />
+            <ThemedText type="small" style={{ marginLeft: Spacing.xs }}>
+              Tap districts to see representative info
+            </ThemedText>
+          </View>
+          <View style={styles.featureItem}>
+            <Feather name="check-circle" size={16} color={theme.primary} />
+            <ThemedText type="small" style={{ marginLeft: Spacing.xs }}>
+              Toggle district overlays with color-coded layers
+            </ThemedText>
+          </View>
+        </View>
+      </View>
 
       <Animated.View
         style={[
@@ -270,21 +186,6 @@ export default function MapScreen() {
               </Animated.Text>
             </View>
           ) : null}
-        </Pressable>
-      </Animated.View>
-
-      <Animated.View
-        style={[
-          styles.recenterButton,
-          {
-            bottom: tabBarHeight + Spacing.lg + (selectedDistrictData ? 180 : 0),
-            backgroundColor: theme.cardBackground,
-          },
-          Shadows.md,
-        ]}
-      >
-        <Pressable onPress={handleRecenter} style={styles.layerButtonInner}>
-          <Feather name="crosshair" size={20} color={theme.text} />
         </Pressable>
       </Animated.View>
 
@@ -327,29 +228,6 @@ export default function MapScreen() {
         </Animated.View>
       ) : null}
 
-      {activeOverlayCount === 0 ? (
-        <Animated.View
-          entering={FadeIn.duration(300)}
-          exiting={FadeOut.duration(200)}
-          style={[
-            styles.emptyOverlay,
-            {
-              top: headerHeight + Spacing.sm + 56,
-              backgroundColor: `${theme.cardBackground}E6`,
-            },
-            Shadows.sm,
-          ]}
-        >
-          <Feather name="info" size={14} color={theme.secondaryText} />
-          <ThemedText
-            type="small"
-            style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
-          >
-            Tap the layer button to show districts
-          </ThemedText>
-        </Animated.View>
-      ) : null}
-
       {selectedDistrictData ? (
         <Animated.View
           entering={SlideInDown.springify().damping(18)}
@@ -377,17 +255,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  map: {
+  webFallback: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.xl,
+  },
+  featureList: {
+    alignItems: "flex-start",
+  },
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: Spacing.xs,
   },
   layerButton: {
-    position: "absolute",
-    right: Spacing.lg,
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.sm,
-  },
-  recenterButton: {
     position: "absolute",
     right: Spacing.lg,
     width: 44,
@@ -425,21 +307,5 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: Spacing.lg,
     right: Spacing.lg,
-  },
-  emptyOverlay: {
-    position: "absolute",
-    left: Spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-  },
-  markerContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });
