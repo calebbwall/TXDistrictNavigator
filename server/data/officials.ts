@@ -1,45 +1,19 @@
-export type DistrictType = "senate" | "house" | "congress";
-export type ApiDistrictType = "tx_senate" | "tx_house" | "us_congress";
-
-export interface District {
-  id: string;
-  districtType: DistrictType;
-  districtNumber: number;
-  name: string;
-}
-
-export interface Staff {
-  id: string;
-  name: string;
-  role: string;
-}
+export type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
 export interface Office {
-  id: string;
-  officeKind: "capitol" | "district";
+  type: "capitol" | "district";
   address: string;
   phone: string;
 }
 
 export interface Official {
   id: string;
-  fullName: string;
-  officeType: "tx_senate" | "tx_house" | "us_house";
-  districtId: string;
+  name: string;
+  chamber: DistrictType;
+  districtNumber: number;
   photoUrl: string | null;
-  city: string;
-  occupation: string;
+  party: "R" | "D";
   offices: Office[];
-  staff: Staff[];
-  privateNotes?: {
-    personalPhone?: string;
-    personalAddress?: string;
-    spouse?: string;
-    children?: string;
-    birthday?: string;
-    anniversary?: string;
-    notes?: string;
-  };
 }
 
 const txHouseNames = [
@@ -96,123 +70,47 @@ const usCongressNames = [
   "Greg Casar", "Sylvia Garcia", "Wesley Hunt"
 ];
 
-function generateDistricts(type: DistrictType, names: string[]): District[] {
-  const prefix = type === "senate" ? "s" : type === "house" ? "h" : "c";
+const parties: Record<number, "R" | "D"> = {
+  7: "D", 8: "D", 9: "D", 18: "D", 20: "D", 28: "D", 29: "D", 30: "D", 32: "D", 33: "D", 34: "D", 35: "D", 37: "D"
+};
+
+function generateOfficials(names: string[], chamber: DistrictType): Official[] {
+  const capitolAddress = chamber === "us_congress" 
+    ? "Washington, DC 20515" 
+    : "P.O. Box 12068, Capitol Station, Austin, TX 78711";
+  
   return names.map((name, i) => ({
-    id: `${prefix}-${i + 1}`,
-    districtType: type,
-    districtNumber: i + 1,
+    id: `${chamber}-${i + 1}`,
     name,
+    chamber,
+    districtNumber: i + 1,
+    photoUrl: null,
+    party: parties[i + 1] || "R",
+    offices: [
+      {
+        type: "capitol",
+        address: capitolAddress,
+        phone: `(512) 463-${String(100 + i).padStart(4, "0")}`,
+      },
+      {
+        type: "district",
+        address: "District Office, TX",
+        phone: `(512) 555-${String(1000 + i).slice(-4)}`,
+      },
+    ],
   }));
 }
 
-export const mockDistricts: District[] = [
-  ...generateDistricts("senate", txSenateNames),
-  ...generateDistricts("house", txHouseNames),
-  ...generateDistricts("congress", usCongressNames),
-];
+export const txHouseOfficials = generateOfficials(txHouseNames, "tx_house");
+export const txSenateOfficials = generateOfficials(txSenateNames, "tx_senate");
+export const usCongressOfficials = generateOfficials(usCongressNames, "us_congress");
 
-const occupations = [
-  "Attorney", "Business Owner", "Educator", "Engineer", "Retired Military",
-  "Rancher", "Real Estate", "Healthcare", "Finance", "Public Service"
-];
+export const allOfficials = [...txHouseOfficials, ...txSenateOfficials, ...usCongressOfficials];
 
-function generateOfficial(
-  index: number,
-  fullName: string,
-  officeType: "tx_senate" | "tx_house" | "us_house",
-  districtId: string
-): Official {
-  const prefix = officeType === "tx_senate" ? "sen" : officeType === "tx_house" ? "rep" : "cong";
-  return {
-    id: `off-${prefix}-${index}`,
-    fullName,
-    officeType,
-    districtId,
-    photoUrl: null,
-    city: "Texas",
-    occupation: occupations[index % occupations.length],
-    offices: [
-      {
-        id: `o-${prefix}-${index}-1`,
-        officeKind: "capitol",
-        address: officeType === "us_house"
-          ? "Washington, DC 20515"
-          : "P.O. Box 12068, Capitol Station, Austin, TX 78711",
-        phone: `(512) 463-${String(100 + index).padStart(4, "0")}`,
-      },
-      {
-        id: `o-${prefix}-${index}-2`,
-        officeKind: "district",
-        address: "District Office, TX",
-        phone: `(512) 555-${String(1000 + index).slice(-4)}`,
-      },
-    ],
-    staff: [
-      { id: `st-${prefix}-${index}-1`, name: "Staff Member", role: "Chief of Staff" },
-    ],
-  };
+export function getOfficialsByDistrict(chamber: DistrictType, districtNumber: number): Official | undefined {
+  return allOfficials.find(o => o.chamber === chamber && o.districtNumber === districtNumber);
 }
 
-export const mockOfficials: Official[] = [
-  ...txSenateNames.map((name, i) =>
-    generateOfficial(i + 1, name, "tx_senate", `s-${i + 1}`)
-  ),
-  ...txHouseNames.map((name, i) =>
-    generateOfficial(i + 1, name, "tx_house", `h-${i + 1}`)
-  ),
-  ...usCongressNames.map((name, i) =>
-    generateOfficial(i + 1, name, "us_house", `c-${i + 1}`)
-  ),
-];
-
-export function getDistrictsByType(type: DistrictType): District[] {
-  return mockDistricts.filter((d) => d.districtType === type);
+export function getOfficialsByChamber(chamber: DistrictType): Official[] {
+  return allOfficials.filter(o => o.chamber === chamber);
 }
-
-export function getOfficialByDistrictId(districtId: string): Official | undefined {
-  return mockOfficials.find((o) => o.districtId === districtId);
-}
-
-export function getOfficialById(officialId: string): Official | undefined {
-  return mockOfficials.find((o) => o.id === officialId);
-}
-
-export function getDistrictById(districtId: string): District | undefined {
-  return mockDistricts.find((d) => d.id === districtId);
-}
-
-export function searchOfficialsByName(query: string): Official[] {
-  const lowerQuery = query.toLowerCase();
-  return mockOfficials.filter((o) =>
-    o.fullName.toLowerCase().includes(lowerQuery)
-  );
-}
-
-export function getDistrictTypeLabel(type: DistrictType): string {
-  switch (type) {
-    case "senate":
-      return "TX Senate";
-    case "house":
-      return "TX House";
-    case "congress":
-      return "US Congress";
-  }
-}
-
-export function getOfficeTypeLabel(type: Official["officeType"]): string {
-  switch (type) {
-    case "tx_senate":
-      return "Texas Senate";
-    case "tx_house":
-      return "Texas House";
-    case "us_house":
-      return "US House";
-  }
-}
-
-export const DISTRICT_COUNTS = {
-  tx_house: 150,
-  tx_senate: 31,
-  us_congress: 38,
-};

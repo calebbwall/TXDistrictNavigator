@@ -1,0 +1,67 @@
+You are fixing an Expo (Expo Go) React Native app.
+
+PROBLEMS TO FIX:
+1) Map does not render in Expo Go.
+2) District overlays are missing (need real TX district polygons).
+3) Must include full rosters: TX House 150, TX Senate 31, US Congress 38.
+
+REQUIRED APPROACH (Expo Go compatible):
+- DO NOT use Mapbox React Native (@rnmapbox/maps). Expo Go will not support it without a custom dev client.
+- Use react-native-maps for the base map.
+- Render district boundaries using react-native-maps Polygon overlays from GeoJSON.
+
+STEP 1: Make the map appear
+- Install react-native-maps (Expo supported).
+- Create MapScreen with <MapView style={{ flex: 1 }} initialRegion centered on Texas.
+- Ensure parent containers also use flex: 1.
+- Add a visible fallback UI (text) if map fails to load.
+- Confirm no runtime errors in console.
+
+STEP 2: Add district overlay layers (3 toggles)
+- Add 3 layer toggles: tx_house, tx_senate, us_congress.
+- Create a service module that fetches GeoJSON for each layer from a backend endpoint:
+  GET /geojson/tx_house
+  GET /geojson/tx_senate
+  GET /geojson/us_congress
+- Parse GeoJSON features:
+  - Support Polygon and MultiPolygon geometries.
+  - Convert coordinates to react-native-maps { latitude, longitude } arrays.
+- Render <Polygon /> for each district:
+  - Default stroke/fill low opacity.
+  - OnPress sets selectedDistrictId and highlights it (different fill/stroke).
+- Only render overlays when zoom level is above a threshold OR when toggled on, to avoid performance issues.
+
+STEP 3: Build backend endpoints to serve simplified GeoJSON
+- Add a simple Node/Express backend (or existing backend) with endpoints above.
+- For now, store GeoJSON files in the repo under /server/data/ and serve them.
+- Add a script to refresh them later; but first get it working.
+
+STEP 4: Add officials roster (150/31/38)
+- Create backend endpoints:
+  GET /officials?district_type=tx_house
+  GET /officials?district_type=tx_senate
+  GET /officials?district_type=us_congress
+  GET /officials/by-district?district_type=...&district_number=...
+- Seed the database (or JSON seed) with:
+  - TX House: 150 members
+  - TX Senate: 31 members
+  - US Congress (Texas): 38 members
+- Each official record must include: name, chamber, district_number, photo_url, capitol office address/phone, district office address/phone.
+- The app’s search result list should populate from these endpoints.
+
+STEP 5: Wire map selection to officials
+- When user taps a district polygon:
+  - Call /officials/by-district for that district.
+  - Show official cards (photo, name, office, district).
+  - Keep district highlighted.
+
+STEP 6: Confirm in Expo Go
+- Run on Expo Go and confirm:
+  - Map renders
+  - Toggling overlays draws polygons
+  - Tapping a district highlights it and shows officials
+  - Counts match 150/31/38
+
+DELIVERABLE:
+- Working Expo Go map screen with real district overlays and complete rosters.
+- If any dependency is incompatible with Expo Go, replace it with an Expo-supported alternative.
