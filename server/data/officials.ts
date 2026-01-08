@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 export type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
 export interface Office {
@@ -16,94 +19,127 @@ export interface Official {
   offices: Office[];
 }
 
-const txHouseNames = [
-  "Gary VanDeaver", "Bryan Slaton", "Cecil Bell Jr.", "Keith Bell", "Cole Hefner",
-  "Matt Schaefer", "Jay Dean", "Cody Harris", "Chris Paddie", "Travis Clardy",
-  "Kyle Kacal", "Ben Leman", "Trent Ashby", "James White", "Steve Toth",
-  "Will Metcalf", "John Cyrier", "Ernest Bailes", "James Frank", "Terry Wilson",
-  "Dade Phelan", "Mayes Middleton", "Briscoe Cain", "Greg Bonnen", "Dennis Paul",
-  "Jacey Jetton", "Ron Reynolds", "Gary Gates", "Ed Thompson", "Geanie Morrison",
-  "Ryan Guillen", "Todd Hunter", "Justin Holland", "Abel Herrero", "Oscar Longoria",
-  "Sergio Munoz Jr.", "Alex Dominguez", "Eddie Lucio III", "Armando Martinez", "Terry Canales",
-  "Bobby Guerra", "R.D. Bobby Martinez", "J.M. Lozano", "John Kuempel", "Erin Zwiener",
-  "Sheryl Cole", "Vikki Goodwin", "Donna Howard", "Gina Hinojosa", "James Talarico",
-  "Celia Israel", "Caroline Harris", "Andrew Murr", "Brad Buckley", "Hugh Shine",
-  "Charles Doc Anderson", "Trent Ashby II", "DeWayne Burns", "Shelby Slawson", "Glenn Rogers",
-  "Mike Lang", "Reggie Smith", "Ben Bumgarner", "Lynn Stucky", "David Cook",
-  "Giovanni Capriglione", "Craig Goldman", "Phil King", "Drew Darby", "Brooks Landgraf",
-  "Tom Craddick", "Ken King", "Dustin Burrows", "John Frullo", "Four Price",
-  "Ken Paxton Jr.", "Jeff Leach", "Matt Shaheen", "Candy Noble", "Scott Sanford",
-  "Stephanie Klick", "Tony Tinderholt", "David Cook II", "Charlie Geren", "Nicole Collier",
-  "Chris Turner", "Ramon Romero Jr.", "Craig Goldman II", "Ana-Maria Ramos", "Terry Meza",
-  "Jessica Gonzalez", "Rafael Anchia", "Rhetta Bowers", "Carl Sherman", "Jasmine Crockett",
-  "Yvonne Davis", "Toni Rose", "Lorraine Birabil", "Diego Bernal", "Ina Minjarez",
-  "Steve Allison", "Liz Campos", "Philip Cortez", "Ray Lopez", "Barbara Gervin-Hawkins",
-  "Leo Pacheco", "Art Fierro", "Claudia Ordaz Perez", "Joe Moody", "Lina Ortega",
-  "Mary Gonzalez", "Eddie Morales Jr.", "Tracy King", "Andrew Murr II", "Richard Raymond",
-  "Ryan Guillen II", "J.D. Sheffield", "Stan Lambert", "Angie Chen Button", "Morgan Meyer",
-  "Linda Koop", "Julie Johnson", "Michelle Beckley", "Jared Patterson", "Jeff Cason",
-  "Matt Krause", "Nate Schatzline", "David Spiller", "Charles Schwertner Jr.", "Ben Leman II",
-  "Joe Deshotel", "Desiree Venable", "Terri Collins", "Mike Schofield", "Sam Harless",
-  "Valoree Swanson", "Tom Oliverson", "Jon Rosenthal", "Penny Morales Shaw", "Christina Morales",
-  "Jarvis Johnson", "Senfronia Thompson", "Harold Dutton Jr.", "Jolanda Jones", "Shawn Thierry",
-  "Alma Allen", "Ann Johnson", "Lacey Hull", "Briscoe Cain II", "Dennis Bonnen"
-];
-
-const txSenateNames = [
-  "Bryan Hughes", "Bob Hall", "Robert Nichols", "Brandon Creighton", "Charles Schwertner",
-  "Carol Alvarado", "Paul Bettencourt", "Angela Paxton", "Kelly Hancock", "Phil King",
-  "Larry Taylor", "Jane Nelson", "Borris Miles", "Sarah Eckhardt", "John Whitmire",
-  "Nathan Johnson", "Joan Huffman", "Lois Kolkhorst", "Roland Gutierrez", "Juan Hinojosa",
-  "Judith Zaffirini", "Brian Birdwell", "Royce West", "Drew Springer", "Donna Campbell",
-  "Jose Menendez", "Eddie Lucio Jr.", "Cesar Blanco", "Kevin Sparks", "Charles Perry",
-  "Tan Parker"
-];
-
-const usCongressNames = [
-  "Nathaniel Moran", "Dan Crenshaw", "Keith Self", "Pat Fallon", "Lance Gooden",
-  "Jake Ellzey", "Lizzie Fletcher", "Morgan Luttrell", "Al Green", "Michael McCaul",
-  "August Pfluger", "Kay Granger", "Ronny Jackson", "Randy Weber", "Monica De La Cruz",
-  "Veronica Escobar", "Pete Sessions", "Sheila Jackson Lee", "Jodey Arrington", "Joaquin Castro",
-  "Chip Roy", "Troy Nehls", "Tony Gonzales", "Henry Cuellar", "Roger Williams",
-  "Michael Burgess", "Michael Cloud", "John Carter", "Marc Veasey", "Eddie Bernice Johnson",
-  "Colin Allred", "Beth Van Duyne", "Brian Babin", "Vicente Gonzalez", "Lloyd Doggett",
-  "Greg Casar", "Sylvia Garcia", "Wesley Hunt"
-];
-
-const parties: Record<number, "R" | "D"> = {
-  7: "D", 8: "D", 9: "D", 18: "D", 20: "D", 28: "D", 29: "D", 30: "D", 32: "D", 33: "D", 34: "D", 35: "D", 37: "D"
-};
-
-function generateOfficials(names: string[], chamber: DistrictType): Official[] {
-  const capitolAddress = chamber === "us_congress" 
-    ? "Washington, DC 20515" 
-    : "P.O. Box 12068, Capitol Station, Austin, TX 78711";
-  
-  return names.map((name, i) => ({
-    id: `${chamber}-${i + 1}`,
-    name,
-    chamber,
-    districtNumber: i + 1,
-    photoUrl: null,
-    party: parties[i + 1] || "R",
-    offices: [
-      {
-        type: "capitol",
-        address: capitolAddress,
-        phone: `(512) 463-${String(100 + i).padStart(4, "0")}`,
-      },
-      {
-        type: "district",
-        address: "District Office, TX",
-        phone: `(512) 555-${String(1000 + i).slice(-4)}`,
-      },
-    ],
-  }));
+interface GeoJSONFeature {
+  properties: { district: number; name: string };
 }
 
-export const txHouseOfficials = generateOfficials(txHouseNames, "tx_house");
-export const txSenateOfficials = generateOfficials(txSenateNames, "tx_senate");
-export const usCongressOfficials = generateOfficials(usCongressNames, "us_congress");
+interface GeoJSONCollection {
+  features: GeoJSONFeature[];
+}
+
+function loadNamesFromGeoJSON(filename: string): Map<number, string> {
+  try {
+    const filePath = path.join(__dirname, "geojson", filename);
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as GeoJSONCollection;
+    const map = new Map<number, string>();
+    data.features.forEach(f => {
+      map.set(f.properties.district, f.properties.name);
+    });
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+const txHouseNamesMap = loadNamesFromGeoJSON("tx_house_simplified.geojson");
+const txSenateNamesMap = loadNamesFromGeoJSON("tx_senate_simplified.geojson");
+const usCongressNamesMap = loadNamesFromGeoJSON("us_congress_simplified.geojson");
+
+const txHouseDemocrats = new Set([
+  "Alma Allen", "Rafael Anchía", "Diego Bernal", "Salman Bhojani", "Rhetta Bowers",
+  "John Bryant", "John H. Bucy III", "John Bucy", "Liz Campos", "Terry Canales",
+  "Sheryl Cole", "Nicole Collier", "Philip Cortez", "Aicha Davis", "Yvonne Davis",
+  "Harold V. Dutton, Jr.", "Harold Dutton", "Lulu Flores", "Erin Elizabeth Gámez", "Erin Gamez",
+  "Josey Garcia", "Linda Garcia", "Cassandra Garcia Hernandez", "Barbara Gervin-Hawkins",
+  "Jessica González", "Jessica Gonzalez", "Mary González", "Mary Gonzalez", "Vikki Goodwin",
+  "R.D. 'Bobby' Guerra", "Bobby Guerra", "Ana Hernandez", "Gina Hinojosa", "Donna Howard",
+  "Ann Johnson", "Jolanda Jones", "Venton Jones", "Suleman Lalani", "Oscar Longoria",
+  "Ray López", "Ray Lopez", "Christian Manuel", "Armando Martinez", "Trey Martinez Fischer",
+  "Terry Meza", "Joe Moody", "Christina Morales", "Eddie Morales", "Penny Morales Shaw",
+  "Sergio Muñoz, Jr.", "Sergio Munoz", "Claudia Ordaz", "Mary Ann Perez", "Vince Perez",
+  "Mihaela Plesa", "Richard Peña Raymond", "Richard Raymond", "Ron Reynolds",
+  "Ana-María Rodríguez Ramos", "Ramon Romero, Jr.", "Ramon Romero", "Toni Rose", "Jon Rosenthal",
+  "Lauren A. Simmons", "Lauren Simmons", "James Talarico", "Senfronia Thompson", "Chris Turner",
+  "Hubert Vo", "Armando Walle", "Charlene Ward Johnson", "Gene Wu", "Erin Zwiener"
+]);
+
+const txSenateDemocrats = new Set([
+  "Carol Alvarado", "Cesar Blanco", "Sarah Eckhardt", "Roland Gutierrez", "Juan Hinojosa",
+  "Nathan Johnson", "Jose Menendez", "Borris Miles", "Royce West", "John Whitmire",
+  "Judith Zaffirini", "Morgan LaMantia"
+]);
+
+const usCongressDemocrats = new Set([
+  "Lizzie Fletcher", "Al Green", "Veronica Escobar", "Sheila Jackson Lee", "Joaquin Castro",
+  "Lloyd Doggett", "Colin Allred", "Vicente Gonzalez", "Greg Casar", "Sylvia Garcia",
+  "Marc Veasey", "Jasmine Crockett", "Henry Cuellar"
+]);
+
+function getParty(name: string, democratsSet: Set<string>): "R" | "D" {
+  const normalized = name.trim();
+  for (const dem of democratsSet) {
+    if (normalized.includes(dem) || dem.includes(normalized) ||
+        normalized.toLowerCase().includes(dem.toLowerCase()) ||
+        dem.toLowerCase().includes(normalized.toLowerCase())) {
+      return "D";
+    }
+  }
+  const firstLast = normalized.split(",")[0].trim();
+  for (const dem of democratsSet) {
+    const demFirstLast = dem.split(",")[0].trim();
+    if (firstLast === demFirstLast) return "D";
+    const nameParts = firstLast.split(" ").filter(p => p.length > 2);
+    const demParts = demFirstLast.split(" ").filter(p => p.length > 2);
+    if (nameParts.length >= 2 && demParts.length >= 2) {
+      if (nameParts[nameParts.length - 1] === demParts[demParts.length - 1] &&
+          nameParts[0] === demParts[0]) {
+        return "D";
+      }
+    }
+  }
+  return "R";
+}
+
+function generateOfficials(
+  namesMap: Map<number, string>,
+  count: number,
+  chamber: DistrictType,
+  democratsSet: Set<string>
+): Official[] {
+  const capitolAddress = chamber === "us_congress"
+    ? "Washington, DC 20515"
+    : "P.O. Box 12068, Capitol Station, Austin, TX 78711";
+
+  const officials: Official[] = [];
+  for (let i = 1; i <= count; i++) {
+    const name = namesMap.get(i) || `District ${i} Representative`;
+    officials.push({
+      id: `${chamber}-${i}`,
+      name,
+      chamber,
+      districtNumber: i,
+      photoUrl: null,
+      party: getParty(name, democratsSet),
+      offices: [
+        {
+          type: "capitol",
+          address: capitolAddress,
+          phone: `(512) 463-${String(100 + i).padStart(4, "0")}`,
+        },
+        {
+          type: "district",
+          address: "District Office, TX",
+          phone: `(512) 555-${String(1000 + i).slice(-4)}`,
+        },
+      ],
+    });
+  }
+  return officials;
+}
+
+export const txHouseOfficials = generateOfficials(txHouseNamesMap, 150, "tx_house", txHouseDemocrats);
+export const txSenateOfficials = generateOfficials(txSenateNamesMap, 31, "tx_senate", txSenateDemocrats);
+export const usCongressOfficials = generateOfficials(usCongressNamesMap, 38, "us_congress", usCongressDemocrats);
 
 export const allOfficials = [...txHouseOfficials, ...txSenateOfficials, ...usCongressOfficials];
 

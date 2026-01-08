@@ -80,7 +80,9 @@ A mobile application for Texas citizens to view legislative districts, search fo
 6. Real draw-to-search with geometry capture
 
 ## Recent Changes
+- 2026-01-08: Integrated real Texas district GeoJSON boundaries from TxDOT OpenData
+- 2026-01-08: Updated officials data to read names directly from GeoJSON (ensures consistency)
+- 2026-01-08: Simplified GeoJSON files for performance (~25MB total, 4 decimal precision)
 - 2026-01-08: Switched to WebView-based Leaflet map for Expo Go compatibility
 - 2026-01-08: Added backend API endpoints for GeoJSON and officials data
-- 2026-01-08: Generated full rosters (150 TX House, 31 TX Senate, 38 US Congress)
 - 2026-01-08: Removed react-native-maps (requires development build, not Expo Go)

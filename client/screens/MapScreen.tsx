@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { StyleSheet, View, Pressable, Platform, ActivityIndicator } from "react-native";
+import { StyleSheet, View, Pressable, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -64,6 +64,127 @@ const LAYER_COLORS: Record<DistrictType, { fill: string; stroke: string }> = {
   us_congress: { fill: "rgba(80, 200, 120, 0.3)", stroke: "#50C878" },
 };
 
+const MAP_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    #map { width: 100%; height: 100%; }
+    .leaflet-control-attribution { display: none; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    const map = L.map('map', {
+      center: [31.0, -100.0],
+      zoom: 6,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    const layers = {
+      senate: null,
+      house: null,
+      congress: null
+    };
+
+    const geoJSONData = {
+      tx_senate: null,
+      tx_house: null,
+      us_congress: null
+    };
+
+    const layerColors = {
+      tx_senate: { fill: 'rgba(74, 144, 226, 0.3)', stroke: '#4A90E2' },
+      tx_house: { fill: 'rgba(233, 75, 60, 0.3)', stroke: '#E94B3C' },
+      us_congress: { fill: 'rgba(80, 200, 120, 0.3)', stroke: '#50C878' }
+    };
+
+    function createLayer(type, data, colors) {
+      if (!data) return null;
+      return L.geoJSON(data, {
+        style: {
+          fillColor: colors.fill,
+          color: colors.stroke,
+          weight: 1,
+          fillOpacity: 0.3
+        },
+        onEachFeature: function(feature, layer) {
+          layer.on('click', function() {
+            const districtType = type === 'senate' ? 'tx_senate' : 
+                                 type === 'house' ? 'tx_house' : 'us_congress';
+            const districtNum = feature.properties.district || 
+                                feature.properties.SLDUST || 
+                                feature.properties.SLDLST ||
+                                feature.properties.CD;
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'districtClick',
+              districtType: districtType,
+              districtNumber: parseInt(districtNum) || 1
+            }));
+          });
+        }
+      });
+    }
+
+    function setGeoJSONData(type, data) {
+      const typeKey = type === 'tx_senate' ? 'senate' : 
+                      type === 'tx_house' ? 'house' : 'congress';
+      geoJSONData[type] = data;
+      
+      if (layers[typeKey]) {
+        map.removeLayer(layers[typeKey]);
+      }
+      layers[typeKey] = createLayer(typeKey, data, layerColors[type]);
+    }
+
+    window.toggleLayer = function(type, visible) {
+      const layer = layers[type];
+      if (!layer) return;
+      if (visible) {
+        layer.addTo(map);
+      } else {
+        map.removeLayer(layer);
+      }
+    };
+
+    window.receiveMessage = function(message) {
+      try {
+        const data = JSON.parse(message);
+        if (data.type === 'setGeoJSON') {
+          setGeoJSONData(data.layerType, data.geojson);
+        } else if (data.type === 'toggleLayer') {
+          window.toggleLayer(data.layer, data.visible);
+        }
+      } catch (e) {
+        console.error('Error processing message:', e);
+      }
+    };
+
+    document.addEventListener('message', function(e) {
+      window.receiveMessage(e.data);
+    });
+    
+    window.addEventListener('message', function(e) {
+      window.receiveMessage(e.data);
+    });
+
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapReady' }));
+  </script>
+</body>
+</html>
+`;
+
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
@@ -78,16 +199,19 @@ export default function MapScreen() {
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<SelectedDistrict | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [geoJSONData, setGeoJSONData] = useState<{
-    tx_senate: any;
-    tx_house: any;
-    us_congress: any;
-  }>({ tx_senate: null, tx_house: null, us_congress: null });
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   const layerButtonScale = useSharedValue(1);
 
   useEffect(() => {
     getOverlayPreferences().then(setOverlays);
+  }, []);
+
+  const sendToWebView = useCallback((message: object) => {
+    if (webViewRef.current) {
+      const script = `window.receiveMessage('${JSON.stringify(message).replace(/'/g, "\\'")}'); true;`;
+      webViewRef.current.injectJavaScript(script);
+    }
   }, []);
 
   const fetchGeoJSON = useCallback(async (layerType: DistrictType) => {
@@ -118,36 +242,46 @@ export default function MapScreen() {
   }, []);
 
   useEffect(() => {
+    if (!mapReady) return;
+    
     const loadGeoJSON = async () => {
       const [senate, house, congress] = await Promise.all([
         fetchGeoJSON("tx_senate"),
         fetchGeoJSON("tx_house"),
         fetchGeoJSON("us_congress"),
       ]);
-      setGeoJSONData({
-        tx_senate: senate,
-        tx_house: house,
-        us_congress: congress,
-      });
+      
+      if (senate) {
+        sendToWebView({ type: 'setGeoJSON', layerType: 'tx_senate', geojson: senate });
+      }
+      if (house) {
+        sendToWebView({ type: 'setGeoJSON', layerType: 'tx_house', geojson: house });
+      }
+      if (congress) {
+        sendToWebView({ type: 'setGeoJSON', layerType: 'us_congress', geojson: congress });
+      }
+      
+      setDataLoaded(true);
+      
+      if (overlays.senate) sendToWebView({ type: 'toggleLayer', layer: 'senate', visible: true });
+      if (overlays.house) sendToWebView({ type: 'toggleLayer', layer: 'house', visible: true });
+      if (overlays.congress) sendToWebView({ type: 'toggleLayer', layer: 'congress', visible: true });
     };
+    
     loadGeoJSON();
-  }, [fetchGeoJSON]);
+  }, [mapReady, fetchGeoJSON, sendToWebView, overlays]);
 
   const handleToggleOverlay = useCallback(
     async (type: keyof OverlayPreferences) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const newOverlays = { ...overlays, [type]: !overlays[type] };
+      const newValue = !overlays[type];
+      const newOverlays = { ...overlays, [type]: newValue };
       setOverlays(newOverlays);
       await saveOverlayPreferences(newOverlays);
       
-      if (webViewRef.current) {
-        webViewRef.current.injectJavaScript(`
-          window.toggleLayer('${type}', ${!overlays[type]});
-          true;
-        `);
-      }
+      sendToWebView({ type: 'toggleLayer', layer: type, visible: newValue });
     },
-    [overlays]
+    [overlays, sendToWebView]
   );
 
   const handleDistrictPress = useCallback(
@@ -213,104 +347,11 @@ export default function MapScreen() {
     }
   }, [handleDistrictPress]);
 
-  const mapHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; }
-    #map { width: 100%; height: 100%; }
-    .leaflet-control-attribution { display: none; }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <script>
-    const map = L.map('map', {
-      center: [31.0, -100.0],
-      zoom: 6,
-      zoomControl: false,
-      attributionControl: false
-    });
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map);
-
-    const layers = {
-      senate: null,
-      house: null,
-      congress: null
-    };
-
-    const layerColors = {
-      tx_senate: { fill: 'rgba(74, 144, 226, 0.3)', stroke: '#4A90E2' },
-      tx_house: { fill: 'rgba(233, 75, 60, 0.3)', stroke: '#E94B3C' },
-      us_congress: { fill: 'rgba(80, 200, 120, 0.3)', stroke: '#50C878' }
-    };
-
-    const geoJSONData = ${JSON.stringify(geoJSONData)};
-
-    function createLayer(type, data, colors) {
-      if (!data) return null;
-      return L.geoJSON(data, {
-        style: {
-          fillColor: colors.fill,
-          color: colors.stroke,
-          weight: 1,
-          fillOpacity: 0.3
-        },
-        onEachFeature: function(feature, layer) {
-          layer.on('click', function() {
-            const districtType = type === 'senate' ? 'tx_senate' : 
-                                 type === 'house' ? 'tx_house' : 'us_congress';
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'districtClick',
-              districtType: districtType,
-              districtNumber: feature.properties.district
-            }));
-          });
-        }
-      });
-    }
-
-    // Initialize layers
-    layers.senate = createLayer('senate', geoJSONData.tx_senate, layerColors.tx_senate);
-    layers.house = createLayer('house', geoJSONData.tx_house, layerColors.tx_house);
-    layers.congress = createLayer('congress', geoJSONData.us_congress, layerColors.us_congress);
-
-    // Apply initial visibility
-    const initialOverlays = ${JSON.stringify(overlays)};
-    if (initialOverlays.senate && layers.senate) layers.senate.addTo(map);
-    if (initialOverlays.house && layers.house) layers.house.addTo(map);
-    if (initialOverlays.congress && layers.congress) layers.congress.addTo(map);
-
-    window.toggleLayer = function(type, visible) {
-      const layer = layers[type];
-      if (!layer) return;
-      if (visible) {
-        layer.addTo(map);
-      } else {
-        map.removeLayer(layer);
-      }
-    };
-
-    // Notify React Native that map is ready
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapReady' }));
-  </script>
-</body>
-</html>
-  `;
-
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <WebView
         ref={webViewRef}
-        source={{ html: mapHtml }}
+        source={{ html: MAP_HTML }}
         style={styles.map}
         onMessage={handleWebViewMessage}
         javaScriptEnabled
@@ -321,11 +362,11 @@ export default function MapScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      {!mapReady ? (
+      {!dataLoaded ? (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={theme.primary} />
           <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.sm }}>
-            Loading map...
+            Loading map data...
           </ThemedText>
         </View>
       ) : null}
