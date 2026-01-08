@@ -1,0 +1,201 @@
+📱 Replit Autonomous Agent Prompt
+Project: Texas District & Officials Mobile App
+You are the Replit Autonomous Agent. You are authorized to scaffold projects, install dependencies, create and modify files, and run commands.
+You must follow phases in order and stop exactly at each STOP marker.
+Do not proceed if acceptance tests fail.
+Before coding, output a short PLAN describing what you will build in the current phase and which libraries you will use.
+After each phase, output:
+•	What was built
+•	How to run it
+•	Acceptance test results
+________________________________________
+🎯 Target Platform
+Build a mobile application using a single codebase:
+•	Framework: Expo + React Native (TypeScript)
+•	Maps: Mapbox (React Native Mapbox SDK)
+•	Backend: Node.js + Express
+•	Database: PostgreSQL with PostGIS
+•	ORM: Prisma
+•	Spatial Queries: PostGIS (ST_Intersects, ST_Contains, ST_GeomFromGeoJSON)
+Use environment variables for secrets (Mapbox token, DB URL, admin key).
+________________________________________
+📁 Required Repo Structure
+/mobile        (Expo app)
+/server        (Express API)
+/prisma        (schema + migrations)
+/scripts       (ingestion + utilities)
+README.md
+________________________________________
+🧠 Core Data Models (Do Not Collapse)
+districts
+•	id (PK)
+•	district_type ENUM: senate | house | congress
+•	district_number INT
+•	name TEXT NULL
+•	geometry GEOMETRY(MultiPolygon, 4326)
+•	effective_start DATE
+•	effective_end DATE NULL
+•	source_url TEXT
+•	updated_at TIMESTAMP
+officials
+•	id (PK)
+•	full_name TEXT
+•	office_type ENUM: tx_senate | tx_house | us_house
+•	district_id FK → districts.id
+•	photo_url TEXT
+•	public_json JSONB
+•	private_json JSONB (never overwritten by sync)
+•	updated_at TIMESTAMP
+offices
+•	id (PK)
+•	official_id FK
+•	office_kind ENUM: capitol | district
+•	address TEXT
+•	phone TEXT
+staff
+•	id (PK)
+•	official_id FK
+•	name TEXT
+•	role TEXT
+Indexes required:
+•	GIST index on districts.geometry
+•	B-tree on (district_type, district_number)
+•	Text index on officials.full_name
+________________________________________
+🧭 PHASE 0 — Environment & Health Checks (STOP 0)
+Goal: verify mobile + backend + database connectivity.
+Tasks
+•	Scaffold Expo TypeScript app in /mobile
+•	Scaffold Express server in /server
+•	Configure Prisma + Postgres
+•	Enable PostGIS extension
+•	Add /health endpoint
+•	Add /db-health endpoint that runs a trivial query
+Acceptance Tests
+•	Mobile app launches and shows “Hello Texas”
+•	/health returns { ok: true }
+•	/db-health returns { ok: true }
+🛑 STOP 0
+________________________________________
+🗺️ PHASE 1 — Navigation & Base Map (STOP 1)
+Tasks
+•	Add React Navigation
+•	Screens:
+o	Map
+o	Search
+o	Profile (placeholder)
+•	Render Mapbox map centered on Texas
+Acceptance Tests
+•	App opens to Map screen
+•	Navigation works
+•	Map renders correctly
+🛑 STOP 1
+________________________________________
+🧭 PHASE 2 — District Overlays (STOP 2)
+Overlay Selection Requirement (Critical)
+Users must be able to select none, one, two, or three overlays independently:
+•	TX Senate
+•	TX House
+•	US Congress
+UI
+•	Three independent toggles
+•	Default: ALL OFF
+•	Toggling one must not affect the others
+Rendering
+•	Each overlay is its own Mapbox layer set
+•	No overlays selected = no district polygons visible
+•	Any combination of overlays must render together
+Highlighting
+•	Maintain selection state per overlay type
+•	Tapping a district highlights only that district within its overlay
+•	Toggling OFF an overlay must not break others
+Backend
+•	GET /districts?type=senate
+•	GET /districts?type=house
+•	GET /districts?type=congress
+Cache GeoJSON per overlay type on first load.
+Acceptance Tests
+•	0 overlays → none visible
+•	1 overlay → only that overlay
+•	2 overlays → both visible
+•	3 overlays → all visible concurrently
+🛑 STOP 2
+________________________________________
+🔍 PHASE 3 — Search (STOP 3)
+A) Draw-to-Search
+•	User draws freehand shape
+•	Convert to GeoJSON polygon
+•	POST /search/geometry
+•	Use ST_Intersects
+B) ZIP Search
+•	GET /search/zip?zip=xxxxx
+•	Resolve ZIP → polygon → districts → officials
+C) Name Search
+•	GET /search/name?q=...
+•	Partial / fuzzy match
+Unified Response
+{ districts: [...], officials: [...] }
+UI
+•	Highlight districts on map
+•	Show official cards (photo, name, office, district)
+🛑 STOP 3
+________________________________________
+👤 PHASE 4 — Official Profiles (STOP 4)
+Public (Auto-Updated)
+•	Photo
+•	City/town
+•	Occupation
+•	Capitol office address + phone
+•	District office addresses + phones
+•	Staff names + roles
+Private (Editable)
+•	Personal phones
+•	Personal addresses
+•	Spouse
+•	Children
+•	Birthday
+•	Anniversary
+•	Notes
+Rules
+•	Public updates must never overwrite private_json
+•	PATCH /officials/:id/private updates private fields only
+🛑 STOP 4
+________________________________________
+📲 PHASE 5 — Mobile-Native Interactions (STOP 5)
+•	Tap address → Apple Maps / Google Maps / WAZE
+•	Tap phone → dialer or SMS
+🛑 STOP 5
+________________________________________
+🔄 PHASE 6 — Data Ingestion & Sync (FINAL)
+Tasks
+•	Scripts in /scripts to ingest:
+o	District GIS data
+o	Legislator rosters
+•	Admin endpoint:
+o	POST /admin/refresh
+•	Log changes
+•	Preserve private fields
+Approved Sources (but not limited to)
+•	Texas Redistricting GIS
+•	TXDOT ArcGIS
+•	Texas House directory
+•	Texas Senate directory
+•	Texas Scorecard
+________________________________________
+🚫 Hard Rules
+•	Do not hardcode districts or officials
+•	Do not merge models
+•	Do not skip STOP markers
+•	Do not assume web UI
+•	Prefer correctness over speed
+________________________________________
+📘 README Requirements
+Include:
+•	Setup steps
+•	Env vars
+•	How to run mobile + backend
+•	How to run ingestion
+•	Known limitations
+________________________________________
+Build this like infrastructure that must survive redistricting and elections.
+
