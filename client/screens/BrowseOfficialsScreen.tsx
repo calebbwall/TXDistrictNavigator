@@ -75,6 +75,7 @@ export default function BrowseOfficialsScreen() {
   const { data, isLoading, isFetching, refetch } = useQuery<{
     officials: any[];
     count: number;
+    vacancyCount?: number;
   }>({
     queryKey,
     queryFn: async () => {
@@ -124,11 +125,17 @@ export default function BrowseOfficialsScreen() {
   const countLabel = useMemo(() => {
     if (isLoading && !data) return "Loading...";
     const count = officials.length;
+    const vacancyCount = officials.filter(o => o.isVacant).length;
+    
+    const vacancyText = vacancyCount > 0 
+      ? ` (${vacancyCount} ${vacancyCount === 1 ? "vacancy" : "vacancies"})`
+      : "";
+    
     if (debouncedSearch.trim()) {
-      return `${count} result${count !== 1 ? "s" : ""}`;
+      return `${count} result${count !== 1 ? "s" : ""}${vacancyText}`;
     }
-    return `${count} member${count !== 1 ? "s" : ""}`;
-  }, [isLoading, data, officials.length, debouncedSearch]);
+    return `${count} member${count !== 1 ? "s" : ""}${vacancyText}`;
+  }, [isLoading, data, officials, debouncedSearch]);
 
   const ListEmptyComponent = useMemo(() => {
     if (isLoading) {

@@ -35,11 +35,13 @@ export interface OfficialPrivate {
 
 export interface MergedOfficial extends OfficialPublic {
   private?: OfficialPrivate | null;
+  isVacant?: boolean;
 }
 
 export interface OfficialsResponse {
   officials: MergedOfficial[];
   count: number;
+  vacancyCount?: number;
 }
 
 export interface OfficialResponse {

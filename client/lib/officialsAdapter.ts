@@ -50,6 +50,7 @@ export function apiOfficialToLegacy(apiOfficial: MergedOfficial): Official {
     occupation: getPartyLabel(apiOfficial.party),
     offices,
     staff: [],
+    isVacant: apiOfficial.isVacant || false,
     privateNotes: apiOfficial.private ? {
       personalPhone: apiOfficial.private.personalPhone || undefined,
       personalAddress: apiOfficial.private.personalAddress || undefined,

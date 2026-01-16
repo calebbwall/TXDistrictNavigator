@@ -31,6 +31,7 @@ export interface Official {
   occupation: string;
   offices: Office[];
   staff: Staff[];
+  isVacant?: boolean;
   privateNotes?: {
     personalPhone?: string;
     personalAddress?: string;
