@@ -284,6 +284,48 @@ export default function OfficialProfileScreen() {
     );
   }
 
+  const isVacant = official.isVacant === true;
+
+  if (isVacant) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+        <KeyboardAwareScrollViewCompat
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: headerHeight + Spacing.lg,
+              paddingBottom: insets.bottom + Spacing.xl,
+            },
+          ]}
+          scrollIndicatorInsets={{ bottom: insets.bottom }}
+        >
+          <View style={styles.vacantHeader}>
+            <View style={[styles.vacantAvatarContainer, { borderColor: theme.warning }]}>
+              <Feather name="user-x" size={40} color={theme.secondaryText} />
+            </View>
+            <ThemedText type="h2" style={{ marginTop: Spacing.lg, textAlign: "center" }}>
+              Vacant Seat
+            </ThemedText>
+            <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}>
+              {getOfficeTypeLabel(official.officeType)} - {district ? `District ${district.districtNumber}` : ""}
+            </ThemedText>
+          </View>
+          
+          <View style={[styles.vacantCard, { backgroundColor: theme.cardBackground, borderColor: theme.warning }]}>
+            <Feather name="info" size={24} color={theme.warning} />
+            <View style={styles.vacantCardContent}>
+              <ThemedText type="h3">This District is Currently Vacant</ThemedText>
+              <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.xs }}>
+                There is no representative currently serving this district. A special election or appointment may be pending to fill this seat.
+              </ThemedText>
+            </View>
+          </View>
+        </KeyboardAwareScrollViewCompat>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <KeyboardAwareScrollViewCompat
@@ -716,5 +758,30 @@ const styles = StyleSheet.create({
   notesTextArea: {
     minHeight: 100,
     paddingTop: Spacing.sm,
+  },
+  vacantHeader: {
+    alignItems: "center",
+    marginBottom: Spacing.xl,
+  },
+  vacantAvatarContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: BorderRadius.full,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5F5F5",
+  },
+  vacantCard: {
+    flexDirection: "row",
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    gap: Spacing.md,
+  },
+  vacantCardContent: {
+    flex: 1,
   },
 });

@@ -29,6 +29,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export function OfficialCard({ official, onPress }: OfficialCardProps) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
+  const isVacant = official.isVacant === true;
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -51,12 +52,20 @@ export function OfficialCard({ official, onPress }: OfficialCardProps) {
       onPressOut={handlePressOut}
       style={[
         styles.container,
-        { backgroundColor: theme.cardBackground, borderColor: theme.border },
+        { 
+          backgroundColor: isVacant ? theme.backgroundDefault : theme.cardBackground, 
+          borderColor: isVacant ? theme.warning : theme.border,
+          borderStyle: isVacant ? "dashed" : "solid",
+        },
         animatedStyle,
       ]}
     >
-      <View style={styles.avatarContainer}>
-        {official.photoUrl ? (
+      <View style={[styles.avatarContainer, isVacant && styles.vacantAvatarContainer]}>
+        {isVacant ? (
+          <View style={[styles.vacantAvatar, { backgroundColor: theme.backgroundDefault }]}>
+            <Feather name="user-x" size={24} color={theme.secondaryText} />
+          </View>
+        ) : official.photoUrl ? (
           <Image source={{ uri: official.photoUrl }} style={styles.avatar} />
         ) : (
           <Image
@@ -66,16 +75,22 @@ export function OfficialCard({ official, onPress }: OfficialCardProps) {
         )}
       </View>
       <View style={styles.info}>
-        <ThemedText type="body" style={{ fontWeight: "600" }}>
+        <ThemedText type="body" style={{ fontWeight: "600", fontStyle: isVacant ? "italic" : "normal" }}>
           {official.fullName}
         </ThemedText>
         <ThemedText type="caption" style={{ color: theme.secondaryText }}>
           {getOfficeTypeLabel(official.officeType)}
           {district ? ` - District ${district.districtNumber}` : ""}
         </ThemedText>
-        <ThemedText type="small" style={{ color: theme.secondaryText }}>
-          {official.city}
-        </ThemedText>
+        {isVacant ? (
+          <ThemedText type="small" style={{ color: theme.warning }}>
+            Seat Currently Vacant
+          </ThemedText>
+        ) : (
+          <ThemedText type="small" style={{ color: theme.secondaryText }}>
+            {official.city}
+          </ThemedText>
+        )}
       </View>
       <Feather name="chevron-right" size={20} color={theme.secondaryText} />
     </AnimatedPressable>
@@ -101,6 +116,17 @@ const styles = StyleSheet.create({
   avatar: {
     width: 56,
     height: 56,
+  },
+  vacantAvatarContainer: {
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#888888",
+  },
+  vacantAvatar: {
+    width: 56,
+    height: 56,
+    alignItems: "center",
+    justifyContent: "center",
   },
   info: {
     flex: 1,
