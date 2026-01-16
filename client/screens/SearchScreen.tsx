@@ -17,6 +17,8 @@ import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { searchOfficialsByName, mockOfficials, type Official } from "@/lib/mockData";
+import { fetchOfficials } from "@/lib/officialsApi";
+import { apiOfficialsToLegacy } from "@/lib/officialsAdapter";
 import type { SearchStackParamList } from "@/navigation/SearchStackNavigator";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 
@@ -40,19 +42,44 @@ export default function SearchScreen() {
   const [searchResults, setSearchResults] = useState<Official[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const handleNameSearch = useCallback(() => {
+  const handleNameSearch = useCallback(async () => {
     if (searchQuery.trim().length < 2) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const results = searchOfficialsByName(searchQuery.trim());
-    setSearchResults(results);
+    try {
+      const apiResults = await fetchOfficials(undefined, searchQuery.trim());
+      if (apiResults.length > 0) {
+        setSearchResults(apiOfficialsToLegacy(apiResults));
+      } else {
+        const fallbackResults = searchOfficialsByName(searchQuery.trim());
+        setSearchResults(fallbackResults);
+      }
+    } catch (error) {
+      console.error("API search failed, using mock data:", error);
+      const fallbackResults = searchOfficialsByName(searchQuery.trim());
+      setSearchResults(fallbackResults);
+    }
     setHasSearched(true);
   }, [searchQuery]);
 
-  const handleZipSearch = useCallback(() => {
+  const handleZipSearch = useCallback(async () => {
     if (zipCode.trim().length !== 5) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const results = mockOfficials.slice(0, 3);
-    setSearchResults(results);
+    try {
+      const [houseOfficials, senateOfficials, congressOfficials] = await Promise.all([
+        fetchOfficials("tx_house"),
+        fetchOfficials("tx_senate"),
+        fetchOfficials("us_congress"),
+      ]);
+      const allOfficials = [...houseOfficials.slice(0, 1), ...senateOfficials.slice(0, 1), ...congressOfficials.slice(0, 1)];
+      if (allOfficials.length > 0) {
+        setSearchResults(apiOfficialsToLegacy(allOfficials));
+      } else {
+        setSearchResults(mockOfficials.slice(0, 3));
+      }
+    } catch (error) {
+      console.error("API ZIP search failed, using mock data:", error);
+      setSearchResults(mockOfficials.slice(0, 3));
+    }
     setHasSearched(true);
   }, [zipCode]);
 

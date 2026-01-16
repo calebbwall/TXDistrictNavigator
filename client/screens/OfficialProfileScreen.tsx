@@ -34,6 +34,8 @@ import {
   type Official,
   type Office,
 } from "@/lib/mockData";
+import { fetchOfficialById, updateOfficialPrivate } from "@/lib/officialsApi";
+import { apiOfficialToLegacy } from "@/lib/officialsAdapter";
 import {
   getPrivateNotes,
   savePrivateNotes,
@@ -149,13 +151,33 @@ export default function OfficialProfileScreen() {
   const { theme } = useTheme();
 
   const { officialId } = route.params;
-  const official = getOfficialById(officialId);
+  const [official, setOfficial] = useState<Official | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
   const district = official ? getDistrictById(official.districtId) : undefined;
 
   const [activeTab, setActiveTab] = useState<TabType>("public");
   const [isSaved, setIsSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [privateNotes, setPrivateNotes] = useState<PrivateNotes>({});
+
+  const loadOfficial = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const apiOfficial = await fetchOfficialById(officialId);
+      if (apiOfficial) {
+        setOfficial(apiOfficialToLegacy(apiOfficial));
+      } else {
+        const mockOfficial = getOfficialById(officialId);
+        setOfficial(mockOfficial || null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch official from API:", error);
+      const mockOfficial = getOfficialById(officialId);
+      setOfficial(mockOfficial || null);
+    }
+    setIsLoading(false);
+  }, [officialId]);
 
   const loadSavedState = useCallback(async () => {
     if (official) {
@@ -168,8 +190,16 @@ export default function OfficialProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadSavedState();
-    }, [loadSavedState])
+      loadOfficial();
+    }, [loadOfficial])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (official) {
+        loadSavedState();
+      }
+    }, [official, loadSavedState])
   );
 
   useEffect(() => {
@@ -196,6 +226,19 @@ export default function OfficialProfileScreen() {
     if (!official) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await savePrivateNotes(official.id, privateNotes);
+    try {
+      await updateOfficialPrivate(official.id, {
+        personalPhone: privateNotes.personalPhone || null,
+        personalAddress: privateNotes.personalAddress || null,
+        spouseName: privateNotes.spouse || null,
+        childrenNames: privateNotes.children ? [privateNotes.children] : null,
+        birthday: privateNotes.birthday || null,
+        anniversary: privateNotes.anniversary || null,
+        notes: privateNotes.notes || null,
+      });
+    } catch (error) {
+      console.error("Failed to sync private notes to API:", error);
+    }
     setIsEditing(false);
   }, [official, privateNotes]);
 
@@ -213,6 +256,18 @@ export default function OfficialProfileScreen() {
     });
     Linking.openURL(url);
   }, []);
+
+  if (isLoading) {
+    return (
+      <View
+        style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
+      >
+        <View style={styles.errorState}>
+          <ThemedText type="body">Loading...</ThemedText>
+        </View>
+      </View>
+    );
+  }
 
   if (!official) {
     return (
