@@ -1,10 +1,8 @@
 import * as cheerio from "cheerio";
 import { db } from "../db";
 import { officialPublic, refreshJobLog, type InsertOfficialPublic } from "@shared/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
-const TLO_HOUSE_URL = "https://capitol.texas.gov/Members/Members.aspx?Chamber=H";
-const TLO_SENATE_URL = "https://capitol.texas.gov/Members/Members.aspx?Chamber=S";
 const TLO_BASE_URL = "https://capitol.texas.gov";
 const CONGRESS_API_BASE = "https://api.congress.gov/v3";
 
@@ -72,98 +70,92 @@ function validateTLORecord(record: ParsedOfficial, chamber: "house" | "senate"):
     return `District ${distNum} out of range (1-${maxDistrict})`;
   }
   
-  const hasContact = record.capitolAddress || record.capitolPhone || 
-                     (record.districtAddresses?.length ?? 0) > 0 ||
-                     (record.districtPhones?.length ?? 0) > 0;
-  if (!hasContact) {
-    return "No contact information";
-  }
-  
   return null;
 }
 
-async function extractMemberDetailsFromTLO(memberUrl: string): Promise<Partial<ParsedOfficial>> {
+async function fetchMemberDetails(memberUrl: string, chamber: "house" | "senate"): Promise<ParsedOfficial | null> {
   try {
     const response = await fetchWithRetry(memberUrl);
     const html = await response.text();
     const $ = cheerio.load(html);
     
-    const details: Partial<ParsedOfficial> = {};
+    const urlMatch = memberUrl.match(/Code=([A-Z0-9]+)/i);
+    const sourceMemberId = urlMatch ? urlMatch[1] : "";
     
-    const extractByLabel = (label: string): string | undefined => {
-      const labelEl = $(`td:contains("${label}")`).first();
-      if (labelEl.length) {
-        const nextTd = labelEl.next("td");
-        if (nextTd.length) {
-          return nextTd.text().trim();
-        }
-      }
-      
-      const labelSpan = $(`span:contains("${label}")`).first();
-      if (labelSpan.length) {
-        const parent = labelSpan.parent();
-        const text = parent.text().replace(label, "").trim();
-        if (text) return text;
-      }
-      
-      return undefined;
-    };
+    if (!sourceMemberId) return null;
     
-    details.capitolAddress = extractByLabel("Capitol Address") || 
-                             extractByLabel("Capitol Office") ||
-                             $('td:contains("Room")').first().text().trim() ||
-                             undefined;
+    const titleText = $("title").text();
+    const nameMatch = titleText.match(/Information for (Rep\.|Sen\.)\s*(.+)$/);
+    let fullName = nameMatch ? nameMatch[2].trim() : "";
     
-    details.capitolPhone = extractByLabel("Capitol Phone") ||
-                           $('td:contains("(512)")').first().text().trim() ||
-                           undefined;
-    
-    const districtAddresses: string[] = [];
-    const districtPhones: string[] = [];
-    
-    $('td:contains("District")').each((_, el) => {
-      const text = $(el).text();
-      if (text.includes("Address") || text.includes("Office")) {
-        const addr = $(el).next("td").text().trim();
-        if (addr && addr.length > 5) districtAddresses.push(addr);
-      }
-      if (text.includes("Phone")) {
-        const phone = $(el).next("td").text().trim();
-        if (phone && phone.match(/\(\d{3}\)/)) districtPhones.push(phone);
-      }
-    });
-    
-    if (districtAddresses.length > 0) details.districtAddresses = districtAddresses;
-    if (districtPhones.length > 0) details.districtPhones = districtPhones;
-    
-    const emailLink = $('a[href^="mailto:"]').first();
-    if (emailLink.length) {
-      details.email = emailLink.attr("href")?.replace("mailto:", "");
+    if (!fullName) {
+      const pageTitle = $("#usrHeader_lblPageTitle").text();
+      const altMatch = pageTitle.match(/Information for (Rep\.|Sen\.)\s*(.+)$/);
+      fullName = altMatch ? altMatch[2].trim() : "";
     }
     
-    const websiteLink = $('a[href*="house.texas.gov"], a[href*="senate.texas.gov"]').first();
-    if (websiteLink.length) {
-      details.website = websiteLink.attr("href");
+    if (!fullName) return null;
+    
+    const district = $("#lblDistrict").text().trim();
+    if (!district) return null;
+    
+    let party: string | undefined;
+    const partyText = $("body").text();
+    if (partyText.includes("(R)") || partyText.match(/\bRepublican\b/i)) {
+      party = "R";
+    } else if (partyText.includes("(D)") || partyText.match(/\bDemocrat\b/i)) {
+      party = "D";
     }
     
-    const photoImg = $('img[src*="photo"], img[src*="member"], img[alt*="Photo"]').first();
+    const capitolAddr1 = $("#lblCapitolAddress1").text().trim();
+    const capitolAddr2 = $("#lblCapitolAddress2").text().trim();
+    const capitolAddress = [capitolAddr1, capitolAddr2].filter(Boolean).join(", ");
+    
+    const capitolPhone = $("#lblCapitolPhone").text().trim() || undefined;
+    
+    const districtAddr1 = $("#lblDistrictAddress1").text().trim();
+    const districtAddr2 = $("#lblDistrictAddress2").text().trim();
+    const districtAddress = [districtAddr1, districtAddr2].filter(Boolean).join(", ");
+    const districtAddresses = districtAddress ? [districtAddress] : undefined;
+    
+    const districtPhone = $("#lblDistrictPhone").text().trim();
+    const districtPhones = districtPhone ? [districtPhone] : undefined;
+    
+    const homePageLink = $("#lnkHomePage").attr("href");
+    const website = homePageLink || undefined;
+    
+    const photoImg = $('img[src*="photo"], img[alt*="Member"]').first();
+    let photoUrl: string | undefined;
     if (photoImg.length) {
       const src = photoImg.attr("src");
       if (src) {
-        details.photoUrl = src.startsWith("http") ? src : `${TLO_BASE_URL}${src}`;
+        photoUrl = src.startsWith("http") ? src : `${TLO_BASE_URL}${src}`;
       }
     }
     
-    return details;
+    return {
+      sourceMemberId,
+      fullName,
+      district,
+      party,
+      capitolAddress: capitolAddress || undefined,
+      capitolPhone,
+      districtAddresses,
+      districtPhones,
+      website,
+      photoUrl,
+    };
   } catch (err) {
     console.error(`Failed to fetch member details from ${memberUrl}:`, err);
-    return {};
+    return null;
   }
 }
 
 async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
   const source: SourceType = chamber === "house" ? "TX_HOUSE" : "TX_SENATE";
-  const url = chamber === "house" ? TLO_HOUSE_URL : TLO_SENATE_URL;
+  const chamberParam = chamber === "house" ? "H" : "S";
+  const listUrl = `${TLO_BASE_URL}/Members/Members.aspx?Chamber=${chamberParam}`;
+  
   const result: RefreshResult = {
     source,
     parsedCount: 0,
@@ -173,60 +165,50 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
     errors: [],
   };
   
-  console.log(`[RefreshOfficials] Starting ${source} refresh from ${url}`);
+  console.log(`[RefreshOfficials] Starting ${source} refresh from ${listUrl}`);
   
   try {
-    const response = await fetchWithRetry(url);
+    const response = await fetchWithRetry(listUrl);
     const html = await response.text();
     const $ = cheerio.load(html);
     
-    const records: ParsedOfficial[] = [];
-    
-    $('table tr, .member-row, [class*="member"]').each((_, row) => {
-      const $row = $(row);
-      
-      const nameLink = $row.find('a[href*="MemberInfo"]').first();
-      if (!nameLink.length) return;
-      
-      const fullName = nameLink.text().trim().replace(/\s+/g, " ");
-      if (!fullName) return;
-      
-      const href = nameLink.attr("href") || "";
-      const memberIdMatch = href.match(/Member=(\d+)/i) || href.match(/MemberInfo\.aspx\?(\d+)/i);
-      const sourceMemberId = memberIdMatch ? memberIdMatch[1] : `${chamber}-${fullName.replace(/\s/g, "_")}`;
-      
-      let district = "";
-      $row.find("td").each((_, td) => {
-        const text = $(td).text().trim();
-        const distMatch = text.match(/^\s*(\d{1,3})\s*$/);
-        if (distMatch && parseInt(distMatch[1]) <= (chamber === "house" ? 150 : 31)) {
-          district = distMatch[1];
+    const memberLinks: string[] = [];
+    $('a[href*="MemberInfo.aspx"]').each((_, el) => {
+      const href = $(el).attr("href");
+      if (href && href.includes(`Chamber=${chamberParam}`)) {
+        const fullUrl = href.startsWith("http") ? href : `${TLO_BASE_URL}/Members/${href}`;
+        if (!memberLinks.includes(fullUrl)) {
+          memberLinks.push(fullUrl);
         }
-      });
-      
-      if (!district) {
-        const rowText = $row.text();
-        const distMatch = rowText.match(/District\s*(\d{1,3})/i);
-        if (distMatch) district = distMatch[1];
-      }
-      
-      let party: string | undefined;
-      const rowText = $row.text();
-      if (rowText.includes("(R)") || rowText.match(/\bRepublican\b/i)) {
-        party = "R";
-      } else if (rowText.includes("(D)") || rowText.match(/\bDemocrat\b/i)) {
-        party = "D";
-      }
-      
-      if (district) {
-        records.push({
-          sourceMemberId,
-          fullName,
-          district,
-          party,
-        });
       }
     });
+    
+    console.log(`[RefreshOfficials] Found ${memberLinks.length} member links for ${source}`);
+    
+    if (memberLinks.length === 0) {
+      result.errors.push("No member links found on list page");
+      return result;
+    }
+    
+    const records: ParsedOfficial[] = [];
+    const batchSize = 10;
+    
+    for (let i = 0; i < memberLinks.length; i += batchSize) {
+      const batch = memberLinks.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(url => fetchMemberDetails(url, chamber))
+      );
+      
+      for (const record of batchResults) {
+        if (record) {
+          records.push(record);
+        }
+      }
+      
+      if (i + batchSize < memberLinks.length) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
     
     result.parsedCount = records.length;
     console.log(`[RefreshOfficials] Parsed ${records.length} ${source} members`);
@@ -333,22 +315,24 @@ async function refreshUSHouse(): Promise<RefreshResult> {
     const data = await response.json() as { members?: Array<{
       bioguideId: string;
       name: string;
+      firstName?: string;
+      lastName?: string;
       state: string;
       district?: number;
       party?: string;
-      depiction?: { imageUrl?: string };
-      terms?: Array<{ chamber?: string }>;
       partyName?: string;
+      depiction?: { imageUrl?: string };
+      terms?: { item?: Array<{ chamber?: string }> };
     }> };
     
     if (!data.members) {
       throw new Error("No members in API response");
     }
     
-    const texasMembers = data.members.filter(m => 
-      m.state === "Texas" || m.state === "TX"
-    ).filter(m => {
-      const lastTerm = m.terms?.[m.terms.length - 1];
+    const texasMembers = data.members.filter(m => {
+      if (m.state !== "Texas" && m.state !== "TX") return false;
+      const terms = m.terms?.item || [];
+      const lastTerm = terms[terms.length - 1];
       return lastTerm?.chamber === "House of Representatives";
     });
     
@@ -358,9 +342,10 @@ async function refreshUSHouse(): Promise<RefreshResult> {
     const processedMemberIds: string[] = [];
     
     for (const member of texasMembers) {
+      const fullName = member.name || `${member.firstName || ""} ${member.lastName || ""}`.trim();
       const record: ParsedOfficial = {
         sourceMemberId: member.bioguideId,
-        fullName: member.name,
+        fullName,
         district: String(member.district || 0),
         party: member.party?.charAt(0) || member.partyName?.charAt(0),
         photoUrl: member.depiction?.imageUrl,
