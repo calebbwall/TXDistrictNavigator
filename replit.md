@@ -80,6 +80,7 @@ A mobile application for Texas citizens to view legislative districts, search fo
 
 ### Admin
 - `GET /api/stats` - Returns official counts by chamber
+- `GET /api/admin/officials-counts` - Returns raw counts by source (TX_HOUSE, TX_SENATE, US_HOUSE)
 - `POST /api/refresh` - Trigger manual refresh
 
 ## Weekly Refresh Pipeline
@@ -140,6 +141,10 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-16: Fixed Congress.gov API pagination to fetch all TX members (37 from 38 seats)
+- 2026-01-16: Improved TLO parser to skip Lt. Governor and handle varied page formats
+- 2026-01-16: Added /api/admin/officials-counts endpoint for debugging
+- 2026-01-16: Adjusted fail-safe to allow initial population growth (was blocking updates)
 - 2026-01-16: Added PostgreSQL database with Drizzle ORM
 - 2026-01-16: Implemented weekly refresh pipeline from TLO and Congress.gov
 - 2026-01-16: Added public/private data separation (refresh never touches private)
