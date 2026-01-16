@@ -13,6 +13,7 @@ A mobile application for Texas citizens to view legislative districts, search fo
 - **Profile Screen**: Saved officials list and default overlay preferences
 - **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences
 - **Weekly Refresh**: Automatic data sync from Texas Legislature Online and Congress.gov
+- **Vacancy Display**: Complete district rosters show vacant seats with distinct styling (dashed borders, user-x icon, "Seat Currently Vacant" label)
 
 ### Data Sources:
 - **TX House & Senate**: Scraped from capitol.texas.gov (Texas Legislature Online)
@@ -141,6 +142,11 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-16: Added complete vacancy display feature - shows all districts including vacant seats with distinct styling
+- 2026-01-16: Vacancies dynamically filled by API using district range constants (TX_HOUSE: 1-150, TX_SENATE: 1-31, US_HOUSE: 1-38)
+- 2026-01-16: OfficialCard shows vacancies with dashed borders, user-x icon, and "Seat Currently Vacant" label
+- 2026-01-16: OfficialProfileScreen displays dedicated vacancy view with informational message
+- 2026-01-16: Browse Lists shows vacancy counts in label (e.g., "31 members (2 vacancies)")
 - 2026-01-16: Fixed Congress.gov API pagination to fetch all TX members (37 from 38 seats)
 - 2026-01-16: Improved TLO parser to skip Lt. Governor and handle varied page formats
 - 2026-01-16: Added /api/admin/officials-counts endpoint for debugging
