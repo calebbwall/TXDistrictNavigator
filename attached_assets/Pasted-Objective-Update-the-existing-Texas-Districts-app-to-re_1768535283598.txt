@@ -1,0 +1,273 @@
+Objective
+Update the existing Texas Districts app to refresh elected-official public data weekly using authoritative sources, while guaranteeing that no user-entered private data is ever overwritten, and that refreshes fail safely if source markup changes.
+
+This work must modify and extend the existing uploaded codebase. Do not rewrite UI, navigation, or theming.
+
+Authoritative Sources (do not substitute)
+
+Texas House members: Texas Legislature Online (TLO)
+https://capitol.texas.gov/members/members.aspx?Chamber=H
+
+Texas Senate members: Texas Legislature Online (TLO)
+https://capitol.texas.gov/members/members.aspx?Chamber=S
+
+U.S. House (Texas delegation): ProPublica Congress API
+https://projects.propublica.org/api-docs/congress-api/
+
+1) Data model (public vs private, strict separation)
+
+Extend existing schema (Drizzle) to enforce two-layer data.
+
+official_public
+
+Stores only refreshable, authoritative data.
+
+Fields:
+
+id (UUID, PK)
+
+source enum (TX_HOUSE, TX_SENATE, US_HOUSE)
+
+source_member_id (string, stable per source)
+
+chamber
+
+district
+
+full_name
+
+party
+
+photo_url
+
+capitol_address
+
+capitol_phone
+
+district_addresses (JSON)
+
+district_phones (JSON)
+
+website
+
+email
+
+active (boolean, default true)
+
+last_refreshed_at (timestamp)
+
+Unique constraint: (source, source_member_id)
+
+official_private
+
+Stores only user-entered data.
+
+Fields:
+
+official_public_id (FK, unique)
+
+personal_phone
+
+personal_address
+
+spouse_name
+
+children_names (JSON)
+
+birthday
+
+anniversary
+
+notes
+
+tags (JSON)
+
+updated_at
+
+Hard rule:
+Refresh jobs may only write to official_public.
+official_private is never read or written by refresh logic.
+
+2) Refresh pipeline (weekly, defensive)
+
+Create server/jobs/refreshOfficials.ts.
+
+A) Texas Legislature Online (House + Senate)
+
+Discovery step
+
+Fetch the TLO members list page.
+
+Extract member detail page URLs using tolerant logic:
+
+Prefer anchors linking to member detail pages.
+
+Do not rely on brittle class names.
+
+Ignore decorative markup.
+
+Detail parsing step
+For each member detail page:
+
+Extract fields using label-based parsing, not DOM position:
+
+Match text labels like:
+
+“District”
+
+“Capitol Address”
+
+“Capitol Phone”
+
+“District Office”
+
+Implement multiple fallback selectors for each field:
+
+Primary: known structure
+
+Secondary: alternate structure
+
+Tertiary: label-adjacent text search
+
+Identifiers
+
+Derive source_member_id from the stable portion of the member detail URL or embedded member code.
+
+Never derive IDs from display names.
+
+Validation (mandatory)
+Before writing data:
+
+Name must be non-empty
+
+District must be numeric and in range:
+
+House: 1–150
+
+Senate: 1–31
+
+At least one contact method (address or phone) must be present
+
+If validation fails for a member:
+
+Skip that member
+
+Log a warning
+
+Do not fail the entire refresh
+
+B) U.S. House (Texas delegation – ProPublica)
+
+Read PROPUBLICA_API_KEY from environment.
+
+Fetch House members for the current Congress.
+
+Filter to:
+
+state === "TX"
+
+in_office === true
+
+Use ProPublica member_id as source_member_id.
+
+Map fields conservatively (store null if missing).
+
+C) Safe upsert behavior
+
+For each parsed member:
+
+Upsert into official_public using (source, source_member_id).
+
+Update only public fields.
+
+Set active = true.
+
+Update last_refreshed_at.
+
+For members previously stored but missing from the current refresh:
+
+Set active = false
+
+Do not delete rows
+
+Do not touch official_private
+
+3) Fail-safe refresh rules (critical)
+
+After refresh parsing completes:
+
+Sanity checks
+
+Log counts:
+
+TX House ≈ 150
+
+TX Senate ≈ 31
+
+US House TX ≈ current delegation size
+
+If any count deviates by more than 25%, treat refresh as suspicious.
+
+On suspicious refresh:
+
+Abort database writes
+
+Log a clear error
+
+Preserve last known-good data
+
+Never partially overwrite the dataset with obviously broken results.
+
+4) API & client integration (incremental)
+
+Update existing API routes to read from merged official_public + official_private.
+
+Do not modify screens or navigation.
+
+Replace production reads of mockData.ts with API-backed queries.
+
+Keep mockData.ts for dev/demo fallback only.
+
+5) Weekly scheduling
+
+Primary
+
+Document setup for Replit Scheduled Deployment:
+
+Run: node server/jobs/refreshOfficials.js
+
+Schedule: weekly (off-hours)
+
+Fallback
+
+On server boot:
+
+If last_refreshed_at is older than 7 days, run refresh once.
+
+Store timestamp to prevent repeated runs.
+
+6) Verification
+
+Add scripts/verify-refresh.ts:
+
+Run refresh
+
+Modify an official_private.notes value
+
+Run refresh again
+
+Assert private data is unchanged
+
+7) Guardrails (important)
+
+Do not rewrite UI components, screens, navigation, or theming.
+
+Do not delete existing data models without migration.
+
+Do not replace IDs in a way that would orphan private notes.
+
+User setup (outside agent)
+
+I will add PROPUBLICA_API_KEY to Replit Secrets.
+
+I will configure the weekly scheduled deployment.

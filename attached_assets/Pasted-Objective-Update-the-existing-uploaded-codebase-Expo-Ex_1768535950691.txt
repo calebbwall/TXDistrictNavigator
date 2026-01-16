@@ -1,0 +1,240 @@
+Objective
+Update the existing uploaded codebase (Expo + Express + Drizzle) so elected official public data is always up-to-date. Refresh public data weekly, and guarantee refreshes never overwrite user-entered private/personal fields.
+
+Do not rewrite UI/screens/navigation/theme. Only change backend + data fetching + minimal client data wiring.
+
+Sources
+
+Texas Legislature Online (TLO)
+
+House list: https://capitol.texas.gov/members/members.aspx?Chamber=H
+
+Senate list: https://capitol.texas.gov/members/members.aspx?Chamber=S
+
+Congress.gov API (official)
+
+Base API is accessed via api.data.gov and requires an API key. Use CONGRESS_API_KEY from environment.
+
+1) Data model: strict separation (public vs private)
+
+Implement/extend Drizzle schema with two tables:
+
+official_public (refreshable, authoritative)
+
+id UUID PK
+
+source enum: TX_HOUSE, TX_SENATE, US_HOUSE
+
+source_member_id string (stable ID from source)
+
+chamber string
+
+district string
+
+full_name string
+
+party string nullable
+
+photo_url string nullable
+
+capitol_address string nullable
+
+capitol_phone string nullable
+
+district_addresses json nullable
+
+district_phones json nullable
+
+website string nullable
+
+email string nullable
+
+active boolean default true
+
+last_refreshed_at timestamp
+
+Unique constraint: (source, source_member_id).
+
+official_private (user-entered only)
+
+official_public_id FK unique
+
+personal_phone, personal_address
+
+spouse_name
+
+children_names json
+
+birthday, anniversary
+
+notes text
+
+tags json
+
+updated_at timestamp
+
+Hard rule: refresh jobs may ONLY write to official_public. Never touch official_private.
+
+Also implement soft-deactivation: if a member disappears from the source, set official_public.active=false (do not delete) so private notes remain attached.
+
+2) Refresh pipeline: weekly + robust + fail-safe
+
+Create server/jobs/refreshOfficials.ts that refreshes 3 datasets.
+
+A) TLO House refresh
+
+Fetch list page.
+
+Extract member detail URLs using tolerant logic:
+
+Do not rely on fragile CSS class names.
+
+Prefer link patterns and nearby text.
+
+Fetch each member detail page and extract fields using label-based parsing + fallbacks:
+
+Use text labels like “District”, “Capitol Address”, “Capitol Phone”, “District Office”, etc.
+
+Implement fallback strategies:
+
+Primary selector
+
+Secondary selector
+
+Label-adjacent text scan
+
+Derive source_member_id from stable ID in detail URL or member code on page.
+
+Validate each record before upsert:
+
+name non-empty
+
+district numeric in 1–150
+
+at least one contact value (address or phone) present
+If a single record fails, skip it and log a warning.
+
+Upsert into official_public with source="TX_HOUSE".
+
+B) TLO Senate refresh
+
+Same method; validate district numeric in 1–31. Upsert with source="TX_SENATE".
+
+C) U.S. House (Texas delegation) via Congress.gov API
+
+Use Congress.gov API through api.data.gov with CONGRESS_API_KEY.
+
+Implementation requirements:
+
+Use the Congress.gov API member endpoints to pull House members and filter to Texas delegation.
+
+Prefer using any documented filters for current members/state/district if available.
+
+If filters are limited, fetch the House members list and filter client-side by state=TX.
+
+Map each member into official_public:
+
+source="US_HOUSE"
+
+source_member_id = stable Congress.gov member identifier
+
+district from API (when present)
+
+party, website, office phone/address where present
+
+set null when not provided
+
+Validate:
+
+name non-empty
+
+state must equal TX for records we store
+
+district should be numeric if present; do not hard-fail if an at-large/special case appears (just log)
+
+Upsert into official_public.
+
+D) Fail-safe sanity checks (prevents corrupt refresh)
+
+After parsing but BEFORE committing changes:
+
+Compute counts for each dataset.
+
+If counts are suspicious (>25% deviation from last successful refresh), abort DB writes and keep last-known-good data.
+
+Always log:
+
+total parsed
+
+total inserted/updated
+
+total deactivated
+
+any parsing warnings
+
+3) API: merged reads, private-only writes
+
+Expose/adjust routes (in existing server):
+
+GET /api/officials → merged objects (public + private overlay)
+
+GET /api/officials/:id → merged
+
+PATCH /api/officials/:id/private → update only official_private
+
+Merge rule:
+
+start with official_public
+
+overlay any non-null fields from official_private
+
+never allow refresh logic to change private fields
+
+4) Client integration (minimal changes)
+
+Replace production reads from mockData.ts with API calls (use existing query client patterns).
+
+Keep mockData.ts as a dev fallback only.
+
+Keep AsyncStorage for:
+
+saved official IDs
+
+overlay preferences
+…but not as the canonical store of profile details.
+
+5) Weekly scheduling
+
+Preferred:
+
+Document a Replit Scheduled Deployment that runs weekly (e.g., Sunday 3am Central) to execute the refresh job.
+
+Fallback:
+
+On server startup, if last_refreshed_at is older than 7 days, run refresh once, then store timestamp to avoid repeat runs.
+
+6) Verification script
+
+Add scripts/verify-refresh.ts:
+
+Run refresh
+
+Create/update an official_private.notes
+
+Run refresh again
+
+Assert notes unchanged
+
+Assert merged endpoint still includes notes
+
+Deliverables
+
+Drizzle schema + migration(s)
+
+refresh job with robust parsing + fail-safe checks
+
+updated routes for merged reads and private writes
+
+minimal client data wiring from API
+
+README instructions for setting CONGRESS_API_KEY and weekly schedule
