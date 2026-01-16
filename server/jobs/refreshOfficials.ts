@@ -85,6 +85,11 @@ async function fetchMemberDetails(memberUrl: string, chamber: "house" | "senate"
     if (!sourceMemberId) return null;
     
     const titleText = $("title").text();
+    
+    if (titleText.includes("Lt. Gov.") || titleText.includes("Lieutenant Governor")) {
+      return null;
+    }
+    
     const nameMatch = titleText.match(/Information for (Rep\.|Sen\.)\s*(.+)$/);
     let fullName = nameMatch ? nameMatch[2].trim() : "";
     
@@ -96,8 +101,37 @@ async function fetchMemberDetails(memberUrl: string, chamber: "house" | "senate"
     
     if (!fullName) return null;
     
-    const district = $("#lblDistrict").text().trim();
-    if (!district) return null;
+    let district = $("#lblDistrict").text().trim();
+    
+    if (!district) {
+      const pageText = $("body").text();
+      const distMatch = pageText.match(/District\s*:?\s*(\d+)/i);
+      if (distMatch) {
+        district = distMatch[1];
+      }
+    }
+    
+    if (!district) {
+      $("*").each((_, el) => {
+        const text = $(el).text();
+        const match = text.match(/^(\d{1,3})$/);
+        if (match && !district) {
+          const num = parseInt(match[1], 10);
+          const max = chamber === "house" ? 150 : 31;
+          if (num >= 1 && num <= max) {
+            const parentText = $(el).parent().text();
+            if (parentText.toLowerCase().includes("district")) {
+              district = match[1];
+            }
+          }
+        }
+      });
+    }
+    
+    if (!district) {
+      console.warn(`[RefreshOfficials] No district found for ${fullName} at ${memberUrl}`);
+      return null;
+    }
     
     let party: string | undefined;
     const partyText = $("body").text();
@@ -175,7 +209,7 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
     const memberLinks: string[] = [];
     $('a[href*="MemberInfo.aspx"]').each((_, el) => {
       const href = $(el).attr("href");
-      if (href && href.includes(`Chamber=${chamberParam}`)) {
+      if (href) {
         const fullUrl = href.startsWith("http") ? href : `${TLO_BASE_URL}/Members/${href}`;
         if (!memberLinks.includes(fullUrl)) {
           memberLinks.push(fullUrl);
@@ -183,7 +217,29 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
       }
     });
     
-    console.log(`[RefreshOfficials] Found ${memberLinks.length} member links for ${source}`);
+    const filteredLinks = memberLinks.filter(url => 
+      url.includes(`Chamber=${chamberParam}`) || 
+      (chamber === "senate" && url.includes("Chamber=S")) ||
+      (chamber === "house" && url.includes("Chamber=H"))
+    );
+    
+    console.log(`[RefreshOfficials] Found ${filteredLinks.length} member links for ${source} (total links: ${memberLinks.length})`);
+    
+    const expectedMin = chamber === "house" ? 140 : 25;
+    if (filteredLinks.length < expectedMin) {
+      console.warn(`[RefreshOfficials] WARNING: Only found ${filteredLinks.length} links, expected at least ${expectedMin}`);
+      $('a').each((_, el) => {
+        const href = $(el).attr("href") || "";
+        if (href.toLowerCase().includes("member")) {
+          console.log(`[RefreshOfficials] Debug link: ${href}`);
+        }
+      });
+    }
+    
+    memberLinks.length = 0;
+    memberLinks.push(...filteredLinks);
+    
+    console.log(`[RefreshOfficials] Processing ${memberLinks.length} member links for ${source}`);
     
     if (memberLinks.length === 0) {
       result.errors.push("No member links found on list page");
@@ -196,7 +252,13 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
     for (let i = 0; i < memberLinks.length; i += batchSize) {
       const batch = memberLinks.slice(i, i + batchSize);
       const batchResults = await Promise.all(
-        batch.map(url => fetchMemberDetails(url, chamber))
+        batch.map(async (url, idx) => {
+          const record = await fetchMemberDetails(url, chamber);
+          if (!record) {
+            console.warn(`[RefreshOfficials] Failed to parse member from: ${url}`);
+          }
+          return record;
+        })
       );
       
       for (const record of batchResults) {
@@ -310,9 +372,7 @@ async function refreshUSHouse(): Promise<RefreshResult> {
   console.log("[RefreshOfficials] Starting US_HOUSE refresh from Congress.gov API");
   
   try {
-    const url = `${CONGRESS_API_BASE}/member?currentMember=true&limit=500&api_key=${apiKey}`;
-    const response = await fetchWithRetry(url);
-    const data = await response.json() as { members?: Array<{
+    const allMembers: Array<{
       bioguideId: string;
       name: string;
       firstName?: string;
@@ -323,18 +383,60 @@ async function refreshUSHouse(): Promise<RefreshResult> {
       partyName?: string;
       depiction?: { imageUrl?: string };
       terms?: { item?: Array<{ chamber?: string }> };
-    }> };
+    }> = [];
     
-    if (!data.members) {
-      throw new Error("No members in API response");
+    let offset = 0;
+    const limit = 250;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const url = `${CONGRESS_API_BASE}/member?currentMember=true&limit=${limit}&offset=${offset}&api_key=${apiKey}`;
+      console.log(`[RefreshOfficials] Fetching Congress.gov page offset=${offset}`);
+      const response = await fetchWithRetry(url);
+      const data = await response.json() as { 
+        members?: Array<any>;
+        pagination?: { count?: number; next?: string };
+      };
+      
+      if (!data.members || data.members.length === 0) {
+        hasMore = false;
+        break;
+      }
+      
+      allMembers.push(...data.members);
+      
+      if (data.members.length < limit || !data.pagination?.next) {
+        hasMore = false;
+      } else {
+        offset += limit;
+      }
+      
+      await new Promise(r => setTimeout(r, 300));
     }
     
-    const texasMembers = data.members.filter(m => {
-      if (m.state !== "Texas" && m.state !== "TX") return false;
+    console.log(`[RefreshOfficials] Fetched ${allMembers.length} total members from Congress.gov`);
+    
+    const texasMembers = allMembers.filter(m => {
+      const isTexas = m.state === "Texas" || m.state === "TX";
+      if (!isTexas) return false;
+      
       const terms = m.terms?.item || [];
+      if (terms.length === 0) {
+        return m.district !== undefined && m.district !== null;
+      }
       const lastTerm = terms[terms.length - 1];
-      return lastTerm?.chamber === "House of Representatives";
+      const isHouse = lastTerm?.chamber === "House of Representatives" || 
+                      lastTerm?.chamber?.includes("House") ||
+                      m.district !== undefined;
+      return isHouse;
     });
+    
+    console.log(`[RefreshOfficials] Filtered to ${texasMembers.length} Texas US House members`);
+    
+    if (texasMembers.length < 30) {
+      result.errors.push(`Only found ${texasMembers.length} TX members, expected ~38. Check API filtering.`);
+      console.warn(`[RefreshOfficials] WARNING: Only ${texasMembers.length} TX House members found`);
+    }
     
     result.parsedCount = texasMembers.length;
     console.log(`[RefreshOfficials] Found ${texasMembers.length} Texas US House members`);
@@ -448,7 +550,8 @@ function validateRefreshSanity(
   }
   
   const lastCount = lastCounts.get(result.source);
-  if (lastCount && lastCount > 0) {
+  
+  if (lastCount && lastCount >= 20) {
     const deviation = Math.abs(result.upsertedCount - lastCount) / lastCount;
     if (deviation > 0.25) {
       return { 
@@ -456,6 +559,19 @@ function validateRefreshSanity(
         reason: `Count deviation ${(deviation * 100).toFixed(1)}% exceeds 25% threshold (was ${lastCount}, now ${result.upsertedCount})` 
       };
     }
+  } else if (lastCount && lastCount < 20 && result.upsertedCount > lastCount) {
+    console.log(`[RefreshOfficials] ${result.source}: Allowing population growth from ${lastCount} to ${result.upsertedCount} (initial population)`);
+  }
+  
+  const expectedMins: Record<SourceType, number> = {
+    TX_HOUSE: 140,
+    TX_SENATE: 25,
+    US_HOUSE: 30,
+  };
+  
+  const expectedMin = expectedMins[result.source];
+  if (result.upsertedCount < expectedMin) {
+    console.warn(`[RefreshOfficials] WARNING: ${result.source} has only ${result.upsertedCount} members, expected at least ${expectedMin}`);
   }
   
   return { valid: true };

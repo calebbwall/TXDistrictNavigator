@@ -254,6 +254,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/admin/officials-counts", async (_req, res) => {
+    try {
+      const counts = await db.select({
+        source: officialPublic.source,
+        count: sql<number>`count(*)::int`,
+      })
+        .from(officialPublic)
+        .where(eq(officialPublic.active, true))
+        .groupBy(officialPublic.source);
+      
+      const result: Record<string, number> = {
+        TX_HOUSE: 0,
+        TX_SENATE: 0,
+        US_HOUSE: 0,
+      };
+      
+      for (const { source, count } of counts) {
+        result[source] = count;
+      }
+      
+      console.log("[API] Admin officials counts:", result);
+      
+      res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.json(result);
+    } catch (err) {
+      console.error("[API] Error fetching admin counts:", err);
+      res.status(500).json({ error: "Failed to fetch counts" });
+    }
+  });
+
   app.get("/api/stats", async (_req, res) => {
     try {
       const counts = await db.select({

@@ -1,0 +1,146 @@
+
+Problem Statement
+The Browse Lists feature does not load all officials for Texas Senate and U.S. House. Texas House correctly loads all 150 members. The system must be fixed so every single official loads for all three groups, with no silent truncation, pagination loss, or filtering errors.
+
+This work must modify the existing uploaded codebase. Do not rewrite UI, navigation, or theming.
+
+⸻
+
+1) Identify and eliminate truncation at every layer
+
+A) Backend: remove accidental limits
+
+Audit /api/officials and any related repository/service code for:
+	•	default LIMIT
+	•	implicit pagination
+	•	ORM defaults
+	•	query client take, limit, or pageSize
+	•	React Query select slicing
+
+Required change
+	•	When source is provided and no limit param is passed, return all active officials for that source.
+	•	Do not apply a default limit silently.
+
+⸻
+
+B) Backend: verify source filtering logic
+
+Audit the source filter:
+	•	Ensure TX_SENATE and US_HOUSE are spelled identically everywhere:
+	•	DB enum
+	•	API query parsing
+	•	client query keys
+	•	Ensure active=true filtering is not excluding valid officials unintentionally.
+
+Add temporary logging:
+	•	total officials by source in DB
+	•	total officials returned by endpoint per request
+
+⸻
+
+2) Fix U.S. House ingestion (common failure point)
+
+Congress.gov API ingestion
+
+Audit the refresh job for U.S. House:
+
+Required checks
+	•	Ensure the Congress.gov endpoint:
+	•	fetches all pages (handle pagination explicitly)
+	•	does not stop at first page or default page size
+	•	Ensure Texas filtering is correct:
+	•	state === "TX"
+	•	include all districts (1–38)
+	•	Ensure no accidental exclusion of:
+	•	at-large or special-case districts
+	•	members missing optional fields
+
+Required behavior
+	•	Log:
+	•	total members fetched from API
+	•	total after TX filtering
+	•	Abort refresh if TX count < expected historical range (e.g. <30).
+
+⸻
+
+3) Fix Texas Senate ingestion (scraping edge cases)
+
+Audit TLO Senate scraping logic:
+
+Required checks
+	•	Ensure member list parsing:
+	•	does not skip entries due to selector mismatch
+	•	does not stop early due to parsing errors
+	•	Ensure member detail page failures:
+	•	skip only the failing member
+	•	do NOT stop the entire Senate import loop
+
+Required behavior
+	•	Log:
+	•	number of Senate members discovered on list page
+	•	number successfully parsed
+	•	Abort write if parsed count < 25 (sanity threshold).
+
+⸻
+
+4) Database verification (critical)
+
+Add a verification utility:
+
+GET /api/admin/officials-counts
+
+Return:
+
+{
+  "TX_HOUSE": 150,
+  "TX_SENATE": 31,
+  "US_HOUSE": 38
+}
+
+Counts must be derived from:
+	•	official_public
+	•	active = true
+
+This endpoint is for debugging and must not be cached.
+
+⸻
+
+5) Client-side safeguards
+
+Audit BrowseOfficialsScreen.tsx:
+
+Required checks
+	•	Ensure FlatList receives the entire array returned from API
+	•	Ensure no slice(), splice(), or derived memo that truncates
+	•	Ensure React Query:
+	•	is not using select to limit data
+	•	is not reusing cached results from another source
+
+Required fix
+	•	Query key must include source
+	•	Switching tabs must trigger a distinct fetch or cache entry
+
+⸻
+
+6) Hard acceptance criteria (non-negotiable)
+
+The fix is complete only when:
+	•	TX House list shows 150 members
+	•	TX Senate list shows 31 members
+	•	U.S. House (TX delegation) shows 38 members
+	•	Counts are stable across refreshes
+	•	No silent failures or partial updates are allowed
+
+If any roster fails validation:
+	•	Log error
+	•	Preserve last known-good data
+	•	Do not partially update DB
+
+⸻
+
+7) Deliverables
+	•	Fixed refresh ingestion for Senate and U.S. House
+	•	Removed unintended limits in API or client
+	•	Added logging and sanity checks
+	•	Added /api/admin/officials-counts debug endpoint
+	•	Verified Browse Lists loads all officials for all groups
