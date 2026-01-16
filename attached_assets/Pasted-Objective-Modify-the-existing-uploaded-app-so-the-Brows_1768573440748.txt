@@ -1,0 +1,164 @@
+Objective
+Modify the existing uploaded app so the Browse Lists feature shows a complete district roster for:
+
+Texas House districts 1–150
+
+Texas Senate districts 1–31
+
+U.S. House (Texas) districts 1–38
+
+The list must include every district number even if the seat is vacant. For any district without a current official, insert a placeholder entry with:
+
+full_name = "Vacant District"
+
+it must still display the district number and chamber
+
+it must be selectable and open a profile screen (profile shows “Vacant District” plus whatever district metadata we have; private notes can still be added)
+
+In the Browse screen count label, show:
+
+total displayed entries and vacancy count, e.g. 150 members (2 vacancies)
+
+when searching, show X results (Y vacancies) where Y is vacancies within the filtered result set.
+
+Do not rewrite navigation architecture, theming, or shared components. Reuse OfficialCard and existing styling.
+
+1) Backend: guarantee complete district coverage
+A) Define district ranges (hard-coded constants)
+
+Create a shared module (server-side) that defines expected districts:
+
+TX_HOUSE: 1..150
+
+TX_SENATE: 1..31
+
+US_HOUSE: 1..38
+
+B) Add a “vacancy filler” layer in API responses
+
+Update GET /api/officials when called with source=TX_HOUSE|TX_SENATE|US_HOUSE and active=true:
+
+Query the DB for active officials for that source (merged public+private as usual).
+
+Build a map of districtNumber -> official.
+
+For each expected district in the range:
+
+If present, return the real official
+
+If missing, synthesize a placeholder “vacant” official object with:
+
+id: deterministic virtual id like VACANT-TX_HOUSE-12 (string) OR generate a stable UUID, but must be stable across runs
+
+source: same source
+
+district: district number as string
+
+full_name: "Vacant District"
+
+party: null
+
+photo_url: null (use default avatar on client)
+
+active: true (so it appears)
+
+isVacant: true (add this boolean field)
+
+source_member_id: null or VACANT-<source>-<district>
+
+last_refreshed_at: null or inherited
+
+Return the full list of 150/31/38 entries, sorted by district asc.
+
+C) Ensure searching works with vacancies
+
+If query param q is provided:
+
+Apply filtering AFTER vacancy fill is constructed so users can find:
+
+“Vacant”
+
+“District 12”
+
+or normal names
+
+Support searching by district number (e.g., “12” finds district 12 even if vacant).
+
+D) Profile endpoint behavior for vacancies
+
+Update GET /api/officials/:id to handle vacancy IDs:
+
+If id matches the VACANT-... pattern, return a synthetic profile object (same as above).
+
+Allow private data storage keyed to the vacancy entry (optional but recommended):
+
+Create/allow official_private rows for vacant entries by using a stable synthetic official_public record OR store private notes keyed by (source, district) when isVacant=true.
+
+Important: This must not break existing OfficialProfileScreen navigation which expects an officialId.
+
+2) Client: show vacancy counts next to total
+A) Update BrowseOfficialsScreen count label
+
+In BrowseOfficialsScreen.tsx:
+
+Compute:
+
+displayedCount = data.length
+
+vacancyCount = data.filter(x => x.isVacant).length
+
+Label rules:
+
+If search text is empty:
+
+"{displayedCount} members ({vacancyCount} vacancies)"
+
+If searching:
+
+"{displayedCount} results ({vacancyCount} vacancies)"
+
+Pluralize correctly (“1 vacancy” vs “2 vacancies”)
+
+If vacancyCount is 0, either show (0 vacancies) or omit the parentheses (choose one and keep consistent; prefer omitting when 0).
+
+B) OfficialCard display for vacancy
+
+If isVacant:
+
+show “Vacant District” as name
+
+show district badge the same
+
+use default avatar image
+
+C) Ensure navigation works
+
+Tapping a vacancy row must navigate to OfficialProfileScreen using the vacancy officialId.
+
+OfficialProfileScreen must render gracefully with missing fields (no crashes).
+
+3) Acceptance criteria (must pass)
+
+TX House browse shows 150 entries always.
+
+TX Senate browse shows 31 entries always.
+
+US House TX browse shows 38 entries always.
+
+Any missing district seat appears as Vacant District.
+
+Count label shows correct vacancy count next to total.
+
+Search works within each group and vacancy counts update based on filtered results.
+
+No private notes are overwritten by refresh.
+
+Deliverables
+
+Updated /api/officials logic to fill vacancies
+
+Vacancy-safe /api/officials/:id
+
+Updated BrowseOfficialsScreen count label with vacancies
+
+Minimal adjustments to OfficialProfileScreen/OfficialCard to support isVacant

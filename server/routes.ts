@@ -6,11 +6,68 @@ import {
   officialPublic, 
   officialPrivate, 
   updateOfficialPrivateSchema,
+  DISTRICT_RANGES,
   type MergedOfficial,
   type OfficialPublic,
   type OfficialPrivate 
 } from "@shared/schema";
 import { eq, and, sql, or, ilike } from "drizzle-orm";
+
+type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+
+function createVacantOfficial(source: SourceType, district: number): MergedOfficial {
+  const chamber = source === "TX_HOUSE" ? "TX House" 
+    : source === "TX_SENATE" ? "TX Senate" 
+    : "US House";
+  
+  const vacantId = `VACANT-${source}-${district}`;
+  
+  return {
+    id: vacantId,
+    source,
+    sourceMemberId: vacantId,
+    chamber,
+    district: String(district),
+    fullName: "Vacant District",
+    party: null,
+    photoUrl: null,
+    capitolAddress: null,
+    capitolPhone: null,
+    districtAddresses: null,
+    districtPhones: null,
+    website: null,
+    email: null,
+    active: true,
+    lastRefreshedAt: new Date(),
+    isVacant: true,
+    private: null,
+  };
+}
+
+function fillVacancies(
+  officials: MergedOfficial[], 
+  source: SourceType
+): MergedOfficial[] {
+  const range = DISTRICT_RANGES[source];
+  const districtMap = new Map<string, MergedOfficial>();
+  
+  for (const official of officials) {
+    districtMap.set(official.district, { ...official, isVacant: false });
+  }
+  
+  const result: MergedOfficial[] = [];
+  
+  for (let d = range.min; d <= range.max; d++) {
+    const districtStr = String(d);
+    if (districtMap.has(districtStr)) {
+      result.push(districtMap.get(districtStr)!);
+    } else {
+      result.push(createVacantOfficial(source, d));
+    }
+  }
+  
+  return result;
+}
 import { maybeRunScheduledRefresh } from "./jobs/refreshOfficials";
 
 type DistrictType = "tx_house" | "tx_senate" | "us_congress";
@@ -62,19 +119,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { district_type, source, search, q, active } = req.query;
       
-      let query = db.select().from(officialPublic);
       const conditions = [];
       
       if (active !== "false") {
         conditions.push(eq(officialPublic.active, true));
       }
       
+      let sourceFilter: SourceType | null = null;
+      
       if (district_type && typeof district_type === "string") {
         const validTypes: DistrictType[] = ["tx_house", "tx_senate", "us_congress"];
         if (!validTypes.includes(district_type as DistrictType)) {
           return res.status(400).json({ error: "Invalid district_type" });
         }
-        conditions.push(eq(officialPublic.source, sourceFromDistrictType(district_type as DistrictType)));
+        sourceFilter = sourceFromDistrictType(district_type as DistrictType);
+        conditions.push(eq(officialPublic.source, sourceFilter));
       }
       
       if (source && typeof source === "string") {
@@ -82,15 +141,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!validSources.includes(source)) {
           return res.status(400).json({ error: "Invalid source" });
         }
-        conditions.push(eq(officialPublic.source, source as "TX_HOUSE" | "TX_SENATE" | "US_HOUSE"));
-      }
-      
-      const searchTerm = search || q;
-      if (searchTerm && typeof searchTerm === "string") {
-        conditions.push(or(
-          ilike(officialPublic.fullName, `%${searchTerm}%`),
-          ilike(officialPublic.district, `%${searchTerm}%`)
-        ));
+        sourceFilter = source as SourceType;
+        conditions.push(eq(officialPublic.source, sourceFilter));
       }
       
       const publicOfficials = await db.select()
@@ -100,9 +152,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const privateData = await db.select().from(officialPrivate);
       const privateMap = new Map(privateData.map(p => [p.officialPublicId, p]));
       
-      const officials: MergedOfficial[] = publicOfficials.map(pub => 
+      let officials: MergedOfficial[] = publicOfficials.map(pub => 
         mergeOfficial(pub, privateMap.get(pub.id) || null)
       );
+      
+      if (sourceFilter) {
+        officials = fillVacancies(officials, sourceFilter);
+      } else {
+        officials = officials.map(o => ({ ...o, isVacant: false }));
+      }
+      
+      const searchTerm = search || q;
+      if (searchTerm && typeof searchTerm === "string") {
+        const term = searchTerm.toLowerCase();
+        officials = officials.filter(o => 
+          o.fullName.toLowerCase().includes(term) ||
+          o.district.includes(term) ||
+          (o.isVacant && "vacant".includes(term))
+        );
+      }
       
       officials.sort((a, b) => {
         const distA = parseInt(a.district, 10);
@@ -115,7 +183,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return lastA.localeCompare(lastB);
       });
       
-      res.json({ officials, count: officials.length });
+      const vacancyCount = officials.filter(o => o.isVacant).length;
+      
+      res.json({ officials, count: officials.length, vacancyCount });
     } catch (err) {
       console.error("[API] Error fetching officials:", err);
       res.status(500).json({ error: "Failed to fetch officials" });
@@ -125,6 +195,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/officials/:id", async (req, res) => {
     try {
       const { id } = req.params;
+      
+      const vacantMatch = id.match(/^VACANT-(TX_HOUSE|TX_SENATE|US_HOUSE)-(\d+)$/);
+      if (vacantMatch) {
+        const source = vacantMatch[1] as SourceType;
+        const district = parseInt(vacantMatch[2], 10);
+        const vacant = createVacantOfficial(source, district);
+        return res.json({ official: vacant });
+      }
       
       const [pub] = await db.select()
         .from(officialPublic)
@@ -141,6 +219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(1);
       
       const official = mergeOfficial(pub, priv || null);
+      official.isVacant = false;
       res.json({ official });
     } catch (err) {
       console.error("[API] Error fetching official:", err);

@@ -90,9 +90,17 @@ export type OfficialPrivate = typeof officialPrivate.$inferSelect;
 export type InsertOfficialPrivate = typeof officialPrivate.$inferInsert;
 export type RefreshJobLog = typeof refreshJobLog.$inferSelect;
 
+// District ranges for each chamber
+export const DISTRICT_RANGES = {
+  TX_HOUSE: { min: 1, max: 150 },
+  TX_SENATE: { min: 1, max: 31 },
+  US_HOUSE: { min: 1, max: 38 },
+} as const;
+
 // Merged official type for API responses
 export interface MergedOfficial extends OfficialPublic {
   private?: Omit<OfficialPrivate, 'id' | 'officialPublicId'> | null;
+  isVacant?: boolean;
 }
 
 // Insert schemas for validation
