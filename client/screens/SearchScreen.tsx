@@ -345,6 +345,13 @@ export default function SearchScreen() {
             description="Draw an area on the map to find districts"
             onPress={handleDrawSearch}
           />
+          <View style={{ height: Spacing.md }} />
+          <SearchMethodCard
+            icon="list"
+            title="Browse Lists"
+            description="View full rosters for House, Senate, and Congress"
+            onPress={() => navigation.navigate("BrowseOfficials")}
+          />
         </View>
       </KeyboardAwareScrollViewCompat>
     </View>

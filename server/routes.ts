@@ -60,7 +60,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/officials", async (req, res) => {
     try {
-      const { district_type, search, active } = req.query;
+      const { district_type, source, search, q, active } = req.query;
       
       let query = db.select().from(officialPublic);
       const conditions = [];
@@ -77,10 +77,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         conditions.push(eq(officialPublic.source, sourceFromDistrictType(district_type as DistrictType)));
       }
       
-      if (search && typeof search === "string") {
+      if (source && typeof source === "string") {
+        const validSources = ["TX_HOUSE", "TX_SENATE", "US_HOUSE"];
+        if (!validSources.includes(source)) {
+          return res.status(400).json({ error: "Invalid source" });
+        }
+        conditions.push(eq(officialPublic.source, source as "TX_HOUSE" | "TX_SENATE" | "US_HOUSE"));
+      }
+      
+      const searchTerm = search || q;
+      if (searchTerm && typeof searchTerm === "string") {
         conditions.push(or(
-          ilike(officialPublic.fullName, `%${search}%`),
-          ilike(officialPublic.district, `%${search}%`)
+          ilike(officialPublic.fullName, `%${searchTerm}%`),
+          ilike(officialPublic.district, `%${searchTerm}%`)
         ));
       }
       
@@ -94,6 +103,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const officials: MergedOfficial[] = publicOfficials.map(pub => 
         mergeOfficial(pub, privateMap.get(pub.id) || null)
       );
+      
+      officials.sort((a, b) => {
+        const distA = parseInt(a.district, 10);
+        const distB = parseInt(b.district, 10);
+        if (!isNaN(distA) && !isNaN(distB)) {
+          if (distA !== distB) return distA - distB;
+        }
+        const lastA = a.fullName.split(" ").pop() || "";
+        const lastB = b.fullName.split(" ").pop() || "";
+        return lastA.localeCompare(lastB);
+      });
       
       res.json({ officials, count: officials.length });
     } catch (err) {

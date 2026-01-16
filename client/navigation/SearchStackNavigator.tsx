@@ -2,11 +2,13 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import SearchScreen from "@/screens/SearchScreen";
 import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
+import BrowseOfficialsScreen from "@/screens/BrowseOfficialsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type SearchStackParamList = {
   Search: undefined;
   OfficialProfile: { officialId: string };
+  BrowseOfficials: undefined;
 };
 
 const Stack = createNativeStackNavigator<SearchStackParamList>();
@@ -28,6 +30,13 @@ export default function SearchStackNavigator() {
         component={OfficialProfileScreen}
         options={{
           headerTitle: "Official",
+        }}
+      />
+      <Stack.Screen
+        name="BrowseOfficials"
+        component={BrowseOfficialsScreen}
+        options={{
+          headerTitle: "Browse",
         }}
       />
     </Stack.Navigator>

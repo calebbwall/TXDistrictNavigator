@@ -1,0 +1,148 @@
+Objective
+Modify the existing uploaded Expo/React Native app so the Search tab includes a “Browse Lists” experience that lets users open and scroll through a complete roster of:
+	1.	Texas House members
+	2.	Texas Senate members
+	3.	U.S. House members (Texas delegation)
+
+Each roster must:
+	•	render a complete scrollable list using FlatList + existing OfficialCard
+	•	support searching within that roster
+	•	display a small count label under the segmented control, e.g. “150 members”, based on the currently displayed list (filtered count when searching; full count when search is empty)
+
+Do not rewrite screens, navigation architecture, theming, or shared components. Reuse existing styles and components wherever possible.
+
+⸻
+
+Backend (minimal but correct)
+
+1) Add/extend listing endpoint
+
+Implement or extend:
+
+GET /api/officials
+
+Query params
+	•	source = TX_HOUSE | TX_SENATE | US_HOUSE (required for roster pages)
+	•	q = string (optional; search)
+	•	active=true default
+	•	(Optional) limit, offset for pagination (not required for first pass)
+
+Behavior
+	•	Filter by source
+	•	If q provided: case-insensitive contains match on full_name and also allow matching district (string contains)
+	•	Return merged official objects (public + private overlay) using existing merge rules
+	•	Sort results:
+	•	If district numeric, sort by district asc, then last name
+	•	Otherwise sort by last name
+
+Important
+Return JSON shape compatible with OfficialProfileScreen navigation (officialId must be present and stable).
+
+⸻
+
+Client (Search tab enhancements)
+
+2) Add “Browse Lists” entry point to Search methods
+
+In SearchScreen.tsx (existing), add a new method card below the existing ones:
+	•	Icon: Feather list
+	•	Title: “Browse Lists”
+	•	Description: “View full rosters for House, Senate, and Congress”
+	•	OnPress: navigate to BrowseOfficials
+
+Keep existing name/zip/draw flows unchanged.
+
+⸻
+
+3) Add new screen: BrowseOfficialsScreen.tsx
+
+Create a new screen that includes:
+
+A) Segmented control (3 tabs)
+At the top, 3 Pressable tabs (no new libraries):
+	•	“TX House”
+	•	“TX Senate”
+	•	“US House”
+
+Use existing theming via useTheme() and spacing constants.
+
+Maintain state:
+	•	selectedSource: 'TX_HOUSE' | 'TX_SENATE' | 'US_HOUSE'
+
+B) Count label (the highlighted UX upgrade)
+Directly under the segmented control, render a small label like:
+	•	If no search text: “150 members”
+	•	If searching: “12 results”
+
+Rules
+	•	Count must reflect the currently displayed list.
+	•	Use pluralization (“1 member” vs “2 members”; “1 result” vs “2 results”).
+	•	When data is loading, show “Loading…” or nothing (do not show a stale count).
+	•	Do NOT hardcode “150/31/38”; use the length of the returned list.
+
+C) Search bar (in-roster search)
+A search input styled like your existing Search-by-Name input:
+	•	Placeholder changes with group: “Search Texas House…”, etc.
+	•	Search should filter within the selected roster
+
+Implement search with debounce (200–300ms) to avoid spammy refetching.
+
+Approach:
+	•	Preferred: server-side search using q:
+	•	GET /api/officials?source=TX_HOUSE&q=<term>
+	•	Acceptable MVP: fetch full list once per source, filter locally. If you do local filtering, still keep server-side available for future.
+
+D) Roster list
+Use FlatList:
+	•	data = officials returned for selected source (and search term)
+	•	renderItem uses existing OfficialCard
+	•	OnPress navigates to OfficialProfileScreen with { officialId }
+
+Add pull-to-refresh to refetch the current source list.
+
+E) Empty state
+If list is empty:
+	•	If searching: show empty-search image + “No results”
+	•	If not searching: show “No members found” (should be rare)
+
+⸻
+
+4) Navigation wiring
+
+Update SearchStackNavigator.tsx:
+	•	Add route: BrowseOfficials: undefined
+	•	Ensure it can navigate to OfficialProfile as it already does
+
+Add the screen to the stack with headerTitle “Browse”.
+
+⸻
+
+5) Data fetching and caching
+
+Use your existing query client / React Query patterns:
+	•	Query key should include source and q
+	•	Enable keepPreviousData so switching tabs feels instant
+	•	Add small loading indicator for first load
+
+⸻
+
+Acceptance criteria
+	•	Search tab shows “Browse Lists”
+	•	Browse screen shows 3 tabs and a roster list
+	•	Switching tabs changes roster
+	•	Search filters within tab
+	•	Count label updates correctly:
+	•	“X members” when not searching
+	•	“Y results” when searching
+	•	Tapping an official opens OfficialProfileScreen
+	•	No new UI libraries added
+	•	Styling matches existing theme and spacing
+
+⸻
+
+Deliverables
+	•	Backend: /api/officials supports source and q
+	•	Client: BrowseOfficialsScreen.tsx
+	•	Client: SearchScreen updated with “Browse Lists”
+	•	Client: SearchStackNavigator updated with new route/types
+	•	Count label feature implemented as specified
