@@ -93,6 +93,8 @@ const MAP_HTML = `
       maxZoom: 19,
     }).addTo(map);
 
+    let apiBaseUrl = '';
+    
     const layers = {
       senate: null,
       house: null,
@@ -111,17 +113,34 @@ const MAP_HTML = `
       us_congress: { fill: 'rgba(80, 200, 120, 0.3)', stroke: '#50C878' }
     };
 
+    const loadStatus = {
+      tx_senate: { loading: false, loaded: false, features: 0, error: null },
+      tx_house: { loading: false, loaded: false, features: 0, error: null },
+      us_congress: { loading: false, loaded: false, features: 0, error: null }
+    };
+
+    function postMessage(msg) {
+      const msgStr = JSON.stringify(msg);
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(msgStr);
+      } else if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msgStr, '*');
+      }
+    }
+
     function createLayer(type, data, colors) {
       if (!data) {
-        console.log('[Leaflet] createLayer: no data for', type);
+        console.log('[OVERLAY] createLayer: no data for', type);
         return null;
       }
-      console.log('[Leaflet] Creating layer:', type, 'with', data.features?.length || 0, 'features');
+      const featureCount = data.features?.length || 0;
+      console.log('[OVERLAY]', type, 'creating layer with', featureCount, 'features');
       return L.geoJSON(data, {
         style: {
           fillColor: colors.fill,
           color: colors.stroke,
-          weight: 2,
+          weight: 3,
+          opacity: 1,
           fillOpacity: 0.15
         },
         onEachFeature: function(feature, layer) {
@@ -132,41 +151,112 @@ const MAP_HTML = `
                                 feature.properties.SLDUST || 
                                 feature.properties.SLDLST ||
                                 feature.properties.CD;
-            window.ReactNativeWebView.postMessage(JSON.stringify({
+            postMessage({
               type: 'districtClick',
               districtType: districtType,
               districtNumber: parseInt(districtNum) || 1
-            }));
+            });
           });
         }
       });
     }
 
-    function setGeoJSONData(type, data) {
-      const typeKey = type === 'tx_senate' ? 'senate' : 
-                      type === 'tx_house' ? 'house' : 'congress';
-      geoJSONData[type] = data;
-      
-      if (layers[typeKey]) {
-        map.removeLayer(layers[typeKey]);
+    async function fetchAndSetGeoJSON(layerType) {
+      if (loadStatus[layerType].loaded || loadStatus[layerType].loading) {
+        console.log('[OVERLAY]', layerType, 'already loaded or loading');
+        return loadStatus[layerType].loaded;
       }
-      layers[typeKey] = createLayer(typeKey, data, layerColors[type]);
+      
+      if (!apiBaseUrl) {
+        console.log('[OVERLAY]', layerType, 'no API base URL set');
+        loadStatus[layerType].error = 'No API URL';
+        return false;
+      }
+      
+      loadStatus[layerType].loading = true;
+      console.log('[OVERLAY]', layerType, 'fetching from', apiBaseUrl + '/api/geojson/' + layerType);
+      
+      try {
+        const response = await fetch(apiBaseUrl + '/api/geojson/' + layerType);
+        console.log('[OVERLAY]', layerType, 'status=' + response.status);
+        
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+        
+        const data = await response.json();
+        const featureCount = data.features?.length || 0;
+        console.log('[OVERLAY]', layerType, 'features=' + featureCount);
+        
+        geoJSONData[layerType] = data;
+        loadStatus[layerType].loaded = true;
+        loadStatus[layerType].features = featureCount;
+        loadStatus[layerType].loading = false;
+        
+        // Create the layer
+        const typeKey = layerType === 'tx_senate' ? 'senate' : 
+                        layerType === 'tx_house' ? 'house' : 'congress';
+        if (layers[typeKey]) {
+          map.removeLayer(layers[typeKey]);
+        }
+        layers[typeKey] = createLayer(typeKey, data, layerColors[layerType]);
+        console.log('[OVERLAY]', layerType, 'layerAdded=true');
+        
+        // Report status back
+        postMessage({
+          type: 'geoJSONLoaded',
+          layerType: layerType,
+          features: featureCount,
+          success: true
+        });
+        
+        return true;
+      } catch (e) {
+        console.error('[OVERLAY]', layerType, 'error=' + e.message);
+        loadStatus[layerType].error = e.message;
+        loadStatus[layerType].loading = false;
+        
+        postMessage({
+          type: 'geoJSONLoaded',
+          layerType: layerType,
+          features: 0,
+          success: false,
+          error: e.message
+        });
+        
+        return false;
+      }
     }
 
-    window.toggleLayer = function(type, visible) {
-      console.log('[Leaflet] toggleLayer:', type, visible);
+    window.toggleLayer = async function(type, visible) {
+      console.log('[OVERLAY] toggleLayer:', type, visible);
+      
+      // Map toggle key to layer type
+      const layerType = type === 'senate' ? 'tx_senate' : 
+                        type === 'house' ? 'tx_house' : 'us_congress';
+      
+      // Fetch data if needed when turning on
+      if (visible && !loadStatus[layerType].loaded) {
+        const success = await fetchAndSetGeoJSON(layerType);
+        if (!success) {
+          console.log('[OVERLAY]', type, 'failed to load, cannot show');
+          return;
+        }
+      }
+      
       const layer = layers[type];
       if (!layer) {
-        console.log('[Leaflet] Layer not ready yet:', type);
+        console.log('[OVERLAY]', type, 'layer not available');
         return;
       }
+      
       if (visible) {
         layer.addTo(map);
         layer.bringToFront();
-        console.log('[Leaflet] Added layer to map:', type);
+        console.log('[OVERLAY]', type, 'added to map');
       } else {
         map.removeLayer(layer);
-        console.log('[Leaflet] Removed layer from map:', type);
+        console.log('[OVERLAY]', type, 'removed from map');
       }
     };
 
@@ -174,10 +264,35 @@ const MAP_HTML = `
       try {
         const data = JSON.parse(message);
         console.log('[Leaflet] Received message:', data.type);
-        if (data.type === 'setGeoJSON') {
-          setGeoJSONData(data.layerType, data.geojson);
+        
+        if (data.type === 'setApiUrl') {
+          apiBaseUrl = data.url;
+          console.log('[Leaflet] API base URL set to:', apiBaseUrl);
+        } else if (data.type === 'loadAllGeoJSON') {
+          // Load all GeoJSON data
+          Promise.all([
+            fetchAndSetGeoJSON('tx_senate'),
+            fetchAndSetGeoJSON('tx_house'),
+            fetchAndSetGeoJSON('us_congress')
+          ]).then(() => {
+            console.log('[Leaflet] All GeoJSON loaded');
+            postMessage({ type: 'allGeoJSONLoaded' });
+          });
         } else if (data.type === 'toggleLayer') {
           window.toggleLayer(data.layer, data.visible);
+        } else if (data.type === 'setGeoJSON') {
+          // Legacy support for web iframe
+          const layerType = data.layerType;
+          const typeKey = layerType === 'tx_senate' ? 'senate' : 
+                          layerType === 'tx_house' ? 'house' : 'congress';
+          geoJSONData[layerType] = data.geojson;
+          loadStatus[layerType].loaded = true;
+          loadStatus[layerType].features = data.geojson.features?.length || 0;
+          if (layers[typeKey]) {
+            map.removeLayer(layers[typeKey]);
+          }
+          layers[typeKey] = createLayer(typeKey, data.geojson, layerColors[layerType]);
+          console.log('[OVERLAY]', layerType, 'set via message, features=' + loadStatus[layerType].features);
         }
       } catch (e) {
         console.error('[Leaflet] Error processing message:', e);
@@ -196,16 +311,8 @@ const MAP_HTML = `
 
     // Send mapReady - works on both native and web
     function sendMapReady() {
-      const msg = JSON.stringify({ type: 'mapReady' });
-      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-        window.ReactNativeWebView.postMessage(msg);
-        console.log('[Leaflet] Sent mapReady via ReactNativeWebView');
-      } else if (window.parent && window.parent !== window) {
-        window.parent.postMessage(msg, '*');
-        console.log('[Leaflet] Sent mapReady via window.parent.postMessage');
-      } else {
-        console.log('[Leaflet] No postMessage target available');
-      }
+      postMessage({ type: 'mapReady' });
+      console.log('[Leaflet] Sent mapReady');
     }
     
     // Delay slightly to ensure RN WebView is ready
@@ -240,7 +347,7 @@ export default function MapScreen() {
   const [selectedDistrict, setSelectedDistrict] = useState<SelectedDistrict | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
+  const [showDebug, setShowDebug] = useState(true);
   const [loadStatus, setLoadStatus] = useState<GeoJSONLoadStatus>({
     house: { loaded: false, features: 0, error: null },
     senate: { loaded: false, features: 0, error: null },
@@ -330,48 +437,65 @@ export default function MapScreen() {
     console.log('[MapScreen] Map is ready, starting GeoJSON load');
     geoJSONLoadedRef.current = true;
     
-    const loadGeoJSON = async () => {
-      console.log('[MapScreen] Fetching all GeoJSON...');
-      const [senate, house, congress] = await Promise.all([
-        fetchGeoJSON("tx_senate"),
-        fetchGeoJSON("tx_house"),
-        fetchGeoJSON("us_congress"),
-      ]);
-      
-      console.log('[MapScreen] GeoJSON fetch complete, sending to WebView');
-      
-      // Use sendToIframe for web, sendToWebView for native
-      const sendMsg = Platform.OS === 'web' 
-        ? (msg: object) => {
-            if (iframeRef.current?.contentWindow) {
-              iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
-            }
-          }
-        : sendToWebView;
-      
-      if (senate) {
-        sendMsg({ type: 'setGeoJSON', layerType: 'tx_senate', geojson: senate });
-      }
-      if (house) {
-        sendMsg({ type: 'setGeoJSON', layerType: 'tx_house', geojson: house });
-      }
-      if (congress) {
-        sendMsg({ type: 'setGeoJSON', layerType: 'us_congress', geojson: congress });
-      }
-      
-      setDataLoaded(true);
-      console.log('[MapScreen] DataLoaded set to true');
-      
-      // Use initial overlays to avoid stale closure
-      const currentOverlays = initialOverlaysRef.current;
-      console.log('[MapScreen] Applying initial overlays:', currentOverlays);
-      
-      if (currentOverlays.senate) sendMsg({ type: 'toggleLayer', layer: 'senate', visible: true });
-      if (currentOverlays.house) sendMsg({ type: 'toggleLayer', layer: 'house', visible: true });
-      if (currentOverlays.congress) sendMsg({ type: 'toggleLayer', layer: 'congress', visible: true });
-    };
+    const currentOverlays = initialOverlaysRef.current;
     
-    loadGeoJSON();
+    if (Platform.OS === 'web') {
+      // On web, fetch in RN and send via postMessage (works fine for large data)
+      const loadGeoJSON = async () => {
+        console.log('[MapScreen] Web: Fetching all GeoJSON in RN...');
+        const [senate, house, congress] = await Promise.all([
+          fetchGeoJSON("tx_senate"),
+          fetchGeoJSON("tx_house"),
+          fetchGeoJSON("us_congress"),
+        ]);
+        
+        console.log('[MapScreen] Web: GeoJSON fetch complete, sending to iframe');
+        
+        const sendMsg = (msg: object) => {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+          }
+        };
+        
+        if (senate) {
+          sendMsg({ type: 'setGeoJSON', layerType: 'tx_senate', geojson: senate });
+        }
+        if (house) {
+          sendMsg({ type: 'setGeoJSON', layerType: 'tx_house', geojson: house });
+        }
+        if (congress) {
+          sendMsg({ type: 'setGeoJSON', layerType: 'us_congress', geojson: congress });
+        }
+        
+        setDataLoaded(true);
+        console.log('[MapScreen] Web: DataLoaded set to true');
+        
+        console.log('[MapScreen] Web: Applying initial overlays:', currentOverlays);
+        if (currentOverlays.senate) sendMsg({ type: 'toggleLayer', layer: 'senate', visible: true });
+        if (currentOverlays.house) sendMsg({ type: 'toggleLayer', layer: 'house', visible: true });
+        if (currentOverlays.congress) sendMsg({ type: 'toggleLayer', layer: 'congress', visible: true });
+      };
+      
+      loadGeoJSON();
+    } else {
+      // On native, tell WebView to fetch GeoJSON directly (avoids injectJavaScript size limits)
+      console.log('[MapScreen] Native: Telling WebView to fetch GeoJSON directly');
+      const apiUrl = getApiUrl();
+      console.log('[MapScreen] Native: API URL is:', apiUrl);
+      
+      // Send API URL to WebView
+      sendToWebView({ type: 'setApiUrl', url: apiUrl });
+      
+      // Small delay to ensure URL is set, then apply initial overlays
+      // The WebView will fetch on-demand when toggleLayer is called
+      setTimeout(() => {
+        console.log('[MapScreen] Native: Applying initial overlays:', currentOverlays);
+        if (currentOverlays.senate) sendToWebView({ type: 'toggleLayer', layer: 'senate', visible: true });
+        if (currentOverlays.house) sendToWebView({ type: 'toggleLayer', layer: 'house', visible: true });
+        if (currentOverlays.congress) sendToWebView({ type: 'toggleLayer', layer: 'congress', visible: true });
+        setDataLoaded(true);
+      }, 300);
+    }
   }, [mapReady, fetchGeoJSON, sendToWebView]);
 
   const handleToggleOverlay = useCallback(

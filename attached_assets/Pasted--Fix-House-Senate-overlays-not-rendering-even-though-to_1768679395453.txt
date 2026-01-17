@@ -1,0 +1,150 @@
+
+(Fix: House/Senate overlays not rendering even though toggles exist)
+
+Problem
+The on-map toggle buttons now appear, and Congress overlay renders, but Texas House (red) and Texas Senate (blue) overlays do not show when toggled on.
+
+Goal
+When toggled on:
+	•	TX House districts render with red stroke
+	•	TX Senate districts render with blue stroke
+	•	US Congress remains green stroke
+No WebView reloads. Must work reliably.
+
+Do not change unrelated screens/navigation. Focus on the map overlay pipeline.
+
+⸻
+
+1) Add definitive instrumentation for each overlay (client + WebView)
+
+Implement a small dev-only debug panel (visible on Map screen) showing per overlay:
+	•	requestedUrl
+	•	fetchStatus (e.g., 200/404/error)
+	•	bytes
+	•	featuresCount
+	•	layerAdded (true/false)
+	•	lastError
+
+This must be updated live when toggles are used.
+
+Also log these to console with clear prefixes:
+	•	[OVERLAY] house status=... features=...
+	•	[OVERLAY] senate status=... features=...
+
+If House/Senate are 404 or failing fetch, stop and fix endpoints/base URL first.
+
+⸻
+
+2) Verify backend endpoints for House/Senate actually return GeoJSON
+
+On the Express backend:
+	•	Confirm endpoints exist and are correct:
+	•	/api/geojson/tx_house (or whatever path the client uses)
+	•	/api/geojson/tx_senate
+	•	/api/geojson/us_congress
+
+Required: add server logging when each endpoint is hit:
+	•	endpoint name
+	•	file used (simplified vs full)
+	•	response byte size
+	•	features count
+
+Fixes to implement if needed
+	•	If House/Senate endpoints are missing or miswired, implement them.
+	•	Ensure they return the correct simplified files:
+	•	tx_house_simplified.geojson
+	•	tx_senate_simplified.geojson
+	•	us_congress_simplified.geojson
+
+If the server routes already exist, verify they are not accidentally returning the same file for all three.
+
+⸻
+
+3) Verify WebView message contract and layer creation for House/Senate
+
+Inside the WebView/Leaflet JS:
+	•	Log every received message and parsed payload.
+	•	Confirm the toggle event that works for Congress triggers the exact same flow for House/Senate.
+	•	Ensure there are three separate L.geoJSON layers:
+	•	houseLayer
+	•	senateLayer
+	•	congressLayer
+
+Required checks
+	•	When House toggle on:
+	•	House GeoJSON must be loaded (or already cached)
+	•	houseLayer.addTo(map) must run
+	•	When House toggle off:
+	•	map.removeLayer(houseLayer) must run
+
+Do the same for Senate.
+
+If the code uses a map like layers[type], ensure the keys match exactly:
+	•	tx_house vs house vs TX_HOUSE mismatches are a common cause of “only one works.”
+
+⸻
+
+4) If House/Senate GeoJSON loads but still not visible, force-visible styling
+
+Temporarily make styling impossible to miss to rule out “it’s there but invisible”:
+
+House style:
+	•	stroke red
+	•	weight: 4
+	•	opacity: 1
+	•	fillOpacity: 0 (stroke only)
+
+Senate style:
+	•	stroke blue
+	•	weight: 4
+	•	opacity: 1
+	•	fillOpacity: 0
+
+Congress can stay green.
+
+If this makes them visible, revert to nicer weights later.
+
+Also ensure layers are on a pane above tiles:
+	•	Create panes: housePane, senatePane, congressPane
+	•	Set pane zIndex ordering (e.g., 410/420/430)
+	•	Assign each geoJSON layer to its pane
+
+⸻
+
+5) Validate GeoJSON structure and bounds (sanity)
+
+When House/Senate GeoJSON is loaded:
+	•	Validate it has type: "FeatureCollection"
+	•	Validate features.length > 0
+	•	Compute bounds and log them:
+	•	L.geoJSON(data).getBounds().toBBoxString()
+
+If bounds are invalid or empty, the file may be wrong or corrupted.
+
+Optional debugging step:
+	•	Temporarily map.fitBounds(layer.getBounds()) after loading House/Senate when toggled on (dev only).
+If the map flies somewhere weird (0,0) or nothing happens, that’s diagnostic.
+
+⸻
+
+6) Deliverables / proof required
+
+When finished, report:
+	•	Which file(s) were the root cause (client URL mismatch, missing route, wrong file served, message key mismatch, etc.)
+	•	Evidence from logs:
+	•	House featuresCount
+	•	Senate featuresCount
+	•	Both show layerAdded=true
+	•	Confirm toggling on/off works for all three overlays
+
+⸻
+
+Acceptance criteria
+	•	Toggling House on shows red district outlines.
+	•	Toggling Senate on shows blue district outlines.
+	•	Both can be on simultaneously with Congress (green).
+	•	Debug panel shows:
+	•	fetchStatus 200
+	•	featuresCount > 0
+	•	layerAdded true
+	•	No WebView reload needed.
