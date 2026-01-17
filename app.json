@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "Texas Districts",
-    "slug": "texas-districts",
+    "name": "TXDistrictNavigator",
+    "slug": "txdistrictnavigator",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "texasdistricts",
+    "scheme": "txdistrictnavigator",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.texasdistricts.app"
+      "bundleIdentifier": "com.txdistrictnavigator.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +21,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.texasdistricts.app"
+      "package": "com.txdistrictnavigator.app"
     },
     "web": {
       "output": "single",
