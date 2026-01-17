@@ -1,0 +1,173 @@
+Goal
+
+Modify the existing uploaded Expo/React Native app so the map supports three district overlays—Texas House, Texas Senate, and U.S. Congress—and provides on-map toggle buttons that independently control each overlay, allowing multiple overlays to be shown at once.
+
+Overlay styling (explicit)
+	•	Texas House → red stroke
+	•	Texas Senate → blue stroke
+	•	U.S. Congress → green stroke
+
+Use simplified GeoJSON by default for performance.
+
+⸻
+
+Constraints
+	•	Do not rewrite navigation, theming, or unrelated screens.
+	•	Do not reload the map/WebView when toggling overlays.
+	•	Reuse existing components and storage utilities.
+	•	Overlay toggles must live on the Map tab, not only in Settings.
+
+⸻
+
+1) Diagnose current map overlay pipeline
+
+Locate where the map is rendered (likely MapScreen.tsx using a WebView + Leaflet). Identify:
+	•	where GeoJSON is sourced (local vs backend API)
+	•	why only Congressional districts currently appear
+	•	any existing overlay preference persistence
+
+⸻
+
+2) Ensure all three GeoJSON sources are accessible
+
+Confirm simplified datasets are available and reachable:
+	•	tx_house_simplified.geojson
+	•	tx_senate_simplified.geojson
+	•	us_congress_simplified.geojson
+
+Preferred approach:
+	•	Serve via existing Express routes (if present), e.g.:
+	•	/api/geojson/tx_house?variant=simplified
+	•	/api/geojson/tx_senate?variant=simplified
+	•	/api/geojson/us_congress?variant=simplified
+
+If using local imports, ensure all three are loaded consistently.
+
+Add temporary logging:
+	•	fetch success/failure
+	•	byte size
+	•	feature count
+
+⸻
+
+3) WebView / Leaflet: create three independent layers
+
+Inside the Leaflet code embedded in the WebView:
+
+Create three separate L.geoJSON layers:
+	•	houseLayer
+	•	senateLayer
+	•	congressLayer
+
+Style rules
+	•	House layer
+	•	stroke: red
+	•	weight: ~2
+	•	fillOpacity: 0.05–0.15
+	•	Senate layer
+	•	stroke: blue
+	•	weight: ~2
+	•	fillOpacity: 0.05–0.15
+	•	Congress layer
+	•	stroke: green
+	•	weight: ~2
+	•	fillOpacity: 0.05–0.15
+
+Rules:
+	•	Do not reuse variables between layers.
+	•	Each layer must be independently addable/removable.
+	•	Do not auto-add layers unless enabled by toggle state.
+
+Add debug logs:
+	•	“Loaded TX House features: X”
+	•	“Loaded TX Senate features: Y”
+	•	“Loaded US Congress features: Z”
+
+⸻
+
+4) React Native: add on-map overlay toggle UI
+
+On MapScreen.tsx, implement an overlay control bar positioned over the map:
+
+Buttons:
+	•	“House”
+	•	“Senate”
+	•	“Congress”
+
+Behavior:
+	•	Each button toggles independently (multi-select).
+	•	Visual state reflects enabled/disabled.
+	•	Button accent colors should match overlay colors:
+	•	House → red
+	•	Senate → blue
+	•	Congress → green
+
+State model:
+
+type OverlayState = {
+  house: boolean;
+  senate: boolean;
+  congress: boolean;
+};
+
+Defaults:
+	•	Preserve existing behavior if possible (e.g., Congress on by default).
+	•	Otherwise choose a reasonable default and allow user control.
+
+Persistence:
+	•	Save OverlayState to AsyncStorage using existing storage utilities.
+	•	Restore state on MapScreen mount.
+
+⸻
+
+5) RN ↔ WebView bridge (no map reloads)
+
+Define a message contract from React Native to the WebView:
+
+RN → WebView
+
+{
+  "type": "SET_OVERLAYS",
+  "overlays": {
+    "house": true,
+    "senate": false,
+    "congress": true
+  }
+}
+
+WebView behavior
+	•	Initialize the Leaflet map once.
+	•	Lazily load GeoJSON for a layer the first time it’s enabled.
+	•	Cache loaded GeoJSON in memory.
+	•	On SET_OVERLAYS:
+	•	If true: add layer to map (create if needed).
+	•	If false: remove layer from map.
+	•	Do not reload the WebView or recreate the map.
+
+⸻
+
+6) Layer ordering & visibility
+	•	Keep fill opacity low so overlaps remain visible.
+	•	Optionally call bringToFront() on the most recently enabled layer.
+	•	Ensure stroke lines remain readable when multiple overlays overlap.
+
+⸻
+
+7) Acceptance criteria (must pass)
+	•	All three overlays can be shown simultaneously.
+	•	Colors are correct:
+	•	House = red
+	•	Senate = blue
+	•	Congress = green
+	•	User can toggle overlays on/off independently.
+	•	Toggling is instant after first load (no WebView reload).
+	•	Overlay choices persist across navigation and app restarts.
+	•	Debug logs confirm expected feature counts for each layer.
+
+⸻
+
+8) Deliverables
+	•	Updated MapScreen.tsx with overlay toggle UI, state management, and persistence
+	•	Updated WebView/Leaflet code with three independent styled layers
+	•	Verified GeoJSON loading for House, Senate, and Congress (simplified by default)
+	•	Temporary logging to validate successful loads
