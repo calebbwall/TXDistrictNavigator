@@ -238,4 +238,24 @@ function setupErrorHandler(app: express.Application) {
       log(`express server serving on port ${port}`);
     },
   );
+
+  const expoPort = 8081;
+  const http = await import("http");
+  const expoServer = http.createServer(app);
+  expoServer.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      log(`Port ${expoPort} already in use (Metro?), skipping secondary server`);
+    } else {
+      log(`Expo server error: ${err.message}`);
+    }
+  });
+  expoServer.listen(
+    {
+      port: expoPort,
+      host: "0.0.0.0",
+    },
+    () => {
+      log(`express server also serving on port ${expoPort} for Expo Go`);
+    },
+  );
 })();
