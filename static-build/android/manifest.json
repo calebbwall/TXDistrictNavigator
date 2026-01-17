@@ -1,28 +1,28 @@
 {
-  "id": "d0c42cc3-358f-4e70-97e6-ec64ba4a1dba",
-  "createdAt": "2026-01-17T20:24:29.457Z",
+  "id": "5886a98e-f049-4985-ba1b-16e498b48277",
+  "createdAt": "2026-01-17T20:48:28.365Z",
   "runtimeVersion": "exposdk:54.0.0",
   "launchAsset": {
-    "key": "bundle-1768681469457-16434",
+    "key": "bundle-1768682908365-21141",
     "contentType": "application/javascript",
-    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/1768681469457-16434/_expo/static/js/android/bundle.js"
+    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/1768682908365-21141/_expo/static/js/android/bundle.js"
   },
   "assets": [],
   "metadata": {},
   "extra": {
     "eas": {},
     "expoClient": {
-      "name": "Texas Districts",
-      "slug": "texas-districts",
+      "name": "TXDistrictNavigator",
+      "slug": "txdistrictnavigator",
       "version": "1.0.0",
       "orientation": "portrait",
       "icon": "./assets/images/icon.png",
-      "scheme": "texasdistricts",
+      "scheme": "txdistrictnavigator",
       "userInterfaceStyle": "automatic",
       "newArchEnabled": true,
       "ios": {
         "supportsTablet": true,
-        "bundleIdentifier": "com.texasdistricts.app"
+        "bundleIdentifier": "com.txdistrictnavigator.app"
       },
       "android": {
         "adaptiveIcon": {
@@ -36,7 +36,7 @@
         },
         "edgeToEdgeEnabled": true,
         "predictiveBackGestureEnabled": false,
-        "package": "com.texasdistricts.app"
+        "package": "com.txdistrictnavigator.app"
       },
       "web": {
         "output": "single",
@@ -100,6 +100,6 @@
       },
       "mainModuleName": "client/index"
     },
-    "scopeKey": "@anonymous/texas-districts-b01f6bf3-453d-4f7b-8433-34a5787e58d2"
+    "scopeKey": "@anonymous/txdistrictnavigator-b01f6bf3-453d-4f7b-8433-34a5787e58d2"
   }
 }

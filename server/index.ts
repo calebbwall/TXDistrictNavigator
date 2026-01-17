@@ -3,9 +3,14 @@ import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
+import * as http from "http";
+import { exec } from "child_process";
 
 const app = express();
 const log = console.log;
+
+// Port 8081 is used by Metro bundler from workflow
+// Static deployment is served on port 5000 directly
 
 declare module "http" {
   interface IncomingMessage {
@@ -239,23 +244,4 @@ function setupErrorHandler(app: express.Application) {
     },
   );
 
-  const expoPort = 8081;
-  const http = await import("http");
-  const expoServer = http.createServer(app);
-  expoServer.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      log(`Port ${expoPort} already in use (Metro?), skipping secondary server`);
-    } else {
-      log(`Expo server error: ${err.message}`);
-    }
-  });
-  expoServer.listen(
-    {
-      port: expoPort,
-      host: "0.0.0.0",
-    },
-    () => {
-      log(`express server also serving on port ${expoPort} for Expo Go`);
-    },
-  );
 })();
