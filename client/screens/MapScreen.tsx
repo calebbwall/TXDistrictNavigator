@@ -464,6 +464,24 @@ export default function MapScreen() {
   
   // Listen for postMessage on web platform (iframe communication)
   useEffect(() => {
+    // Only add window event listener on web platform
+    if (Platform.OS !== 'web') {
+      // On native, use a fallback timer since WebView handles messages via onMessage prop
+      const fallbackTimer = setTimeout(() => {
+        setMapReady((prev) => {
+          if (!prev) {
+            console.log('[MapScreen] Native fallback: forcing mapReady after timeout');
+            return true;
+          }
+          return prev;
+        });
+      }, 2000);
+      
+      return () => {
+        clearTimeout(fallbackTimer);
+      };
+    }
+    
     const handleWindowMessage = (event: MessageEvent) => {
       if (typeof event.data === 'string') {
         try {
