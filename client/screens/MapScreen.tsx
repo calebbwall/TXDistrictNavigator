@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { StyleSheet, View, Pressable, ActivityIndicator } from "react-native";
+import { StyleSheet, View, Pressable, ActivityIndicator, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -111,13 +111,17 @@ const MAP_HTML = `
     };
 
     function createLayer(type, data, colors) {
-      if (!data) return null;
+      if (!data) {
+        console.log('[Leaflet] createLayer: no data for', type);
+        return null;
+      }
+      console.log('[Leaflet] Creating layer:', type, 'with', data.features?.length || 0, 'features');
       return L.geoJSON(data, {
         style: {
           fillColor: colors.fill,
           color: colors.stroke,
-          weight: 1,
-          fillOpacity: 0.3
+          weight: 2,
+          fillOpacity: 0.15
         },
         onEachFeature: function(feature, layer) {
           layer.on('click', function() {
@@ -149,25 +153,33 @@ const MAP_HTML = `
     }
 
     window.toggleLayer = function(type, visible) {
+      console.log('[Leaflet] toggleLayer:', type, visible);
       const layer = layers[type];
-      if (!layer) return;
+      if (!layer) {
+        console.log('[Leaflet] Layer not ready yet:', type);
+        return;
+      }
       if (visible) {
         layer.addTo(map);
+        layer.bringToFront();
+        console.log('[Leaflet] Added layer to map:', type);
       } else {
         map.removeLayer(layer);
+        console.log('[Leaflet] Removed layer from map:', type);
       }
     };
 
     window.receiveMessage = function(message) {
       try {
         const data = JSON.parse(message);
+        console.log('[Leaflet] Received message:', data.type);
         if (data.type === 'setGeoJSON') {
           setGeoJSONData(data.layerType, data.geojson);
         } else if (data.type === 'toggleLayer') {
           window.toggleLayer(data.layer, data.visible);
         }
       } catch (e) {
-        console.error('Error processing message:', e);
+        console.error('[Leaflet] Error processing message:', e);
       }
     };
 
@@ -176,14 +188,40 @@ const MAP_HTML = `
     });
     
     window.addEventListener('message', function(e) {
-      window.receiveMessage(e.data);
+      if (e.data && typeof e.data === 'string') {
+        window.receiveMessage(e.data);
+      }
     });
 
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapReady' }));
+    // Send mapReady - works on both native and web
+    function sendMapReady() {
+      const msg = JSON.stringify({ type: 'mapReady' });
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(msg);
+        console.log('[Leaflet] Sent mapReady via ReactNativeWebView');
+      } else if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, '*');
+        console.log('[Leaflet] Sent mapReady via window.parent.postMessage');
+      } else {
+        console.log('[Leaflet] No postMessage target available');
+      }
+    }
+    
+    // Delay slightly to ensure RN WebView is ready
+    setTimeout(sendMapReady, 100);
   </script>
 </body>
 </html>
 `;
+
+// BUILD MARKER: 2026-01-17 PhaseA - Multi-overlay debug
+const BUILD_TIMESTAMP = "2026-01-17 PhaseA";
+
+interface GeoJSONLoadStatus {
+  house: { loaded: boolean; features: number; error: string | null };
+  senate: { loaded: boolean; features: number; error: string | null };
+  congress: { loaded: boolean; features: number; error: string | null };
+}
 
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
@@ -192,19 +230,29 @@ export default function MapScreen() {
   const webViewRef = useRef<WebView>(null);
 
   const [overlays, setOverlays] = useState<OverlayPreferences>({
-    senate: false,
+    senate: true,  // Default to showing at least one overlay
     house: false,
-    congress: false,
+    congress: true,
   });
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<SelectedDistrict | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [showDebug, setShowDebug] = useState(true);
+  const [loadStatus, setLoadStatus] = useState<GeoJSONLoadStatus>({
+    house: { loaded: false, features: 0, error: null },
+    senate: { loaded: false, features: 0, error: null },
+    congress: { loaded: false, features: 0, error: null },
+  });
 
   const layerButtonScale = useSharedValue(1);
 
   useEffect(() => {
-    getOverlayPreferences().then(setOverlays);
+    getOverlayPreferences().then((prefs) => {
+      console.log('[MapScreen] Loaded overlay preferences:', prefs);
+      setOverlays(prefs);
+      initialOverlaysRef.current = prefs;
+    });
   }, []);
 
   const sendToWebView = useCallback((message: object) => {
@@ -215,13 +263,42 @@ export default function MapScreen() {
   }, []);
 
   const fetchGeoJSON = useCallback(async (layerType: DistrictType) => {
+    const layerKey = layerType === 'tx_house' ? 'house' : 
+                     layerType === 'tx_senate' ? 'senate' : 'congress';
     try {
-      const url = new URL(`/api/geojson/${layerType}`, getApiUrl());
+      const baseUrl = getApiUrl();
+      const url = new URL(`/api/geojson/${layerType}`, baseUrl);
+      console.log(`[MapScreen] Fetching ${layerType} from: ${url.toString()}`);
+      
       const response = await fetch(url.toString());
-      if (!response.ok) throw new Error("Failed to fetch GeoJSON");
-      return await response.json();
+      console.log(`[MapScreen] ${layerType} response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+        setLoadStatus(prev => ({
+          ...prev,
+          [layerKey]: { loaded: false, features: 0, error: errorMsg }
+        }));
+        throw new Error(errorMsg);
+      }
+      
+      const data = await response.json();
+      const featureCount = data?.features?.length || 0;
+      console.log(`[MapScreen] ${layerType} loaded: ${featureCount} features`);
+      
+      setLoadStatus(prev => ({
+        ...prev,
+        [layerKey]: { loaded: true, features: featureCount, error: null }
+      }));
+      
+      return data;
     } catch (error) {
-      console.error(`Error fetching ${layerType} GeoJSON:`, error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[MapScreen] Error fetching ${layerType}:`, error);
+      setLoadStatus(prev => ({
+        ...prev,
+        [layerKey]: { loaded: false, features: 0, error: errorMsg }
+      }));
       return null;
     }
   }, []);
@@ -241,35 +318,59 @@ export default function MapScreen() {
     }
   }, []);
 
+  const geoJSONLoadedRef = useRef(false);
+  const initialOverlaysRef = useRef(overlays);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
   useEffect(() => {
-    if (!mapReady) return;
+    if (!mapReady || geoJSONLoadedRef.current) return;
+    
+    console.log('[MapScreen] Map is ready, starting GeoJSON load');
+    geoJSONLoadedRef.current = true;
     
     const loadGeoJSON = async () => {
+      console.log('[MapScreen] Fetching all GeoJSON...');
       const [senate, house, congress] = await Promise.all([
         fetchGeoJSON("tx_senate"),
         fetchGeoJSON("tx_house"),
         fetchGeoJSON("us_congress"),
       ]);
       
+      console.log('[MapScreen] GeoJSON fetch complete, sending to WebView');
+      
+      // Use sendToIframe for web, sendToWebView for native
+      const sendMsg = Platform.OS === 'web' 
+        ? (msg: object) => {
+            if (iframeRef.current?.contentWindow) {
+              iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+            }
+          }
+        : sendToWebView;
+      
       if (senate) {
-        sendToWebView({ type: 'setGeoJSON', layerType: 'tx_senate', geojson: senate });
+        sendMsg({ type: 'setGeoJSON', layerType: 'tx_senate', geojson: senate });
       }
       if (house) {
-        sendToWebView({ type: 'setGeoJSON', layerType: 'tx_house', geojson: house });
+        sendMsg({ type: 'setGeoJSON', layerType: 'tx_house', geojson: house });
       }
       if (congress) {
-        sendToWebView({ type: 'setGeoJSON', layerType: 'us_congress', geojson: congress });
+        sendMsg({ type: 'setGeoJSON', layerType: 'us_congress', geojson: congress });
       }
       
       setDataLoaded(true);
+      console.log('[MapScreen] DataLoaded set to true');
       
-      if (overlays.senate) sendToWebView({ type: 'toggleLayer', layer: 'senate', visible: true });
-      if (overlays.house) sendToWebView({ type: 'toggleLayer', layer: 'house', visible: true });
-      if (overlays.congress) sendToWebView({ type: 'toggleLayer', layer: 'congress', visible: true });
+      // Use initial overlays to avoid stale closure
+      const currentOverlays = initialOverlaysRef.current;
+      console.log('[MapScreen] Applying initial overlays:', currentOverlays);
+      
+      if (currentOverlays.senate) sendMsg({ type: 'toggleLayer', layer: 'senate', visible: true });
+      if (currentOverlays.house) sendMsg({ type: 'toggleLayer', layer: 'house', visible: true });
+      if (currentOverlays.congress) sendMsg({ type: 'toggleLayer', layer: 'congress', visible: true });
     };
     
     loadGeoJSON();
-  }, [mapReady, fetchGeoJSON, sendToWebView, overlays]);
+  }, [mapReady, fetchGeoJSON, sendToWebView]);
 
   const handleToggleOverlay = useCallback(
     async (type: keyof OverlayPreferences) => {
@@ -279,7 +380,14 @@ export default function MapScreen() {
       setOverlays(newOverlays);
       await saveOverlayPreferences(newOverlays);
       
-      sendToWebView({ type: 'toggleLayer', layer: type, visible: newValue });
+      const msg = { type: 'toggleLayer', layer: type, visible: newValue };
+      if (Platform.OS === 'web') {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+        }
+      } else {
+        sendToWebView(msg);
+      }
     },
     [overlays, sendToWebView]
   );
@@ -336,31 +444,120 @@ export default function MapScreen() {
 
   const handleWebViewMessage = useCallback(async (event: any) => {
     try {
-      const data = JSON.parse(event.nativeEvent.data);
+      const rawData = event.nativeEvent?.data || event.data;
+      if (!rawData || typeof rawData !== 'string') return;
+      
+      const data = JSON.parse(rawData);
+      console.log('[MapScreen] WebView message received:', data.type);
       if (data.type === "districtClick") {
         await handleDistrictPress(data.districtType, data.districtNumber);
       } else if (data.type === "mapReady") {
+        console.log('[MapScreen] Map is ready!');
         setMapReady(true);
       }
     } catch (error) {
-      console.error("Error parsing WebView message:", error);
+      console.error("[MapScreen] Error parsing WebView message:", error);
     }
   }, [handleDistrictPress]);
+  
+  // Listen for postMessage on web platform (iframe communication)
+  useEffect(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      if (typeof event.data === 'string') {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[MapScreen] Window message received:', data.type);
+          if (data.type === "districtClick") {
+            handleDistrictPress(data.districtType, data.districtNumber);
+          } else if (data.type === "mapReady") {
+            console.log('[MapScreen] Map is ready (from window)!');
+            setMapReady(true);
+          }
+        } catch (e) {
+          // Not JSON, ignore
+        }
+      }
+    };
+    
+    window.addEventListener('message', handleWindowMessage);
+    
+    // Fallback: Force mapReady after 2 seconds if not already set
+    // This handles cases where WebView postMessage doesn't work on web
+    const fallbackTimer = setTimeout(() => {
+      setMapReady((prev) => {
+        if (!prev) {
+          console.log('[MapScreen] Fallback: forcing mapReady after timeout');
+          return true;
+        }
+        return prev;
+      });
+    }, 2000);
+    
+    return () => {
+      window.removeEventListener('message', handleWindowMessage);
+      clearTimeout(fallbackTimer);
+    };
+  }, [handleDistrictPress]);
+
+  // Create blob URL for the map HTML on web
+  const mapBlobUrl = useRef<string | null>(null);
+  
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const blob = new Blob([MAP_HTML], { type: 'text/html' });
+      mapBlobUrl.current = URL.createObjectURL(blob);
+      return () => {
+        if (mapBlobUrl.current) {
+          URL.revokeObjectURL(mapBlobUrl.current);
+        }
+      };
+    }
+  }, []);
+
+  // Send message to iframe on web (iframeRef declared earlier)
+  const sendToIframe = useCallback((message: object) => {
+    if (Platform.OS === 'web' && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(JSON.stringify(message), '*');
+    }
+  }, []);
+
+  // Override sendToWebView to also handle web iframe
+  const sendToMap = useCallback((message: object) => {
+    if (Platform.OS === 'web') {
+      sendToIframe(message);
+    } else {
+      sendToWebView(message);
+    }
+  }, [sendToWebView, sendToIframe]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      <WebView
-        ref={webViewRef}
-        source={{ html: MAP_HTML }}
-        style={styles.map}
-        onMessage={handleWebViewMessage}
-        javaScriptEnabled
-        domStorageEnabled
-        scrollEnabled={false}
-        bounces={false}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-      />
+      {Platform.OS === 'web' ? (
+        <iframe
+          ref={(ref) => { iframeRef.current = ref; }}
+          srcDoc={MAP_HTML}
+          style={{ 
+            flex: 1, 
+            width: '100%', 
+            height: '100%', 
+            border: 'none',
+          }}
+          title="Texas Districts Map"
+        />
+      ) : (
+        <WebView
+          ref={webViewRef}
+          source={{ html: MAP_HTML }}
+          style={styles.map}
+          onMessage={handleWebViewMessage}
+          javaScriptEnabled
+          domStorageEnabled
+          scrollEnabled={false}
+          bounces={false}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
 
       {!dataLoaded ? (
         <View style={styles.loadingOverlay}>
@@ -368,6 +565,34 @@ export default function MapScreen() {
           <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.sm }}>
             Loading map data...
           </ThemedText>
+        </View>
+      ) : null}
+
+      {showDebug ? (
+        <View style={[styles.debugPanel, { top: insets.top + Spacing.sm, backgroundColor: 'rgba(0,0,0,0.85)' }]}>
+          <Pressable onPress={() => setShowDebug(false)} style={styles.debugClose}>
+            <ThemedText type="small" style={{ color: '#fff' }}>X</ThemedText>
+          </Pressable>
+          <ThemedText type="small" style={{ color: '#0f0', fontFamily: 'monospace' }}>
+            BUILD: {BUILD_TIMESTAMP}
+          </ThemedText>
+          <ThemedText type="small" style={{ color: '#fff', fontFamily: 'monospace' }}>
+            Overlays: H={overlays.house ? 'ON' : 'off'} S={overlays.senate ? 'ON' : 'off'} C={overlays.congress ? 'ON' : 'off'}
+          </ThemedText>
+          <ThemedText type="small" style={{ color: '#fff', fontFamily: 'monospace' }}>
+            MapReady: {mapReady ? 'YES' : 'NO'} | DataLoaded: {dataLoaded ? 'YES' : 'NO'}
+          </ThemedText>
+          <View style={{ marginTop: 4 }}>
+            <ThemedText type="small" style={{ color: loadStatus.house.loaded ? '#0f0' : '#f00', fontFamily: 'monospace' }}>
+              House: {loadStatus.house.loaded ? `${loadStatus.house.features} features` : loadStatus.house.error || 'pending'}
+            </ThemedText>
+            <ThemedText type="small" style={{ color: loadStatus.senate.loaded ? '#0f0' : '#f00', fontFamily: 'monospace' }}>
+              Senate: {loadStatus.senate.loaded ? `${loadStatus.senate.features} features` : loadStatus.senate.error || 'pending'}
+            </ThemedText>
+            <ThemedText type="small" style={{ color: loadStatus.congress.loaded ? '#0f0' : '#f00', fontFamily: 'monospace' }}>
+              Congress: {loadStatus.congress.loaded ? `${loadStatus.congress.features} features` : loadStatus.congress.error || 'pending'}
+            </ThemedText>
+          </View>
         </View>
       ) : null}
 
@@ -576,5 +801,20 @@ const styles = StyleSheet.create({
   },
   officialInfo: {
     paddingTop: Spacing.xs,
+  },
+  debugPanel: {
+    position: 'absolute',
+    left: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    zIndex: 100,
+    elevation: 10,
+    maxWidth: 220,
+  },
+  debugClose: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    padding: 4,
   },
 });

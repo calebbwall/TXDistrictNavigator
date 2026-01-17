@@ -78,12 +78,25 @@ export async function savePrivateNotes(officialId: string, notes: PrivateNotes):
   }
 }
 
+const DEFAULT_OVERLAY_PREFS: OverlayPreferences = { 
+  senate: true,   // Default to showing Senate overlay
+  house: false, 
+  congress: true  // Default to showing Congress overlay
+};
+
 export async function getOverlayPreferences(): Promise<OverlayPreferences> {
   try {
     const prefs = await AsyncStorage.getItem(OVERLAY_PREFERENCES_KEY);
-    return prefs ? JSON.parse(prefs) : { senate: false, house: false, congress: false };
+    if (!prefs) return DEFAULT_OVERLAY_PREFS;
+    
+    const parsed = JSON.parse(prefs);
+    // Ensure at least one overlay is visible
+    if (!parsed.senate && !parsed.house && !parsed.congress) {
+      return DEFAULT_OVERLAY_PREFS;
+    }
+    return parsed;
   } catch {
-    return { senate: false, house: false, congress: false };
+    return DEFAULT_OVERLAY_PREFS;
   }
 }
 

@@ -1,0 +1,137 @@
+Problem
+Replit agent claims multi-overlay map with toggles is “already fully implemented,” but in the actual running app:
+	•	Texas House and Texas Senate overlays do not show
+	•	There are no on-map toggle buttons to enable/disable overlays
+
+You must treat the agent’s prior message as potentially incorrect and verify behavior in the running app by adding instrumentation and checking network requests + rendering. Do not conclude it’s “already done” until verified with evidence.
+
+Goal
+Make the Map tab show:
+	•	TX House overlay (red stroke)
+	•	TX Senate overlay (blue stroke)
+	•	US Congress overlay (green stroke)
+And show on-map toggle buttons (House/Senate/Congress) that can be independently enabled/disabled simultaneously.
+
+⸻
+
+1) Verify the code path the app is actually executing
+	1.	Find the Map tab entry and confirm which component is used (MapScreen.tsx).
+	2.	Add a temporary, obvious UI marker at the top of the Map screen, e.g. a small banner:
+MAPSCREEN BUILD: <timestamp> / PhaseA
+This proves the file you edit is the file the app is rendering.
+
+If you add this and it doesn’t show in the app, stop and fix the build wiring first. (Wrong file, wrong import path, stale bundle, etc.)
+
+⸻
+
+2) Verify the toggle UI is actually rendered (and not hidden)
+
+Regardless of what exists in code, ensure the toggle buttons are visible:
+	•	Implement/confirm a Map overlay control bar that is rendered inside MapScreen’s JSX and is positioned above the map:
+	•	Buttons: House, Senate, Congress
+	•	Multi-select toggles
+	•	Colors: red/blue/green accents
+	•	Ensure it is not hidden behind the WebView:
+	•	Use position: 'absolute', top: <safe area>, zIndex: 9999, elevation: 20
+	•	Verify the parent container has flex: 1 and the overlay is inside it.
+
+Add a second temporary UI debug line that prints the overlay state:
+	•	Overlays: H=<true/false> S=<true/false> C=<true/false>
+
+This makes it impossible for the toggles to “exist” but not be visible.
+
+⸻
+
+3) Verify GeoJSON requests are happening and succeeding
+
+In MapScreen.tsx, add logs + error UI:
+	•	Log the exact URLs used to fetch GeoJSON for each overlay.
+	•	Log HTTP status codes.
+	•	Log features.length after parsing GeoJSON.
+
+Add a small dev-only debug panel on the map that shows, per overlay:
+	•	house: loaded=true/false, features=<n>, error=<msg>
+	•	senate: loaded=true/false, features=<n>, error=<msg>
+	•	congress: loaded=true/false, features=<n>, error=<msg>
+
+If House/Senate are failing to load, you must fix the root cause:
+	•	wrong endpoint path
+	•	server not serving those files
+	•	base URL points to localhost/incorrect host for Expo
+	•	CORS / fetch blocked
+	•	variant query param mismatch
+	•	JSON parse error
+
+⸻
+
+4) Confirm server endpoints for House/Senate exist and return data
+
+On the Express server:
+	•	Verify that /api/geojson/tx_house and /api/geojson/tx_senate are implemented and return valid GeoJSON.
+	•	If they do not exist, implement them using the simplified files by default:
+	•	tx_house_simplified.geojson
+	•	tx_senate_simplified.geojson
+	•	us_congress_simplified.geojson
+
+Add server logs on request:
+	•	endpoint called
+	•	bytes returned
+	•	features count
+
+⸻
+
+5) Verify WebView message contract actually matches
+
+If the map runs in a WebView with Leaflet:
+	•	Confirm postMessage types from RN match exactly what the WebView listens for.
+	•	If RN sends toggleLayer but WebView expects SET_OVERLAYS (or vice versa), fix it.
+	•	Add console logs inside the WebView HTML/JS for:
+	•	received messages
+	•	which layers were added/removed
+	•	feature counts per layer
+
+Also ensure each overlay is a separate Leaflet layer:
+	•	houseLayer (red)
+	•	senateLayer (blue)
+	•	congressLayer (green)
+
+And that toggling does:
+	•	addTo(map) / removeLayer(layer)
+not full reinitialization.
+
+⸻
+
+6) Persist overlay prefs, but don’t let persistence break defaults
+	•	Load overlay prefs from AsyncStorage.
+	•	If missing, default to at least Congress on.
+	•	If prefs exist but hide everything, show at least one overlay and make it obvious in UI.
+
+⸻
+
+7) Required proof of completion
+
+When done, you must provide:
+	1.	The specific files changed
+	2.	The new UI markers added (and whether they should be removed later)
+	3.	Example logs showing:
+	•	House features count
+	•	Senate features count
+	•	Congress features count
+	4.	Confirmation that the on-map toggle buttons are visible and functional
+
+⸻
+
+8) User actions (I will do after you implement)
+
+I will:
+	•	Restart the Expo app with cache cleared (e.g., expo start -c or equivalent in Replit)
+	•	Reload the app fully to ensure the new bundle is running
+
+⸻
+
+Acceptance criteria
+	•	Map shows House (red), Senate (blue), Congress (green) overlays when toggled on
+	•	Buttons appear on the map to toggle each overlay independently
+	•	At least one overlay is visible by default
+	•	Debug panel confirms successful loads (feature counts not zero unless truly empty)
+	•	No WebView reload required for toggling
