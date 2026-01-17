@@ -142,6 +142,10 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-17: Fixed map rendering on web platform (iframe instead of WebView for web compatibility)
+- 2026-01-17: Added multi-overlay toggle functionality with independent layer controls
+- 2026-01-17: Positioned layer controls below navigation header using useHeaderHeight
+- 2026-01-17: All three GeoJSON layers load correctly (House: 150, Senate: 31, Congress: 38 districts)
 - 2026-01-16: Added complete vacancy display feature - shows all districts including vacant seats with distinct styling
 - 2026-01-16: Vacancies dynamically filled by API using district range constants (TX_HOUSE: 1-150, TX_SENATE: 1-31, US_HOUSE: 1-38)
 - 2026-01-16: OfficialCard shows vacancies with dashed borders, user-x icon, and "Seat Currently Vacant" label

@@ -240,7 +240,7 @@ export default function MapScreen() {
   const [selectedDistrict, setSelectedDistrict] = useState<SelectedDistrict | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [showDebug, setShowDebug] = useState(true);
+  const [showDebug, setShowDebug] = useState(false);
   const [loadStatus, setLoadStatus] = useState<GeoJSONLoadStatus>({
     house: { loaded: false, features: 0, error: null },
     senate: { loaded: false, features: 0, error: null },
