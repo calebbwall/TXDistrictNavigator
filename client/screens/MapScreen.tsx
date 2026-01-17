@@ -710,15 +710,26 @@ export default function MapScreen() {
       ) : (
         <WebView
           ref={webViewRef}
-          source={{ html: MAP_HTML }}
+          source={{ html: MAP_HTML, baseUrl: '' }}
           style={styles.map}
           onMessage={handleWebViewMessage}
+          onError={(syntheticEvent) => {
+            const { nativeEvent } = syntheticEvent;
+            console.error('[WebView] Error:', nativeEvent.description, nativeEvent.url);
+          }}
+          onHttpError={(syntheticEvent) => {
+            const { nativeEvent } = syntheticEvent;
+            console.error('[WebView] HTTP Error:', nativeEvent.statusCode, nativeEvent.url);
+          }}
+          originWhitelist={['*']}
           javaScriptEnabled
           domStorageEnabled
           scrollEnabled={false}
           bounces={false}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
+          mixedContentMode="always"
+          allowsInlineMediaPlayback
         />
       )}
 
@@ -738,6 +749,9 @@ export default function MapScreen() {
           </Pressable>
           <ThemedText type="small" style={{ color: '#0f0', fontFamily: 'monospace' }}>
             BUILD: {BUILD_TIMESTAMP}
+          </ThemedText>
+          <ThemedText type="small" style={{ color: '#ff0', fontFamily: 'monospace', fontSize: 9 }} numberOfLines={1}>
+            API: {(() => { try { return getApiUrl(); } catch { return 'ERROR'; } })()}
           </ThemedText>
           <ThemedText type="small" style={{ color: '#fff', fontFamily: 'monospace' }}>
             Overlays: H={overlays.house ? 'ON' : 'off'} S={overlays.senate ? 'ON' : 'off'} C={overlays.congress ? 'ON' : 'off'}

@@ -1,0 +1,57 @@
+Fix: iOS WebView “Could not connect to the server” (NSURLErrorDomain -1004) on Map
+
+Problem
+On the Map tab, the WebView shows “Error loading page… Could not connect to the server” (NSURLErrorDomain -1004). This means the WebView source is pointing to an unreachable URL (often localhost), so the map never initializes.
+
+Goal
+Make the map load reliably in Expo Go on iOS by:
+	1.	Ensuring the WebView loads from inline HTML (source={{ html: ... }}), not from a remote URL.
+	2.	Moving all GeoJSON fetching to React Native (not inside WebView), using the correct API base URL.
+	3.	Passing GeoJSON into WebView via postMessage.
+
+Non-negotiable
+	•	Do not use localhost, 127.0.0.1, or relative /api/... inside the WebView.
+	•	The WebView must render even if the server is down (it can show an empty Leaflet map + an error overlay, but it must not fail to load).
+
+Step 1: Fix WebView source
+
+In MapScreen.tsx, set:
+	•	source={{ html: LEAFLET_HTML_STRING }}
+	•	Ensure Leaflet CSS/JS is loaded via CDN inside the HTML string (or bundled), so no server dependency is required to display the base map container.
+
+Add an onError handler to the WebView that logs the failing URL if any.
+
+Step 2: RN handles all API calls
+
+Implement RN-side fetching for:
+	•	/api/geojson/tx_house
+	•	/api/geojson/tx_senate
+	•	/api/geojson/us_congress
+
+Use the same API base URL used elsewhere in the app. Do NOT hardcode localhost.
+
+If a base URL helper does not exist, implement one using Expo Constants so it works on device:
+	•	Use Constants.expoConfig?.hostUri or Constants.manifest?.hostUri to derive host, then point to the backend port used by the repl.
+	•	Print the computed base URL in the debug panel.
+
+Step 3: WebView receives data via postMessage
+
+WebView must listen for:
+	•	SET_GEOJSON messages that include { layer, geojson }
+	•	SET_OVERLAYS messages that include booleans for visibility
+
+No fetching inside WebView.
+
+Step 4: Debug panel must show base URL + fetch statuses
+
+On the map debug panel show:
+	•	ApiBaseUrl: ...
+	•	per overlay: status, http status, features count, last error
+
+Acceptance criteria
+	•	Map loads without WebView error screen on iOS Expo Go
+	•	Base map container renders
+	•	When toggles are ON, overlays load and render
+	•	Debug panel shows base URL and per-layer fetch results
+
+Deliver the exact list of files changed.
