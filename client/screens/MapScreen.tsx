@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { StyleSheet, View, Pressable, ActivityIndicator, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { WebView } from "react-native-webview";
 import Animated, {
@@ -225,6 +226,7 @@ interface GeoJSONLoadStatus {
 
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   const navigation = useNavigation<NavigationProp>();
   const { theme } = useTheme();
   const webViewRef = useRef<WebView>(null);
@@ -569,7 +571,7 @@ export default function MapScreen() {
       ) : null}
 
       {showDebug ? (
-        <View style={[styles.debugPanel, { top: insets.top + Spacing.sm, backgroundColor: 'rgba(0,0,0,0.85)' }]}>
+        <View style={[styles.debugPanel, { top: headerHeight + Spacing.sm, backgroundColor: 'rgba(0,0,0,0.85)' }]}>
           <Pressable onPress={() => setShowDebug(false)} style={styles.debugClose}>
             <ThemedText type="small" style={{ color: '#fff' }}>X</ThemedText>
           </Pressable>
@@ -600,7 +602,7 @@ export default function MapScreen() {
         style={[
           styles.layerButton,
           {
-            top: insets.top + Spacing.sm,
+            top: headerHeight + Spacing.sm,
             backgroundColor: theme.cardBackground,
           },
           Shadows.md,
@@ -635,7 +637,7 @@ export default function MapScreen() {
           style={[
             styles.layerPanel,
             {
-              top: insets.top + Spacing.sm + 48,
+              top: headerHeight + Spacing.sm + 48,
               backgroundColor: theme.cardBackground,
             },
             Shadows.lg,
@@ -748,6 +750,8 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: BorderRadius.sm,
+    zIndex: 1000,
+    elevation: 100,
   },
   layerButtonInner: {
     flex: 1,
@@ -775,6 +779,8 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     borderRadius: BorderRadius.md,
     minWidth: 180,
+    zIndex: 1000,
+    elevation: 100,
   },
   districtCardContainer: {
     position: "absolute",
