@@ -1,11 +1,11 @@
 {
-  "id": "b9cc3ab3-ee74-4f5c-acf3-27e7f1aaaf7f",
-  "createdAt": "2026-01-17T20:56:05.118Z",
+  "id": "e1dff119-1dfb-4473-a32a-c299f21ffddd",
+  "createdAt": "2026-01-17T21:02:26.338Z",
   "runtimeVersion": "exposdk:54.0.0",
   "launchAsset": {
-    "key": "bundle-1768683365118-23218",
+    "key": "bundle-1768683746338-24729",
     "contentType": "application/javascript",
-    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/1768683365118-23218/_expo/static/js/android/bundle.js"
+    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev:5000/1768683746338-24729/_expo/static/js/android/bundle.js"
   },
   "assets": [],
   "metadata": {},
@@ -69,11 +69,11 @@
         "pluginHistory": {
           "expo-splash-screen": {
             "name": "expo-splash-screen",
-            "version": "31.0.11"
+            "version": "31.0.13"
           },
           "expo-web-browser": {
             "name": "expo-web-browser",
-            "version": "15.0.9"
+            "version": "15.0.10"
           }
         }
       },
@@ -87,10 +87,10 @@
         "backgroundColor": "#ffffff"
       },
       "iconUrl": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/assets/./assets/images/icon.png",
-      "hostUri": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/android"
+      "hostUri": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev:5000/android"
     },
     "expoGo": {
-      "debuggerHost": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/android",
+      "debuggerHost": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev:5000/android",
       "developer": {
         "tool": "expo-cli",
         "projectRoot": "/home/runner/workspace"

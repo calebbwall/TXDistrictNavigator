@@ -500,7 +500,9 @@ async function main() {
   setupSignalHandlers();
 
   const domain = getDeploymentDomain();
-  const baseUrl = `https://${domain}`;
+  // Include port 5000 since static files are served by Express on port 5000
+  // (Metro runs on 8081 which is mapped to default port 80)
+  const baseUrl = `https://${domain}:5000`;
   const timestamp = `${Date.now()}-${process.pid}`;
 
   prepareDirectories(timestamp);

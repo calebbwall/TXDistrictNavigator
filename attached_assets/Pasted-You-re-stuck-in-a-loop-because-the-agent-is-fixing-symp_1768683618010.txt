@@ -1,0 +1,129 @@
+You’re stuck in a loop because the agent is “fixing” symptoms without proving the root cause. For NSURLErrorDomain -1004 in an iOS WebView, there are only a few real causes, and we can force the agent to identify which one it is and fix it with evidence.
+
+Here’s a prompt that (1) bans the common bad patterns, (2) requires instrumentation, and (3) requires a minimal reproducible success condition before moving on.
+
+Copy/paste this exact prompt into Replit Continuous Agent:
+
+⸻
+
+Replit Continuous Agent Prompt
+
+Stop the loop: Fix iOS WebView NSURLErrorDomain -1004 for Map screen with proof
+
+Problem
+On iOS (Expo Go), the Map screen WebView repeatedly shows:
+	•	“Error loading page”
+	•	NSURLErrorDomain
+	•	Error Code: -1004
+	•	“Could not connect to the server”
+
+This persists despite prior “fixes.” You must assume prior changes were incorrect or not running. I need a fix that works on-device, not just in browser preview.
+
+Non-negotiable constraints
+	1.	The WebView must NOT load any URL that depends on device reaching “localhost”, “127.0.0.1”, “0.0.0.0”, or a relative path like /map.html or /api/... from inside the WebView.
+	2.	Do NOT use source={{ uri: ... }} unless the URI is fully proven reachable from the phone.
+	3.	Preferred architecture: inline HTML for Leaflet in WebView + React Native performs all network fetches + send GeoJSON into WebView via postMessage.
+	4.	You must add instrumentation so the app shows exactly what it’s trying to load/fetch.
+
+⸻
+
+Step 1 — Prove we’re editing the correct file that is actually running
+
+In MapScreen.tsx, add a visible banner:
+MAP BUILD CHECK: <timestamp>
+
+If I don’t see this banner in the app, STOP and fix the wiring (wrong file/import, stale bundle, etc.) before continuing.
+
+⸻
+
+Step 2 — Instrument WebView load source and errors (must be visible)
+
+Add a dev-only debug panel on the Map screen that displays:
+	•	WebViewSourceType: html or uri
+	•	If uri, display the full URL
+	•	onLoadStart, onLoadEnd timestamps
+	•	onError details including failing URL and native error code/domain
+
+This debug panel must render above the map and remain visible.
+
+⸻
+
+Step 3 — Implement the correct fix (inline HTML, no remote page load)
+
+Change the WebView to only load inline HTML:
+
+<WebView source={{ html: MAP_HTML }} ... />
+
+MAP_HTML must be a complete HTML string that includes Leaflet JS/CSS via CDN or embedded, and creates a map container. This ensures the WebView can load even if the backend is down.
+
+Do NOT load landing-page.html or any server-hosted html file via URI.
+
+⸻
+
+Step 4 — Move all GeoJSON fetching to React Native (not WebView)
+
+In React Native code (MapScreen or helper):
+	•	Compute a correct API_BASE_URL that is reachable from the phone.
+	•	Fetch GeoJSON from:
+	•	/api/geojson/tx_house
+	•	/api/geojson/tx_senate
+	•	/api/geojson/us_congress
+	•	Show in the debug panel for each overlay:
+	•	request URL
+	•	HTTP status
+	•	bytes
+	•	features.length
+	•	error message if any
+
+IMPORTANT: Do not hardcode localhost.
+Use an existing API base helper if present. If not, implement a robust one for Replit + Expo Go:
+	•	If you have a published URL for the server, use that.
+	•	Otherwise derive host from Expo Constants and append the backend port, and display it in debug panel.
+
+⸻
+
+Step 5 — WebView must only receive data, never fetch it
+
+Implement window.addEventListener('message', ...) in the WebView HTML to handle:
+	1.	SET_OVERLAYS:
+
+{ "type": "SET_OVERLAYS", "overlays": { "house": true, "senate": true, "congress": true } }
+
+	2.	SET_GEOJSON:
+
+{ "type": "SET_GEOJSON", "layer": "house|senate|congress", "geojson": {...} }
+
+WebView creates and toggles Leaflet layers from provided GeoJSON. No network calls from WebView.
+
+⸻
+
+Step 6 — Hard acceptance test (must pass before you claim done)
+
+After implementation, the Map tab must show:
+	•	the “MAP BUILD CHECK” banner
+	•	debug panel shows WebViewSourceType=html
+	•	no WebView error screen
+	•	overlay fetch statuses show 200 and feature counts > 0
+	•	toggles work without reloading the WebView
+
+If any fetch fails, the debug panel must show the failing URL and error text (no “pending forever”).
+
+⸻
+
+Step 7 — Deliver proof in your response
+
+In your completion message, include:
+	•	exact files changed
+	•	the WebView source line (confirm it is html)
+	•	the computed API_BASE_URL printed by the debug panel
+	•	example console output showing at least one overlay fetch success
+
+⸻
+
+Why this fixes it
+
+NSURLErrorDomain -1004 is the WebView failing to load a URL. Inline HTML removes that failure class entirely. RN-side fetches are far more reliable in Expo Go than WebView-relative fetches.
+
+⸻
+
+If the agent follows that prompt faithfully, you’ll either (a) fix it, or (b) at minimum get the exact URL and error causing the failure, which makes the next fix deterministic instead of vibes-based.
