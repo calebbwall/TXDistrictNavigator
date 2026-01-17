@@ -1,0 +1,108 @@
+
+Fix: All overlays stuck “pending” (WebView fetch is broken) — move GeoJSON fetching to React Native and push data into WebView
+
+Problem
+On Map load the debug panel shows:
+	•	MapReady: YES
+	•	DataLoaded: YES
+But overlays show:
+	•	House: pending
+	•	Senate: pending
+	•	Congress: pending
+
+No districts render. This started after adding multi-overlay support. The most likely root cause is that the Leaflet WebView is attempting to fetch("/api/...") (or similar relative URLs) from a file:///about:blank origin, so the requests never reach the Express backend. Because errors are not being surfaced correctly, overlay status never changes from “pending.”
+
+Goal
+Make all overlays load reliably again by:
+	1.	Fetching GeoJSON in React Native (not inside the WebView), using the correct server base URL the app already uses elsewhere.
+	2.	Sending the GeoJSON to the WebView via postMessage so Leaflet can add layers without doing network calls.
+	3.	Updating the debug panel so overlays always move from pending → loaded or pending → error with details.
+
+Colors:
+	•	House: red
+	•	Senate: blue
+	•	Congress: green
+
+No WebView reloads on toggle.
+
+⸻
+
+A) RN-side GeoJSON fetch + caching
+
+In MapScreen.tsx (or a helper module), implement:
+	•	getGeoJson(type) that fetches:
+	•	tx_house_simplified.geojson
+	•	tx_senate_simplified.geojson
+	•	us_congress_simplified.geojson
+from the Express backend using the same base URL logic the app uses for other API calls (do not hardcode localhost).
+
+Requirements:
+	•	Cache results in memory (and optionally AsyncStorage) so toggles are instant after first load.
+	•	On toggle ON:
+	•	Set overlay status = pending
+	•	Fetch (or read cache)
+	•	On success:
+	•	Set overlay status = loaded, record featuresCount
+	•	Post message to WebView with the GeoJSON payload
+	•	On error:
+	•	Set overlay status = error, include message and statusCode if available
+	•	Do not leave it as pending forever
+
+Important: Implement a timeout (e.g., 10s). If exceeded, mark error.
+
+⸻
+
+B) WebView side: accept GeoJSON via message and add/remove layers
+
+Update the Leaflet WebView script to support messages:
+
+RN → WebView:
+	1.	SET_OVERLAYS with booleans (already exists)
+	2.	SET_GEOJSON to deliver data:
+
+{
+  "type": "SET_GEOJSON",
+  "layer": "house" | "senate" | "congress",
+  "geojson": { "type": "FeatureCollection", "features": [...] }
+}
+
+WebView behavior:
+	•	Maintain layers = { house: L.GeoJSON|null, senate: ..., congress: ... }
+	•	On SET_GEOJSON:
+	•	If layer exists: remove it first
+	•	Create new L.geoJSON(geojson, { style: ... })
+	•	If that overlay is currently toggled ON, add it to map
+	•	On toggle OFF: remove layer if present
+	•	On toggle ON: if layer not present yet, wait for RN to send it (but do NOT try to fetch inside WebView)
+
+⸻
+
+C) Fix the debug overlay see-through truthfully
+
+Update the debug panel to show per overlay:
+	•	status: pending|loaded|error
+	•	featuresCount
+	•	lastError
+
+Remove any “DataLoaded: YES” flag that can become meaningless. Instead show:
+	•	HouseStatus, SenateStatus, CongressStatus derived from the real fetch outcomes.
+
+⸻
+
+D) Validate with hard evidence
+
+After changes, confirm:
+	•	On map load with all toggles ON:
+	•	Each overlay transitions to loaded
+	•	featuresCount > 0 (House ~150, Senate ~31, Congress ~38)
+	•	District lines appear on map
+
+If any overlay errors, the debug panel must show the error string and HTTP status.
+
+⸻
+
+E) Deliverables
+	•	RN fetch/caching implementation
+	•	WebView message handler for SET_GEOJSON
+	•	Overlay debug panel updated so “pending forever” cannot happen
+	•	A short note listing the exact files changed
