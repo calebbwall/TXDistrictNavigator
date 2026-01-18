@@ -16,9 +16,10 @@ import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { searchOfficialsByName, mockOfficials, type Official } from "@/lib/mockData";
+import { searchOfficialsByName } from "@/lib/mockData";
 import { fetchOfficials } from "@/lib/officialsApi";
-import { apiOfficialsToLegacy } from "@/lib/officialsAdapter";
+import { apiOfficialsToNormalized, mockOfficialsToNormalized } from "@/lib/officialsAdapter";
+import type { Official } from "@/lib/officials";
 import type { SearchStackParamList } from "@/navigation/SearchStackNavigator";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 
@@ -48,15 +49,15 @@ export default function SearchScreen() {
     try {
       const apiResults = await fetchOfficials(undefined, searchQuery.trim());
       if (apiResults.length > 0) {
-        setSearchResults(apiOfficialsToLegacy(apiResults));
+        setSearchResults(apiOfficialsToNormalized(apiResults));
       } else {
         const fallbackResults = searchOfficialsByName(searchQuery.trim());
-        setSearchResults(fallbackResults);
+        setSearchResults(mockOfficialsToNormalized(fallbackResults));
       }
     } catch (error) {
       console.error("API search failed, using mock data:", error);
       const fallbackResults = searchOfficialsByName(searchQuery.trim());
-      setSearchResults(fallbackResults);
+      setSearchResults(mockOfficialsToNormalized(fallbackResults));
     }
     setHasSearched(true);
   }, [searchQuery]);
@@ -72,13 +73,13 @@ export default function SearchScreen() {
       ]);
       const allOfficials = [...houseOfficials.slice(0, 1), ...senateOfficials.slice(0, 1), ...congressOfficials.slice(0, 1)];
       if (allOfficials.length > 0) {
-        setSearchResults(apiOfficialsToLegacy(allOfficials));
+        setSearchResults(apiOfficialsToNormalized(allOfficials));
       } else {
-        setSearchResults(mockOfficials.slice(0, 3));
+        setSearchResults([]);
       }
     } catch (error) {
-      console.error("API ZIP search failed, using mock data:", error);
-      setSearchResults(mockOfficials.slice(0, 3));
+      console.error("API ZIP search failed:", error);
+      setSearchResults([]);
     }
     setHasSearched(true);
   }, [zipCode]);

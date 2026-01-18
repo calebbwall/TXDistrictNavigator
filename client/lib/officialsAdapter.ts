@@ -1,7 +1,52 @@
 import type { MergedOfficial } from "./officialsApi";
-import type { Official, District, DistrictType } from "./mockData";
+import { normalizeOfficial, type Official, type SourceType, type DistrictType } from "./officials";
+import type { Official as MockOfficial } from "./mockData";
 
-export function apiOfficialToLegacy(apiOfficial: MergedOfficial): Official {
+export function apiOfficialToNormalized(apiOfficial: MergedOfficial): Official {
+  return normalizeOfficial(apiOfficial as unknown as Record<string, unknown>);
+}
+
+export function apiOfficialsToNormalized(apiOfficials: MergedOfficial[]): Official[] {
+  return apiOfficials.map(apiOfficialToNormalized);
+}
+
+export function mockOfficialToNormalized(mockOfficial: MockOfficial): Official {
+  return normalizeOfficial({
+    id: mockOfficial.id,
+    source: mockOfficial.officeType === "tx_house" ? "TX_HOUSE" : mockOfficial.officeType === "tx_senate" ? "TX_SENATE" : "US_HOUSE",
+    district: mockOfficial.districtId?.split("-")[1] || "1",
+    fullName: mockOfficial.fullName,
+    party: null,
+    photoUrl: mockOfficial.photoUrl,
+    capitolPhone: mockOfficial.offices?.[0]?.phone || null,
+    capitolAddress: mockOfficial.offices?.[0]?.address || null,
+    website: null,
+    email: null,
+    isVacant: mockOfficial.isVacant || false,
+  });
+}
+
+export function mockOfficialsToNormalized(mockOfficials: MockOfficial[]): Official[] {
+  return mockOfficials.map(mockOfficialToNormalized);
+}
+
+export function getDistrictTypeFromApiSource(source: SourceType): DistrictType {
+  switch (source) {
+    case "TX_HOUSE": return "tx_house";
+    case "TX_SENATE": return "tx_senate";
+    case "US_HOUSE": return "us_congress";
+  }
+}
+
+export function getApiSourceFromDistrictType(districtType: DistrictType): SourceType {
+  switch (districtType) {
+    case "tx_house": return "TX_HOUSE";
+    case "tx_senate": return "TX_SENATE";
+    case "us_congress": return "US_HOUSE";
+  }
+}
+
+export function apiOfficialToLegacy(apiOfficial: MergedOfficial): MockOfficial {
   const officeType = apiOfficial.source === "TX_HOUSE" 
     ? "tx_house" 
     : apiOfficial.source === "TX_SENATE" 
@@ -63,40 +108,11 @@ export function apiOfficialToLegacy(apiOfficial: MergedOfficial): Official {
   };
 }
 
-export function apiOfficialsToLegacy(apiOfficials: MergedOfficial[]): Official[] {
-  return apiOfficials.map(apiOfficialToLegacy);
-}
-
-export function apiOfficialToDistrict(apiOfficial: MergedOfficial): District {
-  const districtType: DistrictType = apiOfficial.source === "TX_HOUSE" 
-    ? "house" 
-    : apiOfficial.source === "TX_SENATE" 
-      ? "senate" 
-      : "congress";
-  
-  const prefix = districtType === "senate" ? "s" : districtType === "house" ? "h" : "c";
-  
-  return {
-    id: `${prefix}-${apiOfficial.district}`,
-    districtType,
-    districtNumber: parseInt(apiOfficial.district, 10),
-    name: apiOfficial.fullName,
-  };
-}
-
 function getPartyLabel(party: string | null): string {
   switch (party) {
     case "R": return "Republican";
     case "D": return "Democrat";
     case "I": return "Independent";
     default: return "Public Servant";
-  }
-}
-
-export function getDistrictTypeFromApiSource(source: MergedOfficial["source"]): DistrictType {
-  switch (source) {
-    case "TX_HOUSE": return "house";
-    case "TX_SENATE": return "senate";
-    case "US_HOUSE": return "congress";
   }
 }

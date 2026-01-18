@@ -21,8 +21,8 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
-import { apiOfficialToLegacy } from "@/lib/officialsAdapter";
-import type { Official } from "@/lib/mockData";
+import { apiOfficialToNormalized } from "@/lib/officialsAdapter";
+import type { Official } from "@/lib/officials";
 import type { SearchStackParamList } from "@/navigation/SearchStackNavigator";
 
 type NavigationProp = NativeStackNavigationProp<SearchStackParamList>;
@@ -95,7 +95,7 @@ export default function BrowseOfficialsScreen() {
 
   const officials: Official[] = useMemo(() => {
     if (!data?.officials) return [];
-    return data.officials.map(apiOfficialToLegacy);
+    return data.officials.map(apiOfficialToNormalized);
   }, [data]);
 
   const handleSourceChange = useCallback((source: SourceType) => {
