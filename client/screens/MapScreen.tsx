@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking } from "react-native";
+import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -574,6 +574,8 @@ export default function MapScreen() {
   const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [hasUserLocation, setHasUserLocation] = useState(false);
+  const [lastLocationCoords, setLastLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const layerButtonScale = useSharedValue(1);
 
@@ -870,26 +872,104 @@ export default function MapScreen() {
 
   // Location handlers
   const handleLocateMe = useCallback(async () => {
+    console.log('[MapScreen] Locate Me button pressed, platform:', Platform.OS);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLocationLoading(true);
+    setLocationError(null);
     
     try {
-      // Check permission status
+      // For web platform, try to use browser's native geolocation API
+      if (Platform.OS === 'web') {
+        console.log('[MapScreen] Using browser geolocation API');
+        
+        if (!navigator.geolocation) {
+          console.log('[MapScreen] Geolocation not supported');
+          setLocationError('Not supported');
+          setLocationPermission('denied' as Location.PermissionStatus);
+          Alert.alert(
+            'Location Not Available',
+            'Your browser does not support location services.',
+            [{ text: 'OK' }]
+          );
+          setLocationLoading(false);
+          return;
+        }
+        
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude, accuracy } = position.coords;
+            console.log('[MapScreen] Web location obtained:', latitude.toFixed(4), longitude.toFixed(4), 'accuracy:', accuracy);
+            
+            setLocationPermission('granted' as Location.PermissionStatus);
+            setLastLocationCoords({ lat: latitude, lng: longitude });
+            
+            const locationMsg = { type: 'SET_USER_LOCATION', lat: latitude, lng: longitude, accuracy: accuracy || 100 };
+            const centerMsg = { type: 'CENTER_MAP', lat: latitude, lng: longitude, zoom: 10 };
+            
+            if (iframeRef.current?.contentWindow) {
+              iframeRef.current.contentWindow.postMessage(JSON.stringify(locationMsg), '*');
+              iframeRef.current.contentWindow.postMessage(JSON.stringify(centerMsg), '*');
+              console.log('[MapScreen] Web: Messages sent to iframe');
+            }
+            
+            setHasUserLocation(true);
+            setLocationLoading(false);
+          },
+          (error) => {
+            console.log('[MapScreen] Web geolocation error:', error.code, error.message);
+            setLocationError(error.message);
+            setLocationPermission('denied' as Location.PermissionStatus);
+            setLocationLoading(false);
+            
+            Alert.alert(
+              'Location Access Required',
+              'To show your location on the map, please allow location access when prompted by your browser.',
+              [{ text: 'OK' }]
+            );
+          },
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
+        return;
+      }
+      
+      // Native (iOS/Android) - use expo-location
+      console.log('[MapScreen] Checking location permission...');
       let { status } = await Location.getForegroundPermissionsAsync();
+      console.log('[MapScreen] Current permission status:', status);
+      setLocationPermission(status);
       
       if (status !== 'granted') {
+        console.log('[MapScreen] Requesting location permission...');
         const result = await Location.requestForegroundPermissionsAsync();
         status = result.status;
         setLocationPermission(status);
+        console.log('[MapScreen] Permission result:', status);
       }
       
       if (status !== 'granted') {
         console.log('[MapScreen] Location permission denied');
+        setLocationError('Permission denied');
         setLocationLoading(false);
+        
+        // Show alert to user
+        Alert.alert(
+          'Location Access Required',
+          'To show your location on the map, please enable location access in your device settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Open Settings', 
+              onPress: () => {
+                Linking.openSettings().catch(() => {});
+              }
+            }
+          ]
+        );
         return;
       }
       
       // Get current position (once, not continuous tracking)
+      console.log('[MapScreen] Getting current position...');
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
@@ -899,23 +979,31 @@ export default function MapScreen() {
       
       console.log('[MapScreen] Location obtained:', latitude.toFixed(4), longitude.toFixed(4), 'accuracy:', accuracy);
       
+      // Store last location for debug display
+      setLastLocationCoords({ lat: latitude, lng: longitude });
+      
       // Send location to WebView
       const locationMsg = { type: 'SET_USER_LOCATION', lat: latitude, lng: longitude, accuracy };
       const centerMsg = { type: 'CENTER_MAP', lat: latitude, lng: longitude, zoom: 10 };
       
-      if (Platform.OS === 'web') {
-        if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(locationMsg), '*');
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(centerMsg), '*');
-        }
-      } else {
-        sendToWebView(locationMsg);
-        sendToWebView(centerMsg);
-      }
+      console.log('[MapScreen] Sending SET_USER_LOCATION message');
+      console.log('[MapScreen] Sending CENTER_MAP message');
+      
+      sendToWebView(locationMsg);
+      sendToWebView(centerMsg);
+      console.log('[MapScreen] Messages sent to WebView');
       
       setHasUserLocation(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[MapScreen] Location error:', error);
+      const errorMsg = error?.message || 'Unknown error';
+      setLocationError(errorMsg);
+      
+      Alert.alert(
+        'Location Error',
+        `Could not get your location: ${errorMsg}`,
+        [{ text: 'OK' }]
+      );
     } finally {
       setLocationLoading(false);
     }
@@ -1261,6 +1349,23 @@ export default function MapScreen() {
         </Pressable>
       </View>
 
+      {/* Location debug status line */}
+      {showDebug ? (
+        <View
+          style={[
+            styles.locationDebug,
+            {
+              top: headerHeight + Spacing.sm + 52,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+            },
+          ]}
+        >
+          <ThemedText type="small" style={{ color: '#fff', fontFamily: 'monospace', fontSize: 10 }}>
+            Loc: {locationPermission || 'unknown'} | {lastLocationCoords ? `${lastLocationCoords.lat.toFixed(4)},${lastLocationCoords.lng.toFixed(4)}` : 'no coords'} | {locationError || 'ok'}
+          </ThemedText>
+        </View>
+      ) : null}
+
       {/* Draw mode indicator */}
       {drawModeActive ? (
         <Animated.View
@@ -1536,5 +1641,14 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
     alignItems: "center",
     zIndex: 900,
+  },
+  locationDebug: {
+    position: "absolute",
+    left: Spacing.lg,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.xs,
+    zIndex: 999,
+    maxWidth: 280,
   },
 });

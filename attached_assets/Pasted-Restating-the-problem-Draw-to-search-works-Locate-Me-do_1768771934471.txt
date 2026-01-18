@@ -1,0 +1,127 @@
+Restating the problem
+	•	Draw-to-search works ✅
+	•	Locate Me does not exist / does not work ❌ (no marker, no centering, likely no permission flow)
+
+Difficulty + suggestions
+	•	Difficulty: Medium. This is almost always one of:
+	•	Expo Location isn’t installed/configured
+	•	missing iOS permission strings (if you built a dev client / standalone)
+	•	button exists but isn’t wired to request permission + fetch location
+	•	WebView marker code exists but RN never sends the message (or message type mismatch)
+
+Suggestion: implement it end-to-end with instrumentation:
+	•	Add a “Locate Me” button that always shows
+	•	On press: request permission → get current position → send SET_USER_LOCATION + CENTER_MAP
+	•	Show a small debug line: permission status + last coords + error
+
+⸻
+
+Replit Continuous Agent Prompt
+
+Fix Phase C: Implement “Locate Me” on Map tab (Expo Go iOS)
+
+Problem
+Draw-to-search works, but there is no working “Locate Me” function. I need a button on the Map tab that shows my current location on the map and recenters the map.
+
+Goal
+Add a working “Locate Me” feature that:
+	•	Requests foreground location permission (Expo Go on iOS)
+	•	Retrieves current position once (no continuous tracking)
+	•	Shows a marker (and optional accuracy circle)
+	•	Centers the map on my location when pressed
+	•	Displays clear user feedback if permission is denied or an error occurs
+
+Do not change draw-to-search behavior.
+
+⸻
+
+1) Add/verify dependencies
+
+In the Expo app:
+	•	Ensure expo-location is installed and properly imported.
+	•	If missing, add it to dependencies and ensure it’s compatible with the current Expo SDK.
+
+⸻
+
+2) MapScreen UI: add Locate Me button
+
+On MapScreen.tsx:
+	•	Add a button labeled “Locate Me” near the existing map controls.
+	•	It must be visible above the WebView (absolute positioning + high zIndex/elevation).
+
+Add a small dev-only status line under the controls:
+	•	Location: <permissionStatus> | <lastLat,lastLng> | <lastError>
+
+This prevents silent failures.
+
+⸻
+
+3) RN logic: request permission + get current location (one-shot)
+
+On Locate Me press:
+	1.	Call Location.requestForegroundPermissionsAsync()
+	2.	If not granted:
+	•	Show an Alert explaining location is needed
+	•	Update debug status
+	•	Return
+	3.	Call Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+	4.	Extract { latitude, longitude, accuracy }
+
+Then send to WebView via postMessage:
+
+SET_USER_LOCATION
+
+{ "type": "SET_USER_LOCATION", "lat": 30.26, "lng": -97.74, "accuracy": 25 }
+
+CENTER_MAP
+
+{ "type": "CENTER_MAP", "lat": 30.26, "lng": -97.74, "zoom": 11 }
+
+Also store last location in state so the debug line updates.
+
+⸻
+
+4) WebView/Leaflet: render marker and optional accuracy circle
+
+In the Leaflet JS running in the WebView:
+	•	Add message handlers for:
+	•	SET_USER_LOCATION
+	•	CENTER_MAP
+
+Implementation requirements:
+	•	Maintain userMarker and accuracyCircle variables.
+	•	On SET_USER_LOCATION:
+	•	If marker exists, update its lat/lng; else create it.
+	•	If accuracy present, render/update a circle with that radius (meters).
+	•	On CENTER_MAP:
+	•	map.setView([lat, lng], zoom) (or flyTo with a gentle timing; no bounce)
+
+Add WebView console logs:
+	•	“User location set: lat,lng accuracy”
+	•	“Map centered: lat,lng zoom”
+
+⸻
+
+5) iOS/Expo Go considerations (must handle)
+	•	This must work in Expo Go, so permissions should be handled by expo-location runtime prompts.
+	•	If permission is denied “Don’t Allow,” the app should not crash; it should show a clear message and the debug line should reflect the denial.
+
+⸻
+
+6) Acceptance criteria
+	•	“Locate Me” button is visible on Map tab.
+	•	Pressing it prompts for permission (first time).
+	•	After granting, a marker appears at my location and map centers there.
+	•	Debug line shows permission status and last coordinates.
+	•	If denied, show an alert and debug line shows denied.
+
+⸻
+
+7) Deliverables
+	•	MapScreen button + RN location code + debug status line
+	•	WebView message handling + marker rendering
+	•	Any dependency updates required
+
+⸻
+
+If you keep hitting issues after this, the debug status line will tell us which bucket you’re in (permission denied vs API unavailable vs message mismatch), and the fix becomes mechanical instead of guessy.
