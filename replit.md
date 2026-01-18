@@ -4,13 +4,13 @@
 A mobile application for Texas citizens to view legislative districts, search for representatives, and manage private notes about officials. Built with Expo + React Native and Express.js backend with PostgreSQL database.
 
 ## Current State
-**Phase C Complete** - Draw-to-search and location features fully implemented.
+**Phase D Complete** - Browse tab with All Officials and multi-criteria search.
 
 ### Features:
 - **Map Screen**: Interactive Leaflet map via WebView with tappable GeoJSON polygon overlays for TX Senate (31), TX House (150), and US Congress (38). Color-coded layers with toggle controls. Works in Expo Go on iOS/Android and on web.
 - **Draw-to-Search**: Polygon drawing mode using Leaflet.draw - tap points to draw an area, and find all officials in overlapping districts. Integrated with area-hits API using Turf.js spatial intersection.
-- **Locate Me**: GPS location button using Expo Location - shows user position with blue marker and accuracy circle on map.
-- **Search Screen**: Search officials by ZIP code, name, or draw-to-search
+- **Locate Me**: GPS location button using browser geolocation (web) or Expo Location (native) - shows user position with blue marker and accuracy circle on map.
+- **Browse Screen**: Complete roster browsing with 4 tabs (TX House, TX Senate, US House, All Officials). Single search bar with multi-criteria matching (name, district, party, addresses, email, website). Count labels show member count and vacancy count.
 - **Official Profiles**: View public info (offices, contact) and manage private notes
 - **Profile Screen**: Saved officials list and default overlay preferences
 - **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences
@@ -71,7 +71,9 @@ A mobile application for Texas citizens to view legislative districts, search fo
 
 ### Officials
 - `GET /api/officials` - Returns merged officials (public + private overlay)
-  - Query params: `district_type`, `search`, `active`
+  - Query params: `district_type`, `source`, `search`, `q`, `active`
+  - `source` can be: `TX_HOUSE`, `TX_SENATE`, `US_HOUSE`, or `ALL`
+  - `q` or `search`: multi-field search across name, district, party, addresses, email, website
 - `GET /api/officials/:id` - Returns single merged official
 - `GET /api/officials/by-district` - Find by district_type and district_number
 - `PATCH /api/officials/:id/private` - Update private data only
@@ -144,6 +146,11 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-18: Phase D - Replaced Search tab with Browse tab
+- 2026-01-18: Phase D - Added "All Officials" tab showing combined roster (219 members)
+- 2026-01-18: Phase D - Extended /api/officials with source=ALL and multi-field search (name, district, party, addresses, email, website)
+- 2026-01-18: Phase D - Removed Zip/Name/Draw search screens from Browse stack (draw remains on Map only)
+- 2026-01-18: Phase D - Browse screen shows 4 tabs with count labels and vacancy indicators
 - 2026-01-18: Phase C - Added Draw-to-search mode with Leaflet.draw polygon drawing
 - 2026-01-18: Phase C - Added POST /api/map/area-hits endpoint using Turf.js spatial intersection
 - 2026-01-18: Phase C - Added Locate Me button with Expo Location permission flow
