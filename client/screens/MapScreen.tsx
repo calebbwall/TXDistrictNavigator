@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { StyleSheet, View, Pressable, ActivityIndicator, Platform } from "react-native";
+import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -17,6 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { OverlayToggle } from "@/components/OverlayToggle";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -62,12 +63,23 @@ const MAP_HTML = `
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; }
     #map { width: 100%; height: 100%; }
     .leaflet-control-attribution { display: none; }
+    .leaflet-draw-toolbar { display: none !important; }
+    .user-location-marker {
+      width: 20px;
+      height: 20px;
+      background: #4A90E2;
+      border: 3px solid white;
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
   </style>
 </head>
 <body>
@@ -85,6 +97,9 @@ const MAP_HTML = `
     }).addTo(map);
 
     let apiBaseUrl = '';
+    let drawMode = false;
+    let userLocationMarker = null;
+    let userAccuracyCircle = null;
     
     const layers = {
       senate: null,
@@ -115,6 +130,76 @@ const MAP_HTML = `
       house: false,
       congress: false
     };
+
+    // Leaflet.draw setup
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    const drawControl = new L.Control.Draw({
+      position: 'topright',
+      draw: {
+        polygon: {
+          allowIntersection: false,
+          shapeOptions: {
+            color: '#9B59B6',
+            weight: 3,
+            fillOpacity: 0.2
+          }
+        },
+        polyline: false,
+        circle: false,
+        rectangle: false,
+        marker: false,
+        circlemarker: false
+      },
+      edit: false
+    });
+
+    let drawHandler = null;
+
+    function enableDrawMode() {
+      drawMode = true;
+      if (!drawHandler) {
+        drawHandler = new L.Draw.Polygon(map, drawControl.options.draw.polygon);
+      }
+      drawHandler.enable();
+      console.log('[DRAW] Draw mode enabled');
+    }
+
+    function disableDrawMode() {
+      drawMode = false;
+      if (drawHandler) {
+        drawHandler.disable();
+      }
+      console.log('[DRAW] Draw mode disabled');
+    }
+
+    function clearDrawing() {
+      drawnItems.clearLayers();
+      postMessage({ type: 'DRAW_CLEARED' });
+      console.log('[DRAW] Drawing cleared');
+    }
+
+    map.on(L.Draw.Event.CREATED, function(event) {
+      const layer = event.layer;
+      drawnItems.clearLayers();
+      drawnItems.addLayer(layer);
+
+      const geojson = layer.toGeoJSON();
+      const pointCount = geojson.geometry.coordinates[0]?.length || 0;
+      console.log('[DRAW] Polygon created with', pointCount, 'points');
+
+      postMessage({
+        type: 'DRAW_COMPLETE',
+        geometry: geojson.geometry
+      });
+
+      disableDrawMode();
+    });
+
+    map.on(L.Draw.Event.DRAWSTART, function() {
+      console.log('[DRAW] Drawing started');
+    });
 
     function pointInPolygon(point, polygon) {
       const [x, y] = point;
@@ -165,6 +250,11 @@ const MAP_HTML = `
     }
 
     map.on('click', function(e) {
+      if (drawMode) {
+        console.log('[MAP_TAP] In draw mode, ignoring tap');
+        return;
+      }
+
       const latlng = e.latlng;
       const hits = [];
       
@@ -335,6 +425,45 @@ const MAP_HTML = `
       }
     };
 
+    function setUserLocation(lat, lng, accuracy) {
+      const latlng = L.latLng(lat, lng);
+
+      if (userLocationMarker) {
+        userLocationMarker.setLatLng(latlng);
+      } else {
+        const icon = L.divIcon({
+          className: 'user-location-marker',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+        userLocationMarker = L.marker(latlng, { icon: icon, zIndexOffset: 1000 });
+        userLocationMarker.addTo(map);
+      }
+
+      if (accuracy && accuracy < 5000) {
+        if (userAccuracyCircle) {
+          userAccuracyCircle.setLatLng(latlng);
+          userAccuracyCircle.setRadius(accuracy);
+        } else {
+          userAccuracyCircle = L.circle(latlng, {
+            radius: accuracy,
+            color: '#4A90E2',
+            fillColor: '#4A90E2',
+            fillOpacity: 0.1,
+            weight: 1
+          });
+          userAccuracyCircle.addTo(map);
+        }
+      }
+
+      console.log('[LOCATION] User location set:', lat.toFixed(4), lng.toFixed(4), 'accuracy:', accuracy);
+    }
+
+    function centerMap(lat, lng, zoom) {
+      map.setView([lat, lng], zoom || map.getZoom());
+      console.log('[LOCATION] Map centered to:', lat.toFixed(4), lng.toFixed(4));
+    }
+
     window.receiveMessage = function(message) {
       try {
         const data = JSON.parse(message);
@@ -344,7 +473,6 @@ const MAP_HTML = `
           apiBaseUrl = data.url;
           console.log('[Leaflet] API base URL set to:', apiBaseUrl);
         } else if (data.type === 'loadAllGeoJSON') {
-          // Load all GeoJSON data
           Promise.all([
             fetchAndSetGeoJSON('tx_senate'),
             fetchAndSetGeoJSON('tx_house'),
@@ -356,7 +484,6 @@ const MAP_HTML = `
         } else if (data.type === 'toggleLayer') {
           window.toggleLayer(data.layer, data.visible);
         } else if (data.type === 'setGeoJSON') {
-          // Legacy support for web iframe
           const layerType = data.layerType;
           const typeKey = layerType === 'tx_senate' ? 'senate' : 
                           layerType === 'tx_house' ? 'house' : 'congress';
@@ -368,6 +495,18 @@ const MAP_HTML = `
           }
           layers[typeKey] = createLayer(typeKey, data.geojson, layerColors[layerType]);
           console.log('[OVERLAY]', layerType, 'set via message, features=' + loadStatus[layerType].features);
+        } else if (data.type === 'SET_DRAW_MODE') {
+          if (data.enabled) {
+            enableDrawMode();
+          } else {
+            disableDrawMode();
+          }
+        } else if (data.type === 'CLEAR_DRAWING') {
+          clearDrawing();
+        } else if (data.type === 'SET_USER_LOCATION') {
+          setUserLocation(data.lat, data.lng, data.accuracy);
+        } else if (data.type === 'CENTER_MAP') {
+          centerMap(data.lat, data.lng, data.zoom);
         }
       } catch (e) {
         console.error('[Leaflet] Error processing message:', e);
@@ -384,13 +523,11 @@ const MAP_HTML = `
       }
     });
 
-    // Send mapReady - works on both native and web
     function sendMapReady() {
       postMessage({ type: 'mapReady' });
       console.log('[Leaflet] Sent mapReady');
     }
     
-    // Delay slightly to ensure RN WebView is ready
     setTimeout(sendMapReady, 100);
   </script>
 </body>
@@ -428,6 +565,15 @@ export default function MapScreen() {
     senate: { loaded: false, features: 0, error: null },
     congress: { loaded: false, features: 0, error: null },
   });
+  
+  // Draw mode state
+  const [drawModeActive, setDrawModeActive] = useState(false);
+  const [drawLoading, setDrawLoading] = useState(false);
+  
+  // Location state
+  const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [hasUserLocation, setHasUserLocation] = useState(false);
 
   const layerButtonScale = useSharedValue(1);
 
@@ -640,6 +786,141 @@ export default function MapScreen() {
     navigation.navigate("OfficialProfile", { officialId: official.id });
   }, [navigation]);
 
+  // Draw mode handlers
+  const handleToggleDrawMode = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newState = !drawModeActive;
+    setDrawModeActive(newState);
+    setSelectedDistrict(null);
+    
+    const msg = { type: 'SET_DRAW_MODE', enabled: newState };
+    if (Platform.OS === 'web') {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+      }
+    } else {
+      sendToWebView(msg);
+    }
+    console.log('[MapScreen] Draw mode:', newState ? 'ON' : 'OFF');
+  }, [drawModeActive, sendToWebView]);
+
+  const handleClearDrawing = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedDistrict(null);
+    setDrawModeActive(false);
+    
+    const msg = { type: 'CLEAR_DRAWING' };
+    if (Platform.OS === 'web') {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+      }
+    } else {
+      sendToWebView(msg);
+    }
+    console.log('[MapScreen] Drawing cleared');
+  }, [sendToWebView]);
+
+  const handleDrawComplete = useCallback(async (geometry: { type: string; coordinates: number[][][] }) => {
+    console.log('[MapScreen] Draw complete, geometry points:', geometry.coordinates[0]?.length);
+    setDrawLoading(true);
+    setDrawModeActive(false);
+    
+    try {
+      // Call /api/map/area-hits to get intersecting districts
+      const areaHitsUrl = new URL("/api/map/area-hits", getApiUrl());
+      const areaResponse = await fetch(areaHitsUrl.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          geometry,
+          overlays: {
+            house: overlays.house,
+            senate: overlays.senate,
+            congress: overlays.congress,
+          },
+        }),
+      });
+      
+      if (!areaResponse.ok) {
+        console.error('[MapScreen] Area hits request failed:', areaResponse.status);
+        setDrawLoading(false);
+        return;
+      }
+      
+      const { hits } = await areaResponse.json();
+      console.log('[MapScreen] Area hits:', hits.length);
+      
+      if (hits.length === 0) {
+        setSelectedDistrict({ hits: [], officials: [] });
+        setDrawLoading(false);
+        return;
+      }
+      
+      // Fetch officials using existing pipeline
+      const officials = await fetchOfficialsByDistricts(hits);
+      console.log('[MapScreen] Draw search officials:', officials.length);
+      
+      setSelectedDistrict({ hits, officials });
+    } catch (error) {
+      console.error('[MapScreen] Draw search error:', error);
+    } finally {
+      setDrawLoading(false);
+    }
+  }, [overlays, fetchOfficialsByDistricts]);
+
+  // Location handlers
+  const handleLocateMe = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLocationLoading(true);
+    
+    try {
+      // Check permission status
+      let { status } = await Location.getForegroundPermissionsAsync();
+      
+      if (status !== 'granted') {
+        const result = await Location.requestForegroundPermissionsAsync();
+        status = result.status;
+        setLocationPermission(status);
+      }
+      
+      if (status !== 'granted') {
+        console.log('[MapScreen] Location permission denied');
+        setLocationLoading(false);
+        return;
+      }
+      
+      // Get current position (once, not continuous tracking)
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      
+      const { latitude, longitude } = location.coords;
+      const accuracy = location.coords.accuracy || 100;
+      
+      console.log('[MapScreen] Location obtained:', latitude.toFixed(4), longitude.toFixed(4), 'accuracy:', accuracy);
+      
+      // Send location to WebView
+      const locationMsg = { type: 'SET_USER_LOCATION', lat: latitude, lng: longitude, accuracy };
+      const centerMsg = { type: 'CENTER_MAP', lat: latitude, lng: longitude, zoom: 10 };
+      
+      if (Platform.OS === 'web') {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(locationMsg), '*');
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(centerMsg), '*');
+        }
+      } else {
+        sendToWebView(locationMsg);
+        sendToWebView(centerMsg);
+      }
+      
+      setHasUserLocation(true);
+    } catch (error) {
+      console.error('[MapScreen] Location error:', error);
+    } finally {
+      setLocationLoading(false);
+    }
+  }, [sendToWebView]);
+
   const handleCloseDistrictCard = useCallback(() => {
     setSelectedDistrict(null);
   }, []);
@@ -684,11 +965,17 @@ export default function MapScreen() {
       } else if (data.type === "mapReady") {
         console.log('[MapScreen] Map is ready!');
         setMapReady(true);
+      } else if (data.type === "DRAW_COMPLETE" && data.geometry) {
+        console.log('[MapScreen] DRAW_COMPLETE received');
+        await handleDrawComplete(data.geometry);
+      } else if (data.type === "DRAW_CLEARED") {
+        console.log('[MapScreen] DRAW_CLEARED received');
+        setSelectedDistrict(null);
       }
     } catch (error) {
       console.error("[MapScreen] Error parsing WebView message:", error);
     }
-  }, [handleMapTap]);
+  }, [handleMapTap, handleDrawComplete]);
   
   // Listen for postMessage on web platform (iframe communication)
   useEffect(() => {
@@ -721,6 +1008,12 @@ export default function MapScreen() {
           } else if (data.type === "mapReady") {
             console.log('[MapScreen] Map is ready (from window)!');
             setMapReady(true);
+          } else if (data.type === "DRAW_COMPLETE" && data.geometry) {
+            console.log('[MapScreen] Window DRAW_COMPLETE received');
+            handleDrawComplete(data.geometry);
+          } else if (data.type === "DRAW_CLEARED") {
+            console.log('[MapScreen] Window DRAW_CLEARED received');
+            setSelectedDistrict(null);
           }
         } catch (e) {
           // Not JSON, ignore
@@ -746,7 +1039,7 @@ export default function MapScreen() {
       window.removeEventListener('message', handleWindowMessage);
       clearTimeout(fallbackTimer);
     };
-  }, [handleMapTap]);
+  }, [handleMapTap, handleDrawComplete]);
 
   // Create blob URL for the map HTML on web
   const mapBlobUrl = useRef<string | null>(null);
@@ -890,6 +1183,102 @@ export default function MapScreen() {
           ) : null}
         </Pressable>
       </Animated.View>
+
+      {/* Draw mode button */}
+      <View
+        style={[
+          styles.drawButton,
+          {
+            top: headerHeight + Spacing.sm + 52,
+            backgroundColor: drawModeActive ? '#9B59B6' : theme.cardBackground,
+          },
+          Shadows.md,
+        ]}
+      >
+        <Pressable
+          onPress={handleToggleDrawMode}
+          style={styles.layerButtonInner}
+          disabled={drawLoading}
+        >
+          {drawLoading ? (
+            <ActivityIndicator size="small" color={theme.primary} />
+          ) : (
+            <Feather
+              name="edit-3"
+              size={20}
+              color={drawModeActive ? '#FFFFFF' : theme.text}
+            />
+          )}
+        </Pressable>
+      </View>
+
+      {/* Clear drawing button - only show when there's a selection from draw */}
+      {selectedDistrict && selectedDistrict.hits.length > 0 ? (
+        <View
+          style={[
+            styles.clearButton,
+            {
+              top: headerHeight + Spacing.sm + 104,
+              backgroundColor: theme.cardBackground,
+            },
+            Shadows.md,
+          ]}
+        >
+          <Pressable
+            onPress={handleClearDrawing}
+            style={styles.layerButtonInner}
+          >
+            <Feather name="trash-2" size={20} color={theme.secondaryText} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* Locate me button */}
+      <View
+        style={[
+          styles.locateButton,
+          {
+            top: headerHeight + Spacing.sm,
+            backgroundColor: hasUserLocation ? theme.primary : theme.cardBackground,
+          },
+          Shadows.md,
+        ]}
+      >
+        <Pressable
+          onPress={handleLocateMe}
+          style={styles.layerButtonInner}
+          disabled={locationLoading}
+        >
+          {locationLoading ? (
+            <ActivityIndicator size="small" color={theme.primary} />
+          ) : (
+            <Feather
+              name="navigation"
+              size={20}
+              color={hasUserLocation ? '#FFFFFF' : theme.text}
+            />
+          )}
+        </Pressable>
+      </View>
+
+      {/* Draw mode indicator */}
+      {drawModeActive ? (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(150)}
+          style={[
+            styles.drawIndicator,
+            {
+              top: headerHeight + Spacing.sm,
+              backgroundColor: 'rgba(155, 89, 182, 0.9)',
+            },
+          ]}
+        >
+          <ThemedText type="small" style={{ color: '#FFFFFF', fontWeight: '600' }}>
+            Tap points to draw a polygon, then tap first point to complete
+          </ThemedText>
+        </Animated.View>
+      ) : null}
 
       {showLayerPanel ? (
         <Animated.View
@@ -1110,5 +1499,42 @@ const styles = StyleSheet.create({
     top: 4,
     right: 4,
     padding: 4,
+  },
+  drawButton: {
+    position: "absolute",
+    right: Spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    zIndex: 1000,
+    elevation: 100,
+  },
+  clearButton: {
+    position: "absolute",
+    right: Spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    zIndex: 1000,
+    elevation: 100,
+  },
+  locateButton: {
+    position: "absolute",
+    left: Spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    zIndex: 1000,
+    elevation: 100,
+  },
+  drawIndicator: {
+    position: "absolute",
+    left: Spacing.lg + 52,
+    right: Spacing.lg + 52,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
+    zIndex: 900,
   },
 });
