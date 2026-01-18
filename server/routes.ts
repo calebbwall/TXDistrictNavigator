@@ -300,25 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           results.push(mergeOfficial(pub, priv || null));
         } else {
-          results.push({
-            id: `vacant-${source}-${districtNumber}`,
-            source,
-            sourceMemberId: `vacant-${districtNumber}`,
-            chamber: source.toLowerCase().replace("_", "-"),
-            district: String(districtNumber),
-            fullName: `Vacant District ${districtNumber}`,
-            party: null,
-            photoUrl: null,
-            capitolAddress: null,
-            capitolPhone: null,
-            districtAddresses: null,
-            districtPhones: null,
-            website: null,
-            email: null,
-            active: true,
-            lastRefreshedAt: new Date(),
-            isVacant: true,
-          } as MergedOfficial & { isVacant: boolean });
+          results.push(createVacantOfficial(source, districtNumber));
         }
       }
       
