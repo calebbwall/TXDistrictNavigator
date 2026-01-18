@@ -110,6 +110,103 @@ const MAP_HTML = `
       us_congress: { loading: false, loaded: false, features: 0, error: null }
     };
 
+    const enabledLayers = {
+      senate: false,
+      house: false,
+      congress: false
+    };
+
+    function pointInPolygon(point, polygon) {
+      const [x, y] = point;
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const [xi, yi] = polygon[i];
+        const [xj, yj] = polygon[j];
+        const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function pointInMultiPolygon(point, multiPolygon) {
+      for (const polygon of multiPolygon) {
+        for (const ring of polygon) {
+          if (pointInPolygon(point, ring)) return true;
+        }
+      }
+      return false;
+    }
+
+    function findDistrictAtPoint(latlng, layerType) {
+      const data = geoJSONData[layerType];
+      if (!data || !data.features) return null;
+      
+      const point = [latlng.lng, latlng.lat];
+      
+      for (const feature of data.features) {
+        const geom = feature.geometry;
+        let found = false;
+        
+        if (geom.type === 'Polygon') {
+          found = pointInPolygon(point, geom.coordinates[0]);
+        } else if (geom.type === 'MultiPolygon') {
+          found = pointInMultiPolygon(point, geom.coordinates);
+        }
+        
+        if (found) {
+          const districtNum = feature.properties.district || 
+                              feature.properties.SLDUST || 
+                              feature.properties.SLDLST ||
+                              feature.properties.CD;
+          return parseInt(districtNum) || 1;
+        }
+      }
+      return null;
+    }
+
+    map.on('click', function(e) {
+      const latlng = e.latlng;
+      const hits = [];
+      
+      console.log('[MAP_TAP] Click at', latlng.lat.toFixed(4), latlng.lng.toFixed(4));
+      console.log('[MAP_TAP] Enabled layers:', JSON.stringify(enabledLayers));
+      
+      if (enabledLayers.house && geoJSONData.tx_house) {
+        const district = findDistrictAtPoint(latlng, 'tx_house');
+        if (district !== null) {
+          hits.push({ source: 'TX_HOUSE', districtNumber: district });
+          console.log('[MAP_TAP] Hit TX_HOUSE district', district);
+        }
+      }
+      
+      if (enabledLayers.senate && geoJSONData.tx_senate) {
+        const district = findDistrictAtPoint(latlng, 'tx_senate');
+        if (district !== null) {
+          hits.push({ source: 'TX_SENATE', districtNumber: district });
+          console.log('[MAP_TAP] Hit TX_SENATE district', district);
+        }
+      }
+      
+      if (enabledLayers.congress && geoJSONData.us_congress) {
+        const district = findDistrictAtPoint(latlng, 'us_congress');
+        if (district !== null) {
+          hits.push({ source: 'US_HOUSE', districtNumber: district });
+          console.log('[MAP_TAP] Hit US_HOUSE district', district);
+        }
+      }
+      
+      console.log('[MAP_TAP] Total hits:', hits.length);
+      
+      if (hits.length > 0) {
+        postMessage({
+          type: 'MAP_TAP',
+          lat: latlng.lat,
+          lng: latlng.lng,
+          hits: hits
+        });
+      }
+    });
+
     function postMessage(msg) {
       const msgStr = JSON.stringify(msg);
       if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -133,21 +230,6 @@ const MAP_HTML = `
           weight: 3,
           opacity: 1,
           fillOpacity: 0.15
-        },
-        onEachFeature: function(feature, layer) {
-          layer.on('click', function() {
-            const districtType = type === 'senate' ? 'tx_senate' : 
-                                 type === 'house' ? 'tx_house' : 'us_congress';
-            const districtNum = feature.properties.district || 
-                                feature.properties.SLDUST || 
-                                feature.properties.SLDLST ||
-                                feature.properties.CD;
-            postMessage({
-              type: 'districtClick',
-              districtType: districtType,
-              districtNumber: parseInt(districtNum) || 1
-            });
-          });
         }
       });
     }
@@ -222,15 +304,17 @@ const MAP_HTML = `
     window.toggleLayer = async function(type, visible) {
       console.log('[OVERLAY] toggleLayer:', type, visible);
       
-      // Map toggle key to layer type
+      enabledLayers[type] = visible;
+      console.log('[OVERLAY] enabledLayers now:', JSON.stringify(enabledLayers));
+      
       const layerType = type === 'senate' ? 'tx_senate' : 
                         type === 'house' ? 'tx_house' : 'us_congress';
       
-      // Fetch data if needed when turning on
       if (visible && !loadStatus[layerType].loaded) {
         const success = await fetchAndSetGeoJSON(layerType);
         if (!success) {
           console.log('[OVERLAY]', type, 'failed to load, cannot show');
+          enabledLayers[type] = false;
           return;
         }
       }
@@ -531,15 +615,17 @@ export default function MapScreen() {
     [overlays, sendToWebView]
   );
 
-  const handleDistrictPress = useCallback(
-    async (districtType: DistrictType, districtNumber: number) => {
+  const handleMapTap = useCallback(
+    async (hits: DistrictHit[]) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      const hits: DistrictHit[] = [];
-      const source = districtTypeToSourceType(districtType);
-      hits.push({ source, districtNumber });
+      console.log('[MapScreen] handleMapTap with', hits.length, 'hits:', JSON.stringify(hits));
+      
+      if (hits.length === 0) return;
       
       const officials = await fetchOfficialsByDistricts(hits);
+      console.log('[MapScreen] Fetched', officials.length, 'officials');
+      
       setSelectedDistrict({
         hits,
         officials,
@@ -547,6 +633,12 @@ export default function MapScreen() {
     },
     [fetchOfficialsByDistricts]
   );
+
+  const handleOfficialCardPress = useCallback((official: Official) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log('[MapScreen] Official card pressed:', official.id, official.fullName);
+    navigation.navigate("OfficialProfile", { officialId: official.id });
+  }, [navigation]);
 
   const handleCloseDistrictCard = useCallback(() => {
     setSelectedDistrict(null);
@@ -586,8 +678,9 @@ export default function MapScreen() {
       
       const data = JSON.parse(rawData);
       console.log('[MapScreen] WebView message received:', data.type);
-      if (data.type === "districtClick") {
-        await handleDistrictPress(data.districtType, data.districtNumber);
+      if (data.type === "MAP_TAP" && Array.isArray(data.hits)) {
+        console.log('[MapScreen] MAP_TAP hits:', data.hits.length, JSON.stringify(data.hits));
+        await handleMapTap(data.hits);
       } else if (data.type === "mapReady") {
         console.log('[MapScreen] Map is ready!');
         setMapReady(true);
@@ -595,7 +688,7 @@ export default function MapScreen() {
     } catch (error) {
       console.error("[MapScreen] Error parsing WebView message:", error);
     }
-  }, [handleDistrictPress]);
+  }, [handleMapTap]);
   
   // Listen for postMessage on web platform (iframe communication)
   useEffect(() => {
@@ -622,8 +715,9 @@ export default function MapScreen() {
         try {
           const data = JSON.parse(event.data);
           console.log('[MapScreen] Window message received:', data.type);
-          if (data.type === "districtClick") {
-            handleDistrictPress(data.districtType, data.districtNumber);
+          if (data.type === "MAP_TAP" && Array.isArray(data.hits)) {
+            console.log('[MapScreen] Window MAP_TAP hits:', data.hits.length);
+            handleMapTap(data.hits);
           } else if (data.type === "mapReady") {
             console.log('[MapScreen] Map is ready (from window)!');
             setMapReady(true);
@@ -652,7 +746,7 @@ export default function MapScreen() {
       window.removeEventListener('message', handleWindowMessage);
       clearTimeout(fallbackTimer);
     };
-  }, [handleDistrictPress]);
+  }, [handleMapTap]);
 
   // Create blob URL for the map HTML on web
   const mapBlobUrl = useRef<string | null>(null);
@@ -853,9 +947,30 @@ export default function MapScreen() {
             <Feather name="x" size={20} color={theme.secondaryText} />
           </Pressable>
           
+          {showDebug ? (
+            <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', padding: 4, borderRadius: 4, marginBottom: 8 }}>
+              <ThemedText type="small" style={{ color: '#0f0', fontFamily: 'monospace', fontSize: 10 }}>
+                Hits: {selectedDistrict.hits.length} | Officials: {selectedDistrict.officials.length}
+              </ThemedText>
+              {selectedDistrict.officials.length > 0 ? (
+                <ThemedText type="small" style={{ color: '#ff0', fontFamily: 'monospace', fontSize: 9 }}>
+                  First: {JSON.stringify({ id: selectedDistrict.officials[0].id.slice(0, 8), name: selectedDistrict.officials[0].fullName, source: selectedDistrict.officials[0].officeType })}
+                </ThemedText>
+              ) : null}
+            </View>
+          ) : null}
+          
           {selectedDistrict.officials.length > 0 ? (
             selectedDistrict.officials.map((official, index) => (
-              <View key={official.id} style={[styles.officialInfo, index > 0 && { marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: Spacing.md }]}>
+              <Pressable 
+                key={official.id} 
+                onPress={() => handleOfficialCardPress(official)}
+                style={({ pressed }) => [
+                  styles.officialInfo, 
+                  index > 0 && { marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: Spacing.md },
+                  pressed && { opacity: 0.7, backgroundColor: theme.border }
+                ]}
+              >
                 <View style={styles.districtCardHeader}>
                   <View 
                     style={[
@@ -867,9 +982,12 @@ export default function MapScreen() {
                       {getOfficeTypeLabel(official.officeType)}
                     </ThemedText>
                   </View>
-                  <ThemedText type="h3" style={{ color: theme.text }}>
-                    District {official.districtNumber}
-                  </ThemedText>
+                  <View style={{ flexDirection: 'row', flex: 1, justifyContent: 'space-between', alignItems: 'center' }}>
+                    <ThemedText type="h3" style={{ color: theme.text }}>
+                      District {official.districtNumber}
+                    </ThemedText>
+                    <Feather name="chevron-right" size={18} color={theme.secondaryText} />
+                  </View>
                 </View>
                 <ThemedText type="body" style={{ color: theme.text, fontWeight: "600", marginTop: Spacing.sm, fontStyle: official.isVacant ? "italic" : "normal" }}>
                   {official.fullName}
@@ -886,7 +1004,7 @@ export default function MapScreen() {
                     </ThemedText>
                   </View>
                 ) : null}
-              </View>
+              </Pressable>
             ))
           ) : (
             <View style={styles.officialInfo}>

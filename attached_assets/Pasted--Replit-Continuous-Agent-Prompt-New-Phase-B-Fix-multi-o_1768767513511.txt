@@ -1,0 +1,130 @@
+
+
+Replit Continuous Agent Prompt — New Phase B
+
+(Fix multi-overlay selection + make map cards open full profile)
+
+Goal
+Fix map selection so it reliably returns all officials across all enabled overlays, and make map result cards tap-to-open full Official Profile (public + private notes).
+
+Do not begin Draw-to-search or Location features yet.
+
+⸻
+
+B1) Multi-overlay tap must return ALL hits for enabled overlays
+
+1) WebView must compute hits per enabled overlay
+
+In the Leaflet WebView code:
+	•	When user taps the map, compute hits[] for every overlay currently enabled:
+	•	If House enabled → find House district at tap point
+	•	If Senate enabled → find Senate district at tap point
+	•	If Congress enabled → find Congress district at tap point
+	•	Send RN a single message like:
+
+{
+  "type": "MAP_TAP",
+  "lat": 30.26,
+  "lng": -97.74,
+  "hits": [
+    { "source": "TX_HOUSE", "districtNumber": 47 },
+    { "source": "TX_SENATE", "districtNumber": 14 },
+    { "source": "US_HOUSE_TX", "districtNumber": 35 }
+  ]
+}
+
+Important: If a layer is enabled but no match is found, it should simply omit that entry (do not send null district).
+
+Proof requirement: Add WebView console logs (and optionally forward to RN debug panel) showing how many hits were found per tap.
+
+⸻
+
+2) RN must request officials for ALL hits (one request)
+
+On receiving MAP_TAP, RN should call exactly one endpoint:
+
+POST /api/officials/by-districts
+
+Body:
+
+{
+  "districts": [
+    { "source": "TX_HOUSE", "districtNumber": 47 },
+    { "source": "TX_SENATE", "districtNumber": 14 }
+  ]
+}
+
+RN must not silently drop hits. Display the hit count and returned official count in the debug panel.
+
+⸻
+
+3) Backend endpoint must return a combined list with stable IDs
+
+Implement/verify /api/officials/by-districts in your server code:
+	•	For each requested {source, districtNumber}:
+	•	return the matching official if exists and active
+	•	if no official exists (vacancy), return a placeholder object:
+	•	officialId: "VACANT-<source>-<districtNumber>" (stable)
+	•	fullName: "Vacant District"
+	•	isVacant: true
+	•	Return a combined array; include source and districtNumber for each item.
+
+Critical: Ensure the response shape matches what the Map card UI expects (normalize here or normalize in client, but be consistent).
+
+⸻
+
+B2) Map result cards must open full Official Profile (public + private)
+
+1) Make result cards tappable
+
+In the map results UI (the cards that appear after tap):
+	•	Wrap each card in a pressable/touchable
+	•	On press, navigate to OfficialProfileScreen
+
+Pass navigation params:
+	•	If real official: officialId (the public ID key)
+	•	If vacant: pass {source, districtNumber} or the stable vacant officialId
+
+2) OfficialProfileScreen must load public + private reliably
+
+Ensure OfficialProfileScreen:
+	•	fetches public record (Officials_Public)
+	•	fetches or creates private record (Officials_Private) keyed to:
+	•	real official: officialPublicId
+	•	vacancy: stable key based on {source, districtNumber} so notes persist even after a later refresh fills the seat
+
+Do not store private notes in the public table. Private must remain separate and never overwritten by refresh.
+
+3) Consistent “Official DTO” contract
+
+Create one canonical mapping (server or client) so OfficialCard and OfficialProfileScreen use the same field names:
+	•	officialId
+	•	fullName
+	•	districtNumber
+	•	party
+	•	photoUrl
+	•	source
+	•	isVacant
+
+Add a small dev debug view that shows the raw object for the first returned item so we can diagnose missing fields instantly.
+
+⸻
+
+B3) Acceptance tests (must pass)
+	•	Turn on House + Senate overlays → tap Austin area → results list contains BOTH a House member and a Senator (and Congress if enabled).
+	•	Tap a result card → navigates to Official Profile screen
+	•	Official Profile shows public fields and private notes fields
+	•	Editing private notes saves and persists; refreshes do not overwrite
+
+⸻
+
+B4) Deliverables / proof in agent response
+
+Agent must report:
+	•	exact files changed
+	•	example debug output showing:
+	•	hits.length
+	•	returned officials length
+	•	sample returned object keys
+	•	confirmation that tapping a map card opens profile and shows notes
+angle?
