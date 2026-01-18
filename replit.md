@@ -4,11 +4,13 @@
 A mobile application for Texas citizens to view legislative districts, search for representatives, and manage private notes about officials. Built with Expo + React Native and Express.js backend with PostgreSQL database.
 
 ## Current State
-**Data Refresh System Complete** - Officials data automatically refreshed weekly from authoritative sources.
+**Phase C Complete** - Draw-to-search and location features fully implemented.
 
 ### Features:
 - **Map Screen**: Interactive Leaflet map via WebView with tappable GeoJSON polygon overlays for TX Senate (31), TX House (150), and US Congress (38). Color-coded layers with toggle controls. Works in Expo Go on iOS/Android and on web.
-- **Search Screen**: Search officials by ZIP code, name, or draw-to-search (simulated)
+- **Draw-to-Search**: Polygon drawing mode using Leaflet.draw - tap points to draw an area, and find all officials in overlapping districts. Integrated with area-hits API using Turf.js spatial intersection.
+- **Locate Me**: GPS location button using Expo Location - shows user position with blue marker and accuracy circle on map.
+- **Search Screen**: Search officials by ZIP code, name, or draw-to-search
 - **Official Profiles**: View public info (offices, contact) and manage private notes
 - **Profile Screen**: Saved officials list and default overlay preferences
 - **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences
@@ -142,6 +144,11 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-18: Phase C - Added Draw-to-search mode with Leaflet.draw polygon drawing
+- 2026-01-18: Phase C - Added POST /api/map/area-hits endpoint using Turf.js spatial intersection
+- 2026-01-18: Phase C - Added Locate Me button with Expo Location permission flow
+- 2026-01-18: Phase C - User location shown with blue marker and accuracy circle on map
+- 2026-01-18: Phase C - Draw mode prevents normal map taps while active, auto-disables on complete
 - 2026-01-18: Phase B - Multi-overlay tap now returns ALL hits from enabled layers (uses point-in-polygon algorithm)
 - 2026-01-18: Map result cards are now tappable - navigates to Official Profile screen
 - 2026-01-18: Debug panel on map shows hit count and official count for diagnostics
@@ -174,5 +181,4 @@ For production, set up a Replit Scheduled Deployment:
 2. Real ZIP code lookups against district geometry
 3. User authentication (Apple/Google SSO)
 4. Encrypted storage for sensitive private notes
-5. Real draw-to-search with geometry capture
-6. Push notifications for legislative updates
+5. Push notifications for legislative updates
