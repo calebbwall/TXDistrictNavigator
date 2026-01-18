@@ -10,8 +10,7 @@ import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import type { Official, District } from "@/lib/mockData";
-import { getOfficeTypeLabel, getDistrictById } from "@/lib/mockData";
+import { type Official, getOfficeTypeLabel } from "@/lib/officials";
 
 interface OfficialCardProps {
   official: Official;
@@ -19,9 +18,9 @@ interface OfficialCardProps {
 }
 
 const springConfig: WithSpringConfig = {
-  damping: 15,
-  mass: 0.3,
-  stiffness: 180,
+  damping: 25,
+  mass: 0.5,
+  stiffness: 150,
 };
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -42,8 +41,6 @@ export function OfficialCard({ official, onPress }: OfficialCardProps) {
   const handlePressOut = () => {
     scale.value = withSpring(1, springConfig);
   };
-
-  const district = getDistrictById(official.districtId);
 
   return (
     <AnimatedPressable
@@ -76,21 +73,21 @@ export function OfficialCard({ official, onPress }: OfficialCardProps) {
       </View>
       <View style={styles.info}>
         <ThemedText type="body" style={{ fontWeight: "600", fontStyle: isVacant ? "italic" : "normal" }}>
-          {official.fullName}
+          {official.fullName || "Unknown"}
         </ThemedText>
         <ThemedText type="caption" style={{ color: theme.secondaryText }}>
           {getOfficeTypeLabel(official.officeType)}
-          {district ? ` - District ${district.districtNumber}` : ""}
+          {official.districtNumber ? ` - District ${official.districtNumber}` : ""}
         </ThemedText>
         {isVacant ? (
           <ThemedText type="small" style={{ color: theme.warning }}>
             Seat Currently Vacant
           </ThemedText>
-        ) : (
+        ) : official.party ? (
           <ThemedText type="small" style={{ color: theme.secondaryText }}>
-            {official.city}
+            {official.party === "R" ? "Republican" : official.party === "D" ? "Democrat" : official.party}
           </ThemedText>
-        )}
+        ) : null}
       </View>
       <Feather name="chevron-right" size={20} color={theme.secondaryText} />
     </AnimatedPressable>

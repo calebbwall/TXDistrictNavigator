@@ -27,36 +27,27 @@ import {
   saveOverlayPreferences,
   type OverlayPreferences,
 } from "@/lib/storage";
+import {
+  normalizeOfficial,
+  districtTypeToSourceType,
+  getOfficeTypeLabel,
+  type Official,
+  type DistrictType,
+  type DistrictHit,
+} from "@/lib/officials";
 import type { MapStackParamList } from "@/navigation/MapStackNavigator";
 
 type NavigationProp = NativeStackNavigationProp<MapStackParamList>;
 
-type DistrictType = "tx_house" | "tx_senate" | "us_congress";
-
-interface Official {
-  id: string;
-  name: string;
-  chamber: DistrictType;
-  districtNumber: number;
-  photoUrl: string | null;
-  party: "R" | "D";
-  offices: Array<{
-    type: "capitol" | "district";
-    address: string;
-    phone: string;
-  }>;
-}
-
 interface SelectedDistrict {
-  type: DistrictType;
-  number: number;
-  official?: Official;
+  hits: DistrictHit[];
+  officials: Official[];
 }
 
 const springConfig: WithSpringConfig = {
-  damping: 15,
-  mass: 0.5,
-  stiffness: 180,
+  damping: 25,
+  mass: 0.6,
+  stiffness: 150,
 };
 
 const LAYER_COLORS: Record<DistrictType, { fill: string; stroke: string }> = {
@@ -431,18 +422,21 @@ export default function MapScreen() {
     }
   }, []);
 
-  const fetchOfficial = useCallback(async (districtType: DistrictType, districtNumber: number): Promise<Official | undefined> => {
+  const fetchOfficialsByDistricts = useCallback(async (hits: DistrictHit[]): Promise<Official[]> => {
     try {
-      const url = new URL("/api/officials/by-district", getApiUrl());
-      url.searchParams.set("district_type", districtType);
-      url.searchParams.set("district_number", districtNumber.toString());
-      const response = await fetch(url.toString());
-      if (!response.ok) return undefined;
+      const url = new URL("/api/officials/by-districts", getApiUrl());
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ districts: hits }),
+      });
+      if (!response.ok) return [];
       const data = await response.json();
-      return data.official;
+      console.log("[MapScreen] API response keys:", data.officials?.[0] ? Object.keys(data.officials[0]) : "empty");
+      return (data.officials || []).map((raw: Record<string, unknown>) => normalizeOfficial(raw));
     } catch (error) {
-      console.error("Error fetching official:", error);
-      return undefined;
+      console.error("Error fetching officials:", error);
+      return [];
     }
   }, []);
 
@@ -541,19 +535,17 @@ export default function MapScreen() {
     async (districtType: DistrictType, districtNumber: number) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      if (selectedDistrict?.type === districtType && selectedDistrict.number === districtNumber) {
-        setSelectedDistrict(null);
-        return;
-      }
+      const hits: DistrictHit[] = [];
+      const source = districtTypeToSourceType(districtType);
+      hits.push({ source, districtNumber });
       
-      const official = await fetchOfficial(districtType, districtNumber);
+      const officials = await fetchOfficialsByDistricts(hits);
       setSelectedDistrict({
-        type: districtType,
-        number: districtNumber,
-        official,
+        hits,
+        officials,
       });
     },
-    [selectedDistrict, fetchOfficial]
+    [fetchOfficialsByDistricts]
   );
 
   const handleCloseDistrictCard = useCallback(() => {
@@ -846,8 +838,8 @@ export default function MapScreen() {
 
       {selectedDistrict ? (
         <Animated.View
-          entering={SlideInDown.springify().damping(18)}
-          exiting={SlideOutDown.springify().damping(18)}
+          entering={SlideInDown.springify().damping(25)}
+          exiting={SlideOutDown.springify().damping(25)}
           style={[
             styles.districtCardContainer,
             {
@@ -861,38 +853,41 @@ export default function MapScreen() {
             <Feather name="x" size={20} color={theme.secondaryText} />
           </Pressable>
           
-          <View style={styles.districtCardHeader}>
-            <View 
-              style={[
-                styles.districtBadge, 
-                { backgroundColor: LAYER_COLORS[selectedDistrict.type].stroke }
-              ]}
-            >
-              <ThemedText type="small" style={{ color: "#FFFFFF", fontWeight: "600" }}>
-                {getDistrictLabel(selectedDistrict.type)}
-              </ThemedText>
-            </View>
-            <ThemedText type="h3" style={{ color: theme.text }}>
-              District {selectedDistrict.number}
-            </ThemedText>
-          </View>
-
-          {selectedDistrict.official ? (
-            <View style={styles.officialInfo}>
-              <ThemedText type="body" style={{ color: theme.text, fontWeight: "600" }}>
-                {selectedDistrict.official.name}
-              </ThemedText>
-              <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.xs }}>
-                {selectedDistrict.official.party === "R" ? "Republican" : "Democrat"}
-              </ThemedText>
-              {selectedDistrict.official.offices.length > 0 ? (
-                <View style={{ marginTop: Spacing.sm }}>
-                  <ThemedText type="small" style={{ color: theme.secondaryText }}>
-                    {selectedDistrict.official.offices[0].phone}
+          {selectedDistrict.officials.length > 0 ? (
+            selectedDistrict.officials.map((official, index) => (
+              <View key={official.id} style={[styles.officialInfo, index > 0 && { marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: Spacing.md }]}>
+                <View style={styles.districtCardHeader}>
+                  <View 
+                    style={[
+                      styles.districtBadge, 
+                      { backgroundColor: LAYER_COLORS[official.officeType === "us_house" ? "us_congress" : official.officeType].stroke }
+                    ]}
+                  >
+                    <ThemedText type="small" style={{ color: "#FFFFFF", fontWeight: "600" }}>
+                      {getOfficeTypeLabel(official.officeType)}
+                    </ThemedText>
+                  </View>
+                  <ThemedText type="h3" style={{ color: theme.text }}>
+                    District {official.districtNumber}
                   </ThemedText>
                 </View>
-              ) : null}
-            </View>
+                <ThemedText type="body" style={{ color: theme.text, fontWeight: "600", marginTop: Spacing.sm, fontStyle: official.isVacant ? "italic" : "normal" }}>
+                  {official.fullName}
+                </ThemedText>
+                {!official.isVacant && official.party ? (
+                  <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.xs }}>
+                    {official.party === "R" ? "Republican" : official.party === "D" ? "Democrat" : official.party}
+                  </ThemedText>
+                ) : null}
+                {official.capitolPhone ? (
+                  <View style={{ marginTop: Spacing.sm }}>
+                    <ThemedText type="small" style={{ color: theme.secondaryText }}>
+                      {official.capitolPhone}
+                    </ThemedText>
+                  </View>
+                ) : null}
+              </View>
+            ))
           ) : (
             <View style={styles.officialInfo}>
               <ThemedText type="small" style={{ color: theme.secondaryText }}>
