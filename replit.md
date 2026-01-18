@@ -142,6 +142,11 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-18: Phase B - Multi-overlay tap now returns ALL hits from enabled layers (uses point-in-polygon algorithm)
+- 2026-01-18: Map result cards are now tappable - navigates to Official Profile screen
+- 2026-01-18: Debug panel on map shows hit count and official count for diagnostics
+- 2026-01-18: Stable vacancy IDs (VACANT-<source>-<district>) enable private notes on vacant seats
+- 2026-01-18: Data normalization layer (client/lib/officials.ts) ensures consistent Official DTO
 - 2026-01-17: Fixed map rendering on web platform (iframe instead of WebView for web compatibility)
 - 2026-01-17: Added multi-overlay toggle functionality with independent layer controls
 - 2026-01-17: Positioned layer controls below navigation header using useHeaderHeight
