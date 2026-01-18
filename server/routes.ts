@@ -129,6 +129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       let sourceFilter: SourceType | null = null;
+      const isAllSources = source === "ALL";
       
       if (district_type && typeof district_type === "string") {
         const validTypes: DistrictType[] = ["tx_house", "tx_senate", "us_congress"];
@@ -139,7 +140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         conditions.push(eq(officialPublic.source, sourceFilter));
       }
       
-      if (source && typeof source === "string") {
+      if (source && typeof source === "string" && source !== "ALL") {
         const validSources = ["TX_HOUSE", "TX_SENATE", "US_HOUSE"];
         if (!validSources.includes(source)) {
           return res.status(400).json({ error: "Invalid source" });
@@ -159,28 +160,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mergeOfficial(pub, privateMap.get(pub.id) || null)
       );
       
-      if (sourceFilter) {
+      // For source=ALL or no source filter, fill vacancies for all sources
+      if (isAllSources || !sourceFilter) {
+        // Combine officials from all sources with their vacancies
+        const houseOfficials = fillVacancies(
+          officials.filter(o => o.source === "TX_HOUSE"), 
+          "TX_HOUSE"
+        );
+        const senateOfficials = fillVacancies(
+          officials.filter(o => o.source === "TX_SENATE"), 
+          "TX_SENATE"
+        );
+        const congressOfficials = fillVacancies(
+          officials.filter(o => o.source === "US_HOUSE"), 
+          "US_HOUSE"
+        );
+        officials = [...houseOfficials, ...senateOfficials, ...congressOfficials];
+      } else if (sourceFilter) {
         officials = fillVacancies(officials, sourceFilter);
-      } else {
-        officials = officials.map(o => ({ ...o, isVacant: false }));
       }
       
+      // Multi-field search across name, district, addresses, party, email, website
       const searchTerm = search || q;
       if (searchTerm && typeof searchTerm === "string") {
         const term = searchTerm.toLowerCase();
-        officials = officials.filter(o => 
-          o.fullName.toLowerCase().includes(term) ||
-          o.district.includes(term) ||
-          (o.isVacant && "vacant".includes(term))
-        );
+        officials = officials.filter(o => {
+          // Name match
+          if (o.fullName.toLowerCase().includes(term)) return true;
+          // District number match
+          if (o.district.includes(term)) return true;
+          // Vacancy match
+          if (o.isVacant && "vacant".includes(term)) return true;
+          // Party match
+          if (o.party && o.party.toLowerCase().includes(term)) return true;
+          // Capitol address match
+          if (o.capitolAddress && o.capitolAddress.toLowerCase().includes(term)) return true;
+          // District addresses match (JSON array)
+          if (o.districtAddresses && Array.isArray(o.districtAddresses)) {
+            for (const addr of o.districtAddresses) {
+              if (typeof addr === "string" && addr.toLowerCase().includes(term)) return true;
+            }
+          }
+          // Email match
+          if (o.email && o.email.toLowerCase().includes(term)) return true;
+          // Website match
+          if (o.website && o.website.toLowerCase().includes(term)) return true;
+          return false;
+        });
       }
       
+      // Sorting: group by source (House, Senate, Congress), then by district asc, then by name
+      const sourceOrder: Record<string, number> = {
+        "TX_HOUSE": 1,
+        "TX_SENATE": 2,
+        "US_HOUSE": 3,
+      };
+      
       officials.sort((a, b) => {
+        // First by source group (only matters for ALL source)
+        if (isAllSources || !sourceFilter) {
+          const orderA = sourceOrder[a.source] || 99;
+          const orderB = sourceOrder[b.source] || 99;
+          if (orderA !== orderB) return orderA - orderB;
+        }
+        // Then by district number
         const distA = parseInt(a.district, 10);
         const distB = parseInt(b.district, 10);
         if (!isNaN(distA) && !isNaN(distB)) {
           if (distA !== distB) return distA - distB;
         }
+        // Then by last name
         const lastA = a.fullName.split(" ").pop() || "";
         const lastB = b.fullName.split(" ").pop() || "";
         return lastA.localeCompare(lastB);

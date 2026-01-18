@@ -23,22 +23,24 @@ import { BorderRadius, Spacing } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
 import { apiOfficialToNormalized } from "@/lib/officialsAdapter";
 import type { Official } from "@/lib/officials";
-import type { SearchStackParamList } from "@/navigation/SearchStackNavigator";
+import type { BrowseStackParamList } from "@/navigation/BrowseStackNavigator";
 
-type NavigationProp = NativeStackNavigationProp<SearchStackParamList>;
+type NavigationProp = NativeStackNavigationProp<BrowseStackParamList>;
 
-type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "ALL";
 
 const SOURCE_LABELS: Record<SourceType, string> = {
   TX_HOUSE: "TX House",
   TX_SENATE: "TX Senate",
   US_HOUSE: "US House",
+  ALL: "All",
 };
 
 const SEARCH_PLACEHOLDERS: Record<SourceType, string> = {
-  TX_HOUSE: "Search Texas House...",
-  TX_SENATE: "Search Texas Senate...",
-  US_HOUSE: "Search US House...",
+  TX_HOUSE: "Search by name, district, city...",
+  TX_SENATE: "Search by name, district, city...",
+  US_HOUSE: "Search by name, district, city...",
+  ALL: "Search all officials...",
 };
 
 export default function BrowseOfficialsScreen() {
@@ -162,6 +164,8 @@ export default function BrowseOfficialsScreen() {
     );
   }, [isLoading, theme, debouncedSearch]);
 
+  const sources: SourceType[] = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "ALL"];
+
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <View
@@ -174,7 +178,7 @@ export default function BrowseOfficialsScreen() {
         ]}
       >
         <View style={styles.segmentedControl}>
-          {(["TX_HOUSE", "TX_SENATE", "US_HOUSE"] as SourceType[]).map((source) => (
+          {sources.map((source) => (
             <Pressable
               key={source}
               style={[

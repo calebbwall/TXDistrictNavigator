@@ -4,13 +4,13 @@ import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet } from "react-native";
 import MapStackNavigator from "@/navigation/MapStackNavigator";
-import SearchStackNavigator from "@/navigation/SearchStackNavigator";
+import BrowseStackNavigator from "@/navigation/BrowseStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
 
 export type MainTabParamList = {
   MapTab: undefined;
-  SearchTab: undefined;
+  BrowseTab: undefined;
   ProfileTab: undefined;
 };
 
@@ -56,12 +56,12 @@ export default function MainTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="SearchTab"
-        component={SearchStackNavigator}
+        name="BrowseTab"
+        component={BrowseStackNavigator}
         options={{
-          title: "Search",
+          title: "Browse",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="search" size={size} color={color} />
+            <Feather name="list" size={size} color={color} />
           ),
         }}
       />

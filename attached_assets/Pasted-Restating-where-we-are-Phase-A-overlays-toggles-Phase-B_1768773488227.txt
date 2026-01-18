@@ -1,0 +1,144 @@
+Restating where we are
+	•	Phase A: overlays + toggles ✅
+	•	Phase B: multi-overlay selection + tap-to-profile ✅
+	•	Phase C: draw-to-search ✅ and locate-me should now be implemented (or is in progress depending on last agent run)
+
+So the next logical phase is the Browse refactor you originally described (replace Search tab with Browse + add “All Officials” + multi-criteria search).
+
+⸻
+
+Difficulty + suggestions (so the agent doesn’t paint itself into a corner)
+	•	Difficulty: Medium–High, mainly because “search by city/county/zip” only works if those fields exist consistently.
+	•	Best approach: implement a flexible server-side search that searches:
+	•	name
+	•	district number
+	•	office address text blobs (capitol + district offices)
+	•	optionally parsed city/zip if available
+	•	Keep it incremental: deliver a working “Browse” with:
+	1.	four lists (House / Senate / Congress / All)
+	2.	one search bar with “smart” matching
+	3.	optional filters later (city/county/zip parsing can be improved without changing UI)
+
+⸻
+
+Replit Continuous Agent Prompt — Phase D
+
+(Replace Search tab with Browse + All Officials + multi-criteria search; remove old search modes)
+
+Goal
+Replace the existing Search tab with a Browse tab that consists only of roster browsing and searching:
+
+Browse must include 4 lists:
+	1.	Texas House
+	2.	Texas Senate
+	3.	U.S. House (Texas delegation)
+	4.	All Officials (combined across all three)
+
+Each list must:
+	•	show a complete, scrollable roster using existing OfficialCard
+	•	support searching within that list using multiple criteria (name, district, city, county, zip, etc. as available)
+	•	show count label like: 150 members (2 vacancies) and for search 12 results (1 vacancy) if vacancy logic exists; otherwise omit vacancy count
+
+Remove these from the app:
+	•	Zip Code Search screen
+	•	Search by Name screen
+	•	Draw-to-search screen under Search tab (draw remains on Map tab only)
+Update navigation accordingly so there is no dead route.
+
+Do not change Map tab behavior.
+
+⸻
+
+D1) Navigation: Rename Search tab → Browse and remove unused routes
+	•	Update MainTabNavigator.tsx so the tab label is Browse, not Search.
+	•	Ensure Browse tab points to the roster browsing stack/screen (your existing Browse Lists flow).
+	•	Remove Zip/Name/Draw search routes/screens from the Browse stack and any cards linking to them.
+	•	Verify no crashes from missing routes.
+
+⸻
+
+D2) Backend: implement robust multi-criteria search
+
+Implement/extend a single endpoint:
+
+GET /api/officials
+
+Required query params:
+	•	source optional:
+	•	TX_HOUSE | TX_SENATE | US_HOUSE | ALL
+	•	q optional (search string)
+	•	active=true default
+
+Behavior:
+	•	If source=ALL or omitted, include all sources.
+	•	If q provided, match case-insensitive across:
+	•	full_name
+	•	district / districtNumber
+	•	capitol_address, district_office_addresses
+	•	optionally party, email, website
+	•	If city/county/zip are not separate fields, treat them as substring matches within address blobs for MVP.
+
+Sorting:
+	•	Within a single source: district asc then name
+	•	For ALL: sort by source group (House, Senate, Congress) then district asc then name
+
+Return normalized official objects in the same shape used by Map results and OfficialProfileScreen.
+
+⸻
+
+D3) Client: Browse screen with 4 tabs + one search bar
+
+Create/modify BrowseOfficialsScreen.tsx (or rename from existing Browse screen) to have:
+
+UI
+	•	Segmented tabs: TX House, TX Senate, US House, All
+	•	Search input at top (one search bar)
+	•	Count label under tabs:
+	•	no search: X members (Y vacancies)
+	•	with search: X results (Y vacancies)
+	•	hide vacancy text if Y=0 (optional but consistent)
+
+Data fetching
+	•	Use React Query with a key that includes {source, q}
+	•	Request:
+	•	/api/officials?source=TX_HOUSE&q=...
+	•	/api/officials?source=TX_SENATE&q=...
+	•	/api/officials?source=US_HOUSE&q=...
+	•	/api/officials?source=ALL&q=...
+
+Rendering
+	•	Use FlatList with OfficialCard
+	•	On press: navigate to OfficialProfileScreen with officialId (or vacancy id if present)
+
+Empty state:
+	•	If q non-empty and no results: show empty search state image/message.
+	•	If q empty and no data: show a simple fallback message.
+
+⸻
+
+D4) Remove Search-only assets and dead code paths
+	•	Remove the SearchScreen cards and screens that are no longer used (Zip/Name/Draw Search).
+	•	Keep shared components that are used elsewhere.
+	•	Ensure the app builds and there are no imports referencing removed screens.
+
+⸻
+
+D5) Acceptance criteria
+	•	Tab now reads Browse
+	•	Browse shows 4 lists including All Officials
+	•	Search works within each list using multi-criteria matching (at least name + district + address text)
+	•	Count label updates correctly
+	•	Tapping an official opens full profile with public + private notes
+	•	No dead navigation routes; no crashes
+
+⸻
+
+Deliverables
+	•	Updated navigation (Search → Browse)
+	•	Backend search improvements (/api/officials with source=ALL and multi-field match)
+	•	Browse UI updated to 4 tabs + search + count label
+	•	Removed old Search flows/routes
+
+⸻
+
+If you want city/county/zip to be precise (not just address substring), the next iteration is to parse and store normalized address components during refresh—but the above will still work immediately and feel good.
