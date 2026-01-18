@@ -1,0 +1,142 @@
+Got it — same page. ✅
+
+Clarified issue #2: the card UI renders, but the fields inside are empty (no name/district/party/photo/etc.). So this is not a “list doesn’t render” problem; it’s a data-shape / data-binding / fetch result problem.
+
+That usually comes from one of these:
+	•	API returns data but with different field names than OfficialCard expects (e.g., FullName vs fullName)
+	•	API returns only IDs, and the client never does the follow-up fetch
+	•	The client is reading from the wrong property (e.g., official.name when the object is { full_name: ... })
+	•	The data is still “pending,” but the UI renders placeholder cards without showing a loading state
+	•	Serialization bug: data is nested ({ official: {...} }) and the card expects flat
+
+Here’s the revised Replit prompt for Phase A polish with your clarification baked in.
+
+⸻
+
+Replit Continuous Agent Prompt
+
+Fix A1–A3 with clarified #2: cards render but are empty
+
+Goals
+	1.	Multi-overlay tap aggregation: when multiple overlays are ON, tapping map returns officials across all enabled overlays.
+	2.	Card data binding: cards appear but are missing info; fix the data pipeline so cards populate correctly.
+	3.	Reduce bouncy animation on selection.
+
+Do not start Phase B yet.
+
+⸻
+
+A1) Multi-overlay tap → combined officials
+
+WebView → RN message must include all enabled overlay hits
+
+On map tap, return an array of matched districts for each enabled overlay:
+
+{
+  "type": "MAP_TAP",
+  "lat": 30.26,
+  "lng": -97.74,
+  "hits": [
+    { "source": "TX_HOUSE", "district": 47 },
+    { "source": "TX_SENATE", "district": 14 }
+  ]
+}
+
+Include Congress if enabled and matched.
+
+Backend endpoint: fetch all officials for the hit districts (one request)
+
+Implement/verify:
+
+POST /api/officials/by-districts
+
+Body:
+
+{
+  "districts": [
+    { "source": "TX_HOUSE", "districtNumber": 47 },
+    { "source": "TX_SENATE", "districtNumber": 14 }
+  ]
+}
+
+Response must return fully populated official objects suitable for OfficialCard (not just IDs).
+
+⸻
+
+A2) Fix: cards render but fields are blank (data shape/contract)
+
+1) Add an in-app “data contract debug” for one selected card
+
+When the results come back, log (and optionally show in dev panel) the first result object keys, e.g.:
+	•	Object.keys(results[0])
+	•	sample values for name, district, etc.
+
+This quickly reveals casing/nesting mismatches.
+
+2) Make a single canonical “Official” shape and map everything into it
+
+Create a mapping function in the client, e.g. normalizeOfficial(raw) that guarantees these fields exist:
+
+type Official = {
+  officialId: string;
+  source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+  districtNumber: number;
+  fullName: string;        // required, "Vacant District" if vacant
+  party?: string | null;
+  photoUrl?: string | null;
+  capitolPhone?: string | null;
+  capitolAddress?: string | null;
+  website?: string | null;
+  email?: string | null;
+  isVacant?: boolean;
+};
+
+Then ensure the API response is either already in this shape, or normalize it before passing to OfficialCard.
+
+3) Update OfficialCard to use the canonical shape (and show fallback text)
+
+In OfficialCard.tsx:
+	•	Render fullName (or “Vacant District”)
+	•	If district missing, display District ? (but do not render blank)
+	•	If party missing, omit party badge
+	•	Use default avatar if photoUrl missing
+
+Important: Avoid rendering nothing due to falsy checks like if (!official.fullName) return null.
+
+4) Fix the server if it’s the source of mismatch
+
+If the server returns FullName/PhotoUrl/DistrictNumber (PascalCase) but the client expects camelCase, either:
+	•	standardize server to camelCase, or
+	•	normalize in client consistently
+
+Pick ONE and apply across endpoints so Browse later reuses it.
+
+⸻
+
+A3) Reduce bouncy animation
+
+Find the animation used when selecting a district/card. Do one of:
+	•	replace spring with timing (150–250ms)
+	•	or dampen spring (higher damping, lower bounciness, clamp overshoot)
+
+Also ensure selection doesn’t remount the entire card list every time.
+
+⸻
+
+Acceptance criteria
+	•	Tap with House+Senate enabled: results include both officials.
+	•	Cards show actual info: name, district, party if present, avatar fallback.
+	•	No “blank cards” even if optional fields are missing.
+	•	Animation feels controlled (no aggressive bounce).
+
+⸻
+
+Deliverables
+	•	Updated map tap payload for multi-overlay hits
+	•	/api/officials/by-districts implemented/verified returning full objects
+	•	Canonical official shape + normalization layer + updated OfficialCard usage
+	•	Animation tuned down
+
+⸻
+
+If you want to make this even more bulletproof for Phase B, tell the agent to put normalizeOfficial() in a shared lib/ module so Map and Browse both use the same contract.

@@ -269,6 +269,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/officials/by-districts", async (req, res) => {
+    try {
+      const { districts } = req.body;
+      
+      if (!Array.isArray(districts) || districts.length === 0) {
+        return res.status(400).json({ error: "districts array is required" });
+      }
+      
+      const results: MergedOfficial[] = [];
+      
+      for (const dist of districts) {
+        const { source, districtNumber } = dist;
+        if (!source || districtNumber === undefined) continue;
+        
+        const [pub] = await db.select()
+          .from(officialPublic)
+          .where(and(
+            eq(officialPublic.source, source),
+            eq(officialPublic.district, String(districtNumber)),
+            eq(officialPublic.active, true)
+          ))
+          .limit(1);
+        
+        if (pub) {
+          const [priv] = await db.select()
+            .from(officialPrivate)
+            .where(eq(officialPrivate.officialPublicId, pub.id))
+            .limit(1);
+          
+          results.push(mergeOfficial(pub, priv || null));
+        } else {
+          results.push({
+            id: `vacant-${source}-${districtNumber}`,
+            source,
+            sourceMemberId: `vacant-${districtNumber}`,
+            chamber: source.toLowerCase().replace("_", "-"),
+            district: String(districtNumber),
+            fullName: `Vacant District ${districtNumber}`,
+            party: null,
+            photoUrl: null,
+            capitolAddress: null,
+            capitolPhone: null,
+            districtAddresses: null,
+            districtPhones: null,
+            website: null,
+            email: null,
+            active: true,
+            lastRefreshedAt: new Date(),
+            isVacant: true,
+          } as MergedOfficial & { isVacant: boolean });
+        }
+      }
+      
+      res.json({ officials: results });
+    } catch (err) {
+      console.error("[API] Error fetching officials by districts:", err);
+      res.status(500).json({ error: "Failed to fetch officials" });
+    }
+  });
+
   app.patch("/api/officials/:id/private", async (req, res) => {
     try {
       const { id } = req.params;
