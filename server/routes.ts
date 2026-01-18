@@ -12,6 +12,9 @@ import {
   type OfficialPrivate 
 } from "@shared/schema";
 import { eq, and, sql, or, ilike } from "drizzle-orm";
+import * as turf from "@turf/turf";
+import booleanIntersects from "@turf/boolean-intersects";
+import type { Feature, FeatureCollection, Polygon } from "geojson";
 
 type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
 
@@ -449,6 +452,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
         total: 219,
         source: "fallback",
       });
+    }
+  });
+
+  // Cache parsed GeoJSON feature collections for spatial queries
+  let cachedGeoJSON: {
+    tx_house: FeatureCollection | null;
+    tx_senate: FeatureCollection | null;
+    us_congress: FeatureCollection | null;
+  } = {
+    tx_house: null,
+    tx_senate: null,
+    us_congress: null,
+  };
+
+  function getGeoJSONForOverlay(overlayType: string): FeatureCollection | null {
+    if (overlayType === "house" || overlayType === "tx_house") {
+      if (!cachedGeoJSON.tx_house) {
+        cachedGeoJSON.tx_house = txHouseGeoJSON as unknown as FeatureCollection;
+      }
+      return cachedGeoJSON.tx_house;
+    }
+    if (overlayType === "senate" || overlayType === "tx_senate") {
+      if (!cachedGeoJSON.tx_senate) {
+        cachedGeoJSON.tx_senate = txSenateGeoJSON as unknown as FeatureCollection;
+      }
+      return cachedGeoJSON.tx_senate;
+    }
+    if (overlayType === "congress" || overlayType === "us_congress") {
+      if (!cachedGeoJSON.us_congress) {
+        cachedGeoJSON.us_congress = usCongressGeoJSON as unknown as FeatureCollection;
+      }
+      return cachedGeoJSON.us_congress;
+    }
+    return null;
+  }
+
+  function getSourceFromOverlay(overlay: string): SourceType {
+    if (overlay === "house" || overlay === "tx_house") return "TX_HOUSE";
+    if (overlay === "senate" || overlay === "tx_senate") return "TX_SENATE";
+    return "US_HOUSE";
+  }
+
+  function getDistrictNumber(feature: Feature): number | null {
+    const props = feature.properties || {};
+    const districtNum = props.district || props.SLDUST || props.SLDLST || props.CD;
+    return districtNum ? parseInt(String(districtNum)) : null;
+  }
+
+  app.post("/api/map/area-hits", (req, res) => {
+    try {
+      const { geometry, overlays } = req.body;
+
+      if (!geometry || geometry.type !== "Polygon" || !Array.isArray(geometry.coordinates)) {
+        return res.status(400).json({ error: "Invalid geometry: must be a Polygon" });
+      }
+
+      if (!overlays || typeof overlays !== "object") {
+        return res.status(400).json({ error: "overlays object is required" });
+      }
+
+      console.log("[API] /api/map/area-hits - geometry points:", geometry.coordinates[0]?.length);
+      console.log("[API] /api/map/area-hits - overlays:", JSON.stringify(overlays));
+
+      const drawnPolygon = turf.polygon(geometry.coordinates);
+      const hits: { source: SourceType; districtNumber: number }[] = [];
+      const hitDebug: Record<string, number> = {};
+
+      const overlayTypes = ["house", "senate", "congress"] as const;
+
+      for (const overlayType of overlayTypes) {
+        if (!overlays[overlayType]) continue;
+
+        const featureCollection = getGeoJSONForOverlay(overlayType);
+        if (!featureCollection || !featureCollection.features) {
+          console.log(`[API] No GeoJSON for overlay: ${overlayType}`);
+          continue;
+        }
+
+        let hitCount = 0;
+        for (const feature of featureCollection.features) {
+          try {
+            if (booleanIntersects(drawnPolygon, feature as Feature)) {
+              const districtNumber = getDistrictNumber(feature as Feature);
+              if (districtNumber !== null) {
+                const source = getSourceFromOverlay(overlayType);
+                const alreadyExists = hits.some(
+                  (h) => h.source === source && h.districtNumber === districtNumber
+                );
+                if (!alreadyExists) {
+                  hits.push({ source, districtNumber });
+                  hitCount++;
+                }
+              }
+            }
+          } catch (intersectErr) {
+            // Skip invalid geometries
+          }
+        }
+        hitDebug[overlayType] = hitCount;
+      }
+
+      console.log("[API] /api/map/area-hits - hits per overlay:", JSON.stringify(hitDebug));
+      console.log("[API] /api/map/area-hits - total hits:", hits.length);
+
+      res.json({ hits });
+    } catch (err) {
+      console.error("[API] Error in /api/map/area-hits:", err);
+      res.status(500).json({ error: "Failed to compute area hits" });
     }
   });
 

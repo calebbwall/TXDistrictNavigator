@@ -1,0 +1,192 @@
+Restating what Phase C is
+
+Phase C is the Map tools upgrade:
+	1.	Add a Draw-to-search mode on the Map tab so you can draw an area and get all officials whose districts intersect that area, across whichever overlays are enabled.
+	2.	Add Show my location on the map (marker + “locate me” button), with sane permissions and no battery-draining continuous tracking.
+
+This builds on Phase B’s working pipeline: geometry → districts → /by-districts → cards → tap to profile.
+
+⸻
+
+Difficulty + suggestions
+	•	Draw-to-search: High-ish (GIS work + UX). The right MVP is: draw polygon → send GeoJSON polygon to backend → backend finds intersecting districts per enabled overlay (Turf.js) → return {source,districtNumber} list → reuse /api/officials/by-districts.
+	•	Location: Medium. Use Expo Location, request permission once, show marker + center map when user taps a button. Don’t do continuous tracking unless you explicitly want it.
+
+⸻
+
+Replit Continuous Agent Prompt — Phase C
+
+(Draw-to-search + User location on Map tab, using Phase B selection pipeline)
+
+Goal
+Enhance the Map tab with:
+	1.	A Draw toggle button that lets the user draw a polygon on the map and returns all matching officials across enabled overlays whose districts intersect the drawn area.
+	2.	A Locate Me button that shows the user’s current location on the map and optionally centers the map.
+
+Must reuse the existing Phase B pipeline:
+	•	map interaction produces a list of {source, districtNumber}
+	•	RN calls backend to compute hits (for draw), then calls /api/officials/by-districts
+	•	results render as OfficialCards, tappable to open full profile
+
+Do not change Browse tab or other navigation yet.
+
+⸻
+
+C1) Draw-to-search UI on Map tab
+
+1) Add a Draw button to the Map overlay controls
+
+On MapScreen.tsx, add a new button alongside the overlay toggles:
+	•	Label: “Draw”
+	•	States: Off / On
+	•	When On, map enters draw mode and user can draw a polygon.
+	•	When Off, map exits draw mode.
+
+Also add:
+	•	“Clear” action (optional but recommended) to remove the drawn shape and clear results.
+
+Persist draw mode state only during the session (no need to store to AsyncStorage).
+
+⸻
+
+C2) WebView: implement polygon drawing and send geometry to RN
+
+In the Leaflet WebView HTML/JS:
+
+Option A (preferred): Leaflet.draw
+
+Implement polygon drawing with Leaflet.draw:
+	•	Enable polygon drawing when draw mode is ON.
+	•	Allow editing? Optional. For MVP, drawing + clear is enough.
+
+When the user completes a polygon:
+	•	Extract polygon geometry as GeoJSON Feature (Polygon).
+	•	Post message to RN:
+
+{
+  "type": "DRAW_COMPLETE",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [...]
+  }
+}
+
+Also allow user to cancel/clear:
+
+{ "type": "DRAW_CLEARED" }
+
+RN ↔ WebView messages
+
+Add RN → WebView control messages:
+	•	SET_DRAW_MODE with { enabled: boolean }
+	•	CLEAR_DRAWING
+
+Make sure draw mode does not interfere with normal tap-to-select when OFF.
+
+⸻
+
+C3) Backend: spatial intersection to find districts in drawn area
+
+Implement a backend endpoint that accepts:
+	•	the drawn polygon geometry
+	•	which overlays are enabled
+
+Endpoint
+POST /api/map/area-hits
+
+Body:
+
+{
+  "geometry": { "type": "Polygon", "coordinates": [...] },
+  "overlays": { "house": true, "senate": true, "congress": false }
+}
+
+Behavior
+	•	For each enabled overlay:
+	•	Load the simplified GeoJSON feature collection for that overlay (cached in memory on server after first load).
+	•	Compute which district polygons intersect the drawn polygon.
+	•	Collect unique hits as { source, districtNumber }.
+	•	Return:
+
+{
+  "hits": [
+    { "source": "TX_HOUSE", "districtNumber": 47 },
+    { "source": "TX_SENATE", "districtNumber": 14 }
+  ]
+}
+
+Implementation notes
+	•	Use Turf.js on the server:
+	•	booleanIntersects(drawnPolygon, districtFeature)
+	•	Guardrails:
+	•	Validate geometry input (must be Polygon, non-empty)
+	•	If geometry too large / too many points, simplify it server-side (optional) to avoid slow intersection
+	•	Performance:
+	•	Use simplified district GeoJSON for intersection.
+	•	Cache parsed feature collections and optionally precompute bounding boxes to short-circuit.
+
+⸻
+
+C4) RN: draw results → officials list using existing /by-districts
+
+When RN receives DRAW_COMPLETE:
+	1.	Call POST /api/map/area-hits with geometry + current overlay toggles.
+	2.	Receive hits array.
+	3.	Call existing POST /api/officials/by-districts with those hits.
+	4.	Render results list as official cards (same UI as tap results).
+	5.	Show count label like:
+	•	“23 officials (2 vacancies)” if vacancy logic exists
+	•	or “23 officials” if not
+
+If hits is empty, show an empty state: “No districts found in selection.”
+
+⸻
+
+C5) Add “Locate Me” feature
+
+RN side (Expo Location)
+	•	Add a “Locate Me” button on MapScreen (top-right or near controls).
+	•	On press:
+	1.	Request foreground location permission (if not already granted).
+	2.	Get current position once (no continuous tracking).
+	3.	Send location to WebView:
+
+{ "type": "SET_USER_LOCATION", "lat": ..., "lng": ..., "accuracy": ... }
+
+	4.	Optionally recenter map:
+
+{ "type": "CENTER_MAP", "lat": ..., "lng": ..., "zoom": 10 }
+
+WebView side
+	•	Render a marker (and optional accuracy circle) for user location.
+	•	Update marker when a new location is sent.
+	•	Do not recenter automatically unless RN explicitly sends CENTER_MAP.
+
+UX rules
+	•	If permission denied, show a clear message and do nothing.
+	•	Don’t spam permission prompts—respect user choice.
+	•	Provide a small “location active” indicator if marker is shown.
+
+⸻
+
+C6) Acceptance criteria
+	•	Draw mode OFF: normal tap selection still works (Phase B behavior unchanged).
+	•	Draw mode ON: user can draw a polygon; app returns officials for all intersecting districts across enabled overlays.
+	•	Clear removes polygon and clears results.
+	•	Locate Me shows marker on map and recenters when pressed (with permission flow).
+	•	Results show official cards; tapping a card opens Official Profile with public + private notes.
+
+⸻
+
+C7) Deliverables
+	•	MapScreen: Draw button + Locate Me button + integration logic
+	•	WebView: drawing support + message handling + user marker rendering
+	•	Backend: POST /api/map/area-hits intersection endpoint using Turf.js + caching
+	•	Debug logging for:
+	•	drawn geometry point count
+	•	number of district hits per overlay
+	•	total officials returned
+
+⸻
+
+If you want the draw tool to be a “circle” instead of polygon, we can implement circle-draw as center+radius and buffer it into a polygon server-side, but polygon is the cleanest first version.
