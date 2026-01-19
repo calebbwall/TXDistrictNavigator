@@ -42,7 +42,15 @@ import {
   isOfficialSaved,
   saveOfficial,
   removeOfficial,
+  getNotesPrayer,
+  addNotePrayer,
+  deleteNotePrayer,
+  getEngagementLog,
+  addEngagement,
+  deleteEngagement,
   type PrivateNotes,
+  type NotePrayerEntry,
+  type EngagementEntry,
 } from "@/lib/storage";
 import type { MapStackParamList } from "@/navigation/MapStackNavigator";
 
@@ -160,6 +168,13 @@ export default function OfficialProfileScreen() {
   const [isSaved, setIsSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [privateNotes, setPrivateNotes] = useState<PrivateNotes>({});
+  const [notesPrayer, setNotesPrayer] = useState<NotePrayerEntry[]>([]);
+  const [engagementLog, setEngagementLog] = useState<EngagementEntry[]>([]);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [newNoteFollowUp, setNewNoteFollowUp] = useState(false);
+  const [newEngagementSummary, setNewEngagementSummary] = useState("");
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [showAddEngagement, setShowAddEngagement] = useState(false);
 
   const loadOfficial = useCallback(async () => {
     setIsLoading(true);
@@ -185,6 +200,13 @@ export default function OfficialProfileScreen() {
       setIsSaved(saved);
       const notes = await getPrivateNotes(official.id);
       if (notes) setPrivateNotes(notes);
+      
+      if (official.source && official.districtNumber) {
+        const npEntries = await getNotesPrayer(official.source, official.districtNumber);
+        setNotesPrayer(npEntries);
+        const engEntries = await getEngagementLog(official.source, official.districtNumber);
+        setEngagementLog(engEntries);
+      }
     }
   }, [official]);
 
@@ -255,6 +277,62 @@ export default function OfficialProfileScreen() {
       default: `https://maps.google.com/?q=${encoded}`,
     });
     Linking.openURL(url);
+  }, []);
+
+  const handleAddNotePrayer = useCallback(async () => {
+    if (!official?.source || !official?.districtNumber || !newNoteText.trim()) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const entry = await addNotePrayer(official.source, official.districtNumber, newNoteText.trim(), newNoteFollowUp);
+    setNotesPrayer(prev => [entry, ...prev]);
+    setNewNoteText("");
+    setNewNoteFollowUp(false);
+    setShowAddNote(false);
+  }, [official, newNoteText, newNoteFollowUp]);
+
+  const handleDeleteNotePrayer = useCallback(async (entryId: string) => {
+    if (!official?.source || !official?.districtNumber) return;
+    Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          await deleteNotePrayer(official.source!, official.districtNumber!, entryId);
+          setNotesPrayer(prev => prev.filter(e => e.id !== entryId));
+        },
+      },
+    ]);
+  }, [official]);
+
+  const handleAddEngagement = useCallback(async () => {
+    if (!official?.source || !official?.districtNumber) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const entry = await addEngagement(
+      official.source, 
+      official.districtNumber, 
+      new Date().toISOString(), 
+      newEngagementSummary.trim() || undefined
+    );
+    setEngagementLog(prev => [entry, ...prev]);
+    setNewEngagementSummary("");
+    setShowAddEngagement(false);
+  }, [official, newEngagementSummary]);
+
+  const handleDeleteEngagement = useCallback(async (entryId: string) => {
+    if (!official?.source || !official?.districtNumber) return;
+    Alert.alert("Delete Engagement", "Are you sure you want to delete this engagement record?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          await deleteEngagement(official.source!, official.districtNumber!, entryId);
+          setEngagementLog(prev => prev.filter(e => e.id !== entryId));
+        },
+      },
+    ]);
   }, []);
 
   if (isLoading) {
@@ -643,6 +721,162 @@ export default function OfficialProfileScreen() {
                 )}
               </View>
             </View>
+
+            <View style={[styles.section, { marginTop: Spacing.xl }]}>
+              <View style={styles.editHeader}>
+                <View>
+                  <ThemedText type="h3">Private Notes & Prayer</ThemedText>
+                  <ThemedText type="small" style={{ color: theme.secondaryText }}>
+                    Private to this device.
+                  </ThemedText>
+                </View>
+                <Pressable
+                  onPress={() => setShowAddNote(!showAddNote)}
+                  style={({ pressed }) => [
+                    styles.addButton,
+                    { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Feather name={showAddNote ? "x" : "plus"} size={16} color="#FFFFFF" />
+                  <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: 4 }}>
+                    {showAddNote ? "Cancel" : "Add Note"}
+                  </ThemedText>
+                </Pressable>
+              </View>
+
+              {showAddNote ? (
+                <View style={[styles.addEntryForm, { backgroundColor: theme.cardBackground }]}>
+                  <TextInput
+                    style={[
+                      styles.noteInput,
+                      styles.notesTextArea,
+                      { backgroundColor: theme.inputBackground, color: theme.text },
+                    ]}
+                    value={newNoteText}
+                    onChangeText={setNewNoteText}
+                    placeholder="Enter your note or prayer..."
+                    placeholderTextColor={theme.secondaryText}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+                  <Pressable
+                    onPress={() => setNewNoteFollowUp(!newNoteFollowUp)}
+                    style={styles.checkboxRow}
+                  >
+                    <View style={[
+                      styles.checkbox,
+                      { borderColor: theme.border },
+                      newNoteFollowUp && { backgroundColor: theme.primary, borderColor: theme.primary },
+                    ]}>
+                      {newNoteFollowUp ? <Feather name="check" size={14} color="#FFFFFF" /> : null}
+                    </View>
+                    <ThemedText type="body">Follow-up needed</ThemedText>
+                  </Pressable>
+                  <Button onPress={handleAddNotePrayer} disabled={!newNoteText.trim()}>
+                    Save Note
+                  </Button>
+                </View>
+              ) : null}
+
+              {notesPrayer.length > 0 ? (
+                <View style={styles.entriesList}>
+                  {notesPrayer.map((entry) => (
+                    <View key={entry.id} style={[styles.entryCard, { backgroundColor: theme.cardBackground }]}>
+                      <View style={styles.entryHeader}>
+                        <ThemedText type="small" style={{ color: theme.secondaryText }}>
+                          {new Date(entry.createdAt).toLocaleDateString()}
+                        </ThemedText>
+                        <View style={styles.entryActions}>
+                          {entry.followUpNeeded ? (
+                            <View style={[styles.followUpBadge, { backgroundColor: theme.primary }]}>
+                              <ThemedText type="small" style={{ color: "#FFFFFF" }}>Follow-up</ThemedText>
+                            </View>
+                          ) : null}
+                          <Pressable onPress={() => handleDeleteNotePrayer(entry.id)}>
+                            <Feather name="trash-2" size={16} color={theme.secondaryText} />
+                          </Pressable>
+                        </View>
+                      </View>
+                      <ThemedText type="body">{entry.text}</ThemedText>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <ThemedText type="body" style={{ color: theme.secondaryText, fontStyle: "italic" }}>
+                  No notes yet.
+                </ThemedText>
+              )}
+            </View>
+
+            <View style={[styles.section, { marginTop: Spacing.xl }]}>
+              <View style={styles.editHeader}>
+                <View>
+                  <ThemedText type="h3">Last Engaged</ThemedText>
+                  {engagementLog.length > 0 ? (
+                    <ThemedText type="body" style={{ color: theme.secondaryText }}>
+                      {new Date(engagementLog[0].engagedAt).toLocaleDateString()}
+                    </ThemedText>
+                  ) : null}
+                </View>
+                <Pressable
+                  onPress={() => setShowAddEngagement(!showAddEngagement)}
+                  style={({ pressed }) => [
+                    styles.addButton,
+                    { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Feather name={showAddEngagement ? "x" : "plus"} size={16} color="#FFFFFF" />
+                  <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: 4 }}>
+                    {showAddEngagement ? "Cancel" : "Log Engagement"}
+                  </ThemedText>
+                </Pressable>
+              </View>
+
+              {showAddEngagement ? (
+                <View style={[styles.addEntryForm, { backgroundColor: theme.cardBackground }]}>
+                  <TextInput
+                    style={[
+                      styles.noteInput,
+                      { backgroundColor: theme.inputBackground, color: theme.text },
+                    ]}
+                    value={newEngagementSummary}
+                    onChangeText={setNewEngagementSummary}
+                    placeholder="Optional summary (e.g., 'Met at Capitol')"
+                    placeholderTextColor={theme.secondaryText}
+                  />
+                  <Button onPress={handleAddEngagement}>
+                    Log Engagement Now
+                  </Button>
+                </View>
+              ) : null}
+
+              {engagementLog.length > 0 ? (
+                <View style={styles.entriesList}>
+                  {engagementLog.map((entry) => (
+                    <View key={entry.id} style={[styles.entryCard, { backgroundColor: theme.cardBackground }]}>
+                      <View style={styles.entryHeader}>
+                        <ThemedText type="body" style={{ fontWeight: "600" }}>
+                          {new Date(entry.engagedAt).toLocaleDateString()} at {new Date(entry.engagedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </ThemedText>
+                        <Pressable onPress={() => handleDeleteEngagement(entry.id)}>
+                          <Feather name="trash-2" size={16} color={theme.secondaryText} />
+                        </Pressable>
+                      </View>
+                      {entry.summary ? (
+                        <ThemedText type="body" style={{ color: theme.secondaryText }}>
+                          {entry.summary}
+                        </ThemedText>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <ThemedText type="body" style={{ color: theme.secondaryText, fontStyle: "italic" }}>
+                  No engagements logged yet.
+                </ThemedText>
+              )}
+            </View>
           </Animated.View>
         )}
       </KeyboardAwareScrollViewCompat>
@@ -783,5 +1017,56 @@ const styles = StyleSheet.create({
   },
   vacantCardContent: {
     flex: 1,
+  },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+  },
+  addEntryForm: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  entriesList: {
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  entryCard: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+  },
+  entryHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  entryActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  followUpBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.xs,
   },
 });

@@ -1,0 +1,173 @@
+Restating your Phase F choice
+
+You want Phase F to include:
+	•	Option 2: Workflow tools (quick actions, favorites, recents, follow-up dashboard)
+	•	Option 3: Better place search polish (Texas town search with disambiguation + recents + map pin alternative)
+	•	Option 5: Offline-first polish (cache last-known-good data + offline UI behavior)
+
+⸻
+
+High-level difficulty + suggestions
+	•	F2 Workflow tools: Medium (mostly UI + private storage)
+	•	F3 Place search polish: Medium (API + UX, manageable)
+	•	F5 Offline-first: Medium–High (cache invalidation + ensuring app doesn’t break when offline)
+
+Suggestion: Implement in this order inside Phase F so you don’t create brittle dependencies:
+	1.	F5 Offline foundation (read-only caching + offline detection)
+	2.	F2 Workflow tools (favorites/recents/follow-ups built on stable local storage)
+	3.	F3 Place search disambiguation + recents + optional drop-pin
+
+This prevents “new workflows depend on network and then feel broken.”
+
+⸻
+
+Replit Continuous Agent Prompt — Phase F (Options 2, 3, 5)
+
+Objective
+
+Implement Phase F features across three tracks:
+	•	F2 Workflow tools for speed and oversight
+	•	F3 Place search polish (Texas town/city lookup with disambiguation)
+	•	F5 Offline-first polish (cache + graceful offline behavior)
+
+Do not break existing flows:
+	•	Map overlays/toggles, tap-to-profile, draw-to-search
+	•	Browse lists
+	•	Official Profile with private notes & engagement log
+	•	Weekly refresh + private data protection
+
+⸻
+
+F5 — Offline-first polish (foundation)
+
+F5.1 Offline detection + UX
+	•	Detect online/offline status in React Native.
+	•	When offline:
+	•	show a subtle banner: “Offline — showing saved data”
+	•	disable actions that require network (e.g., place lookup) with clear messaging
+	•	When back online:
+	•	auto-dismiss banner and allow actions again
+
+F5.2 Cache last-known-good public data locally
+
+Cache these locally (read-only cache):
+	•	officials list(s) (public data) used by Browse and Profile
+	•	last refresh timestamp + counts by source
+	•	last-used map overlay geojson is already cached; keep it stable
+
+Requirements:
+	•	On app start, load cached data first for instant UI.
+	•	Then attempt network fetch; on success update cache.
+	•	If network fetch fails, keep cached data and show the offline/failed banner (do not blank the UI).
+
+Implementation details:
+	•	Use AsyncStorage (or existing storage layer).
+	•	Cache keys should include versioning, e.g. cache:v1:officials:ALL.
+
+F5.3 Avoid cache poisoning
+	•	If a fetch returns suspicious counts (0 or huge drop), treat as failure and keep last-known-good (reuse Phase E guardrails if present).
+	•	Never overwrite cache with obviously bad data.
+
+⸻
+
+F2 — Workflow tools (favorites, recents, follow-ups, quick actions)
+
+F2.1 Favorites (private)
+
+Add ability to “star” an official (including vacant districts):
+	•	Star button on Official Profile header
+	•	New Browse segment/tab/filter: “Favorites”
+	•	Favorites stored privately keyed by {source, districtNumber}
+
+F2.2 Recents
+
+Track (private, local):
+	•	Recently viewed officials (last 20)
+	•	Recently engaged officials (last 20, derived from engagement log add events)
+
+Expose on Browse:
+	•	“Recent” section (or a new top block above lists)
+
+F2.3 Follow-up dashboard
+
+Create a simple screen accessible from Profile or Browse:
+	•	Lists officials with any Notes & Prayer entry where followUpNeeded = true
+	•	Sort by:
+	1.	most recently engaged
+	2.	then most recently updated note
+	•	Tap opens Official Profile
+
+F2.4 Quick actions
+
+On Official Profile add two one-tap actions:
+	•	“Log engagement (now)” → creates engagement entry with current datetime and opens optional “add summary” field
+	•	“Add prayer note” → opens add note composer immediately
+
+⸻
+
+F3 — Place search polish (Texas-only, disambiguation, recents, optional pin)
+
+F3.1 Disambiguation UI for place search
+
+When user searches for a place and GeoNames returns multiple plausible Texas results:
+	•	Show a list of 3–10 candidates:
+	•	Place name
+	•	County (if available from API)
+	•	lat/lng (not shown unless debug)
+	•	User selects one → proceed to districts-at-point → officials results
+
+Backend change:
+	•	Modify /api/lookup/place?q=... to optionally return multiple candidates:
+
+{ "candidates": [ { "name": "...", "lat": ..., "lng": ..., "county": "...", "geonameId": ... }, ... ] }
+
+If exactly one strong match, return it directly.
+
+F3.2 Place search recents (private)
+
+Store last 10 place searches selected:
+	•	name + lat/lng + timestamp
+Expose in Browse as “Recent places” for quick tap re-run.
+
+F3.3 Optional “Drop pin” mode (nice-to-have)
+
+Add a “Drop Pin” button in Browse place search results:
+	•	Opens Map tab with a temporary pin mode
+	•	User taps a point → use the existing Phase B tap pipeline to get districts/officials
+
+If this is too large for this phase, skip pin mode and only do disambiguation + recents.
+
+⸻
+
+Acceptance criteria
+	•	Offline:
+	•	Browse still shows cached officials list
+	•	Official Profile still opens for cached officials + private notes
+	•	Place search shows “offline” message and uses recents (no network)
+	•	Favorites:
+	•	Star/unstar works, persists, and shows in Favorites list
+	•	Follow-up:
+	•	Follow-up dashboard lists correct officials and navigates properly
+	•	Place disambiguation:
+	•	Ambiguous town search shows choices and returns correct officials once selected
+	•	No regressions to Map overlays/draw/tap-to-profile
+
+⸻
+
+Deliverables
+	•	List of files changed
+	•	Storage keys used for:
+	•	cached public data
+	•	favorites
+	•	recents
+	•	follow-ups
+	•	recent places
+	•	Short test plan:
+	•	airplane mode test
+	•	favorite test
+	•	follow-up test
+	•	ambiguous place test
+
+⸻
+
+If you want, I can also split this into Phase F1/F2/F3 prompts so the agent can ship in smaller, safer chunks—but the above is designed to work together cleanly.

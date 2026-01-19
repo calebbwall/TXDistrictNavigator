@@ -32,6 +32,8 @@ export interface Official {
   offices: Office[];
   staff: Staff[];
   isVacant?: boolean;
+  source?: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+  districtNumber?: number;
   privateNotes?: {
     personalPhone?: string;
     personalAddress?: string;

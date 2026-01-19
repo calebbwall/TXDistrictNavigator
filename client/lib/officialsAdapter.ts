@@ -96,6 +96,8 @@ export function apiOfficialToLegacy(apiOfficial: MergedOfficial): MockOfficial {
     offices,
     staff: [],
     isVacant: apiOfficial.isVacant || false,
+    source: apiOfficial.source,
+    districtNumber: parseInt(String(apiOfficial.district || "0"), 10),
     privateNotes: apiOfficial.private ? {
       personalPhone: apiOfficial.private.personalPhone || undefined,
       personalAddress: apiOfficial.private.personalAddress || undefined,
