@@ -1,0 +1,196 @@
+Here’s a very explicit Replit Continuous Agent prompt for Option A: true freehand lasso, with guardrails so it’s implemented cleanly (smooth drawing, valid polygons, no lag, no broken map gestures).
+
+⸻
+
+Replit Continuous Agent Prompt — Implement Freehand Lasso Draw-to-Search (Option A)
+
+Objective
+
+Replace the current “tap-to-add-points polygon” draw tool with a freehand lasso:
+	•	User taps Draw
+	•	User presses and drags finger to draw a continuous boundary
+	•	On release, the app closes the loop automatically, converts it to a valid GeoJSON Polygon, and runs the existing draw-to-search pipeline:
+	•	POST /api/map/area-hits → returns district hits
+	•	POST /api/officials/by-districts → returns officials
+	•	Must remain smooth on iOS Expo Go. No freezing, no huge polygons, no broken map interaction.
+
+Do not change backend intersection logic unless required to fix correctness/performance.
+
+⸻
+
+1) WebView: Freehand capture must use pointer events + map dragging disabled during draw
+
+1.1 Add RN → WebView control message
+
+When draw mode toggles in RN, WebView must receive:
+
+{ "type": "SET_DRAW_MODE", "enabled": true }
+
+When draw mode is disabled:
+
+{ "type": "SET_DRAW_MODE", "enabled": false }
+
+When clear is pressed:
+
+{ "type": "CLEAR_DRAWING" }
+
+1.2 When draw mode enabled, disable map pan/zoom gestures while finger is down
+
+In WebView:
+	•	When drawing begins: disable map dragging + tap handling
+	•	When drawing ends: re-enable map dragging + tap handling
+
+This prevents the map from moving while lassoing.
+
+Implementation detail:
+	•	map.dragging.disable()
+	•	optionally disable map.doubleClickZoom, map.scrollWheelZoom, map.touchZoom during drawing
+	•	re-enable afterward
+
+⸻
+
+2) Freehand lasso point sampling (critical to avoid lag)
+
+2.1 Use pointer events, not click events
+
+Implement:
+	•	pointerdown → start drawing
+	•	pointermove → add points
+	•	pointerup / pointercancel → finish
+
+Fallback to touch events if pointer not supported, but pointer is preferred.
+
+2.2 Sample points by distance + time
+
+Do NOT add a point on every move event. Use BOTH:
+	•	min distance threshold (screen pixels): e.g. 8–12 px
+	•	min time threshold: e.g. 30–60 ms
+
+Only append a point if the new pointer position is far enough OR enough time passed.
+
+2.3 Hard limits
+	•	Max points collected: 500
+	•	If exceeded:
+	•	stop adding new points
+	•	show a small UI hint: “Shape simplified” (optional)
+	•	still complete the selection on release
+
+This prevents massive geometry from bogging down.
+
+⸻
+
+3) Convert the freehand stroke to a valid polygon (must be correct GeoJSON)
+
+3.1 Collect points as lat/lng, but output GeoJSON as [lng, lat]
+
+While drawing:
+	•	convert pointer location to latlng using Leaflet (e.g., map.mouseEventToLatLng)
+
+Output Polygon coordinates:
+	•	[[[lng, lat], [lng, lat], ...]]
+
+3.2 Minimum geometry validation
+
+On release:
+	•	If fewer than 3 distinct points, discard and do nothing.
+	•	If polygon area is extremely small (tiny scribble), discard or warn.
+
+3.3 Close the polygon
+
+Ensure last coordinate equals first coordinate.
+
+⸻
+
+4) Simplify before sending (mandatory)
+
+4.1 Simplify the polygon before sending to RN
+
+Apply simplification so backend isn’t handed a 500-point shape.
+
+Options:
+	•	Use Turf.js simplify in WebView, OR do it server-side.
+Preferred: do it in WebView so you send fewer bytes.
+
+Rules:
+	•	simplify tolerance should scale with zoom:
+	•	at zoomed out levels, stronger simplification
+	•	at zoomed in levels, lighter
+	•	start with a conservative tolerance (e.g., 0.0008) and adjust if needed
+	•	ensure the polygon remains valid after simplification
+
+4.2 Ensure clockwise ring ordering not required, but polygon must be valid
+
+If simplification produces self-intersection, fall back to less simplification or use original capped points.
+
+⸻
+
+5) Visual feedback during draw (must feel good)
+
+5.1 While finger down
+
+Render a polyline for the stroke in real time (thin line).
+
+5.2 On release
+
+Remove the polyline and render a filled polygon selection:
+	•	light fill (transparent)
+	•	thin outline
+	•	keep it visible until Clear
+
+⸻
+
+6) Messaging + pipeline integration (reuse existing endpoints)
+
+6.1 WebView → RN payload
+
+Send:
+
+{
+  "type": "DRAW_COMPLETE",
+  "geometry": { "type": "Polygon", "coordinates": [ [ [lng,lat], ... ] ] },
+  "meta": { "rawPoints": 312, "simplifiedPoints": 84 }
+}
+
+6.2 RN behavior
+
+On DRAW_COMPLETE:
+	1.	Call POST /api/map/area-hits with geometry + enabled overlays
+	2.	Call POST /api/officials/by-districts with returned hits
+	3.	Render scrollable results panel (already implemented)
+
+On CLEAR_DRAWING:
+	•	clear shape and clear results
+
+⸻
+
+7) Debugging instrumentation (dev-only, not visible by default)
+
+Add logs (console only or debug panel if enabled) showing:
+	•	raw point count
+	•	simplified point count
+	•	geometry bbox
+	•	district hit counts per overlay
+	•	total officials returned
+
+⸻
+
+Acceptance criteria (must pass)
+	1.	I can draw a continuous lasso with one finger (no tap-to-add-vertices).
+	2.	The map does NOT pan/zoom while drawing.
+	3.	Releasing completes selection and returns correct officials.
+	4.	No freezing/hitching on iOS Expo Go (point cap + sampling + simplification prevents lag).
+	5.	Clear removes polygon + results and returns to normal map interactions.
+	6.	Existing tap-to-select still works when Draw mode is OFF.
+
+⸻
+
+Deliverables in your response
+	•	Files changed (MapScreen + WebView HTML/module)
+	•	Sampling thresholds used (px + ms)
+	•	Max points cap
+	•	Simplification approach and tolerance
+	•	Confirmation of GeoJSON coordinate order ([lng, lat])
+
+⸻
+
+If the agent implements this exactly, you’ll get the “lasso feel” you’re after without turning the map into a slideshow.

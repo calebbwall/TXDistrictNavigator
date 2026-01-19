@@ -48,6 +48,10 @@ import {
   getEngagementLog,
   addEngagement,
   deleteEngagement,
+  isFavorite,
+  addFavorite,
+  removeFavorite,
+  addRecentEngaged,
   type PrivateNotes,
   type NotePrayerEntry,
   type EngagementEntry,
@@ -166,6 +170,7 @@ export default function OfficialProfileScreen() {
 
   const [activeTab, setActiveTab] = useState<TabType>("public");
   const [isSaved, setIsSaved] = useState(false);
+  const [isFav, setIsFav] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [privateNotes, setPrivateNotes] = useState<PrivateNotes>({});
   const [notesPrayer, setNotesPrayer] = useState<NotePrayerEntry[]>([]);
@@ -206,6 +211,8 @@ export default function OfficialProfileScreen() {
         setNotesPrayer(npEntries);
         const engEntries = await getEngagementLog(official.source, official.districtNumber);
         setEngagementLog(engEntries);
+        const fav = await isFavorite(official.source, official.districtNumber);
+        setIsFav(fav);
       }
     }
   }, [official]);
@@ -243,6 +250,18 @@ export default function OfficialProfileScreen() {
       setIsSaved(true);
     }
   }, [official, isSaved]);
+
+  const handleToggleFavorite = useCallback(async () => {
+    if (!official || !official.source || !official.districtNumber) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (isFav) {
+      await removeFavorite(official.source, official.districtNumber);
+      setIsFav(false);
+    } else {
+      await addFavorite(official.source, official.districtNumber);
+      setIsFav(true);
+    }
+  }, [official, isFav]);
 
   const handleSaveNotes = useCallback(async () => {
     if (!official) return;
@@ -317,6 +336,7 @@ export default function OfficialProfileScreen() {
     setEngagementLog(prev => [entry, ...prev]);
     setNewEngagementSummary("");
     setShowAddEngagement(false);
+    addRecentEngaged(official.source, official.districtNumber);
   }, [official, newEngagementSummary]);
 
   const handleDeleteEngagement = useCallback(async (entryId: string) => {
@@ -440,20 +460,36 @@ export default function OfficialProfileScreen() {
               </ThemedText>
             ) : null}
           </View>
-          <Pressable
-            onPress={handleToggleSaved}
-            style={({ pressed }) => [
-              styles.saveButton,
-              { opacity: pressed ? 0.7 : 1 },
-            ]}
-          >
-            <Feather
-              name={isSaved ? "bookmark" : "bookmark"}
-              size={24}
-              color={isSaved ? theme.primary : theme.secondaryText}
-              style={{ opacity: isSaved ? 1 : 0.5 }}
-            />
-          </Pressable>
+          <View style={styles.headerButtons}>
+            <Pressable
+              onPress={handleToggleFavorite}
+              style={({ pressed }) => [
+                styles.saveButton,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Feather
+                name={isFav ? "star" : "star"}
+                size={24}
+                color={isFav ? "#FFD700" : theme.secondaryText}
+                style={{ opacity: isFav ? 1 : 0.5 }}
+              />
+            </Pressable>
+            <Pressable
+              onPress={handleToggleSaved}
+              style={({ pressed }) => [
+                styles.saveButton,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Feather
+                name={isSaved ? "bookmark" : "bookmark"}
+                size={24}
+                color={isSaved ? theme.primary : theme.secondaryText}
+                style={{ opacity: isSaved ? 1 : 0.5 }}
+              />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.tabContainer}>
@@ -919,6 +955,10 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: Spacing.md,
     gap: 2,
+  },
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   saveButton: {
     padding: Spacing.sm,
