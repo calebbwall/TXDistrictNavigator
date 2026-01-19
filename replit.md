@@ -8,7 +8,7 @@ A mobile application for Texas citizens to view legislative districts, search fo
 
 ### Features:
 - **Map Screen**: Interactive Leaflet map via WebView with tappable GeoJSON polygon overlays for TX Senate (31), TX House (150), and US Congress (38). Color-coded layers with toggle controls. Works in Expo Go on iOS/Android and on web.
-- **Draw-to-Search**: Polygon drawing mode using Leaflet.draw - tap points to draw an area, and find all officials in overlapping districts. Integrated with area-hits API using Turf.js spatial intersection.
+- **Draw-to-Search**: Continuous freehand polygon drawing - drag your finger/mouse to draw a smooth shape. Features real-time polyline preview, Douglas-Peucker simplification for performance, auto-closing polygon on release, and haptic feedback. Finds all officials in overlapping districts via area-hits API with Turf.js spatial intersection.
 - **Locate Me**: GPS location button using browser geolocation (web) or Expo Location (native) - shows user position with blue marker and accuracy circle on map.
 - **Browse Screen**: Complete roster browsing with 6 tabs (TX House, TX Senate, US House, All Officials, Favorites, Recent). Single search bar with multi-criteria matching. Count labels show member count and vacancy count.
 - **Favorites System**: Gold star button on Official Profile to favorite officials, dedicated Favorites tab in Browse
@@ -155,6 +155,7 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-19: Upgraded draw-to-search to continuous freehand drawing (replaces tap-to-place-points), with Douglas-Peucker simplification, real-time polyline preview, auto-close polygon, haptic feedback
 - 2026-01-19: Phase F - Complete workflow tools: Favorites (gold star), Recent tracking (viewed+engaged), Follow-up Dashboard
 - 2026-01-19: Phase F - Offline-first polish: NetInfo detection, OfflineBanner, cache-first loading with 25% validation threshold
 - 2026-01-19: Phase F - Place search: GeoNames API with multi-candidate disambiguation, recent places storage
