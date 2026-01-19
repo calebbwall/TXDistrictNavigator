@@ -4,6 +4,8 @@ import type { Official } from "./mockData";
 const SAVED_OFFICIALS_KEY = "@texas_districts:saved_officials";
 const PRIVATE_NOTES_KEY = "@texas_districts:private_notes";
 const OVERLAY_PREFERENCES_KEY = "@texas_districts:overlay_preferences";
+const NOTES_PRAYER_KEY = "@texas_districts:notes_prayer";
+const ENGAGEMENT_LOG_KEY = "@texas_districts:engagement_log";
 
 export interface OverlayPreferences {
   senate: boolean;
@@ -106,4 +108,104 @@ export async function saveOverlayPreferences(prefs: OverlayPreferences): Promise
   } catch {
     // Silently fail
   }
+}
+
+export interface NotePrayerEntry {
+  id: string;
+  createdAt: string;
+  text: string;
+  followUpNeeded: boolean;
+}
+
+export interface EngagementEntry {
+  id: string;
+  engagedAt: string;
+  summary?: string;
+}
+
+function getPrivateKey(source: string, districtNumber: number): string {
+  return `private:${source}:${districtNumber}`;
+}
+
+export async function getNotesPrayer(source: string, districtNumber: number): Promise<NotePrayerEntry[]> {
+  try {
+    const key = getPrivateKey(source, districtNumber);
+    const allData = await AsyncStorage.getItem(NOTES_PRAYER_KEY);
+    const parsed = allData ? JSON.parse(allData) : {};
+    return parsed[key] || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveNotesPrayer(source: string, districtNumber: number, entries: NotePrayerEntry[]): Promise<void> {
+  try {
+    const key = getPrivateKey(source, districtNumber);
+    const allData = await AsyncStorage.getItem(NOTES_PRAYER_KEY);
+    const parsed = allData ? JSON.parse(allData) : {};
+    parsed[key] = entries;
+    await AsyncStorage.setItem(NOTES_PRAYER_KEY, JSON.stringify(parsed));
+  } catch {
+    // Silently fail
+  }
+}
+
+export async function addNotePrayer(source: string, districtNumber: number, text: string, followUpNeeded: boolean): Promise<NotePrayerEntry> {
+  const entries = await getNotesPrayer(source, districtNumber);
+  const newEntry: NotePrayerEntry = {
+    id: `np_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    createdAt: new Date().toISOString(),
+    text,
+    followUpNeeded,
+  };
+  entries.unshift(newEntry);
+  await saveNotesPrayer(source, districtNumber, entries);
+  return newEntry;
+}
+
+export async function deleteNotePrayer(source: string, districtNumber: number, entryId: string): Promise<void> {
+  const entries = await getNotesPrayer(source, districtNumber);
+  const updated = entries.filter(e => e.id !== entryId);
+  await saveNotesPrayer(source, districtNumber, updated);
+}
+
+export async function getEngagementLog(source: string, districtNumber: number): Promise<EngagementEntry[]> {
+  try {
+    const key = getPrivateKey(source, districtNumber);
+    const allData = await AsyncStorage.getItem(ENGAGEMENT_LOG_KEY);
+    const parsed = allData ? JSON.parse(allData) : {};
+    return parsed[key] || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveEngagementLog(source: string, districtNumber: number, entries: EngagementEntry[]): Promise<void> {
+  try {
+    const key = getPrivateKey(source, districtNumber);
+    const allData = await AsyncStorage.getItem(ENGAGEMENT_LOG_KEY);
+    const parsed = allData ? JSON.parse(allData) : {};
+    parsed[key] = entries;
+    await AsyncStorage.setItem(ENGAGEMENT_LOG_KEY, JSON.stringify(parsed));
+  } catch {
+    // Silently fail
+  }
+}
+
+export async function addEngagement(source: string, districtNumber: number, engagedAt: string, summary?: string): Promise<EngagementEntry> {
+  const entries = await getEngagementLog(source, districtNumber);
+  const newEntry: EngagementEntry = {
+    id: `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    engagedAt,
+    summary,
+  };
+  entries.unshift(newEntry);
+  await saveEngagementLog(source, districtNumber, entries);
+  return newEntry;
+}
+
+export async function deleteEngagement(source: string, districtNumber: number, entryId: string): Promise<void> {
+  const entries = await getEngagementLog(source, districtNumber);
+  const updated = entries.filter(e => e.id !== entryId);
+  await saveEngagementLog(source, districtNumber, updated);
 }

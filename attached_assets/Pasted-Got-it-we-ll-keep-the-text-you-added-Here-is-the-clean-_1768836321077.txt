@@ -1,0 +1,139 @@
+Got it — we’ll keep the text you added. Here is the clean, corrected Replit Continuous Agent prompt with #1 removed and everything else aligned.
+
+⸻
+
+Replit Continuous Agent Prompt
+
+Feature Set: Private Notes & Engagement Tracking + About Screen (No PIN, No Removal of Existing Text)
+
+Objective
+
+Extend the existing app codebase to add:
+	1.	Private “Notes & Prayer” per official (multi-entry, timestamped, follow-up flag).
+	2.	“Last Engaged” tracking per official with optional notes.
+	3.	An About screen with purpose text and a link to https://www.capitolcommissiontexas.org.
+
+⚠️ Do NOT remove or alter any existing custom text, including the “Made for the State Minister of Texas” message.
+
+All new data must remain private, device-local, and must never be overwritten by refreshes.
+
+⸻
+
+1) Private Notes & Prayer
+
+Data model (private, per official)
+
+Store per official (keyed by {source, districtNumber} to survive vacancies and refreshes):
+
+notesPrayerEntries: Array<{
+  id: string;
+  createdAt: string; // ISO timestamp
+  text: string;
+  followUpNeeded: boolean;
+}>
+
+Requirements
+	•	Multiple entries, newest first
+	•	Display date, text, and follow-up badge
+	•	Add entry UI:
+	•	Multiline text input
+	•	Follow-up checkbox/toggle
+	•	Save button
+	•	Delete entry is required
+	•	Edit entry optional (only if trivial)
+
+UI placement
+
+In OfficialProfileScreen.tsx:
+	•	Section title: “Private Notes & Prayer”
+	•	Subtext: “Private to this device.”
+	•	Scrollable list of entries
+	•	“Add Note” action
+
+⸻
+
+2) Last Engaged Tracker
+
+Data model (private, per official)
+
+engagementLog: Array<{
+  id: string;
+  engagedAt: string; // ISO timestamp
+  summary?: string;  // optional notes
+}>
+
+Requirements
+	•	Display “Last engaged: ” (derived from latest entry)
+	•	Add entry UI:
+	•	Date/time picker (default = now)
+	•	Optional summary field
+	•	Save button
+	•	List previous engagement entries (newest first)
+	•	Delete entry required
+
+UI placement
+
+Below Notes & Prayer in OfficialProfileScreen
+
+⸻
+
+3) Storage & Persistence Rules (Critical)
+	•	Store Notes & Prayer + Engagement Log in private local storage (AsyncStorage or existing storage layer).
+	•	Public data refresh jobs must never overwrite private storage.
+	•	Notes must persist even if:
+	•	an official changes
+	•	a seat becomes vacant
+	•	data is refreshed weekly
+	•	Key private data using:
+
+private:{source}:{districtNumber}
+
+
+⸻
+
+4) About Screen
+
+Add a new About screen accessible from the Profile tab.
+
+Content
+
+Title: About
+
+Body text:
+
+This app helps identify Texas legislative and congressional districts and supports private, device-only notes for outreach.
+
+Button:
+	•	Label: “Visit Capitol Commission Texas”
+	•	Action: Linking.openURL("https://www.capitolcommissiontexas.org")
+
+⸻
+
+Acceptance Criteria
+	•	Notes & Prayer section supports multiple entries, timestamps, follow-up flag, add/delete.
+	•	Last Engaged section shows last date + engagement log with add/delete.
+	•	All private data persists across restarts and refreshes.
+	•	Existing profile text remains untouched.
+	•	About screen exists and link works.
+
+⸻
+
+Deliverables Required in Agent Response
+	•	List of files changed
+	•	Explanation of how private storage keys are structured
+	•	Confirmation that refresh logic does not touch private data
+	•	Quick manual test checklist
+
+⸻
+
+Architectural note (why this is the right call)
+
+By keying private data to district + chamber, you future-proof the app against:
+	•	redistricting
+	•	vacancies
+	•	data-source churn
+…and you avoid “Austin problem” regressions you’ve already run into.
+
+When you’re ready, Phase F could add export / backup for these notes — but this version keeps things simple and robust.
+
+Would you like me to stage this as Phase F or merge it into the current active phase naming?
