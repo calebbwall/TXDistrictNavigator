@@ -369,118 +369,116 @@ export default function BrowseOfficialsScreen() {
 
   const sources: SourceType[] = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "ALL", "FAVORITES", "RECENT"];
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: headerHeight + Spacing.sm,
-            backgroundColor: theme.backgroundRoot,
-          },
-        ]}
-      >
-        <OfflineBanner visible={isOffline || showOfflineBanner} />
-        
-        <View style={styles.segmentedControl}>
-          {sources.map((source) => (
-            <Pressable
-              key={source}
-              style={[
-                styles.segmentButton,
-                {
-                  backgroundColor:
-                    selectedSource === source
-                      ? theme.primary
-                      : theme.inputBackground,
-                  borderColor: theme.border,
-                },
-              ]}
-              onPress={() => handleSourceChange(source)}
+  const ListHeaderComponent = useMemo(() => (
+    <View style={[styles.listHeader, { backgroundColor: theme.backgroundRoot }]}>
+      <OfflineBanner visible={isOffline || showOfflineBanner} />
+      
+      <View style={styles.segmentedControl}>
+        {sources.map((source) => (
+          <Pressable
+            key={source}
+            style={[
+              styles.segmentButton,
+              {
+                backgroundColor:
+                  selectedSource === source
+                    ? theme.primary
+                    : theme.inputBackground,
+                borderColor: theme.border,
+              },
+            ]}
+            onPress={() => handleSourceChange(source)}
+          >
+            <ThemedText
+              type="caption"
+              style={{
+                color: selectedSource === source ? "#FFFFFF" : theme.text,
+                fontWeight: selectedSource === source ? "600" : "400",
+              }}
             >
-              <ThemedText
-                type="caption"
-                style={{
-                  color: selectedSource === source ? "#FFFFFF" : theme.text,
-                  fontWeight: selectedSource === source ? "600" : "400",
-                }}
-              >
-                {SOURCE_LABELS[source]}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </View>
-
-        {placeLabel ? (
-          <View style={styles.placeLabelContainer}>
-            <Feather name="map-pin" size={14} color={theme.primary} />
-            <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
-              {placeLabel.name}
+              {SOURCE_LABELS[source]}
             </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-              {placeLabel.districts}
+          </Pressable>
+        ))}
+      </View>
+
+      {placeLabel ? (
+        <View style={styles.placeLabelContainer}>
+          <Feather name="map-pin" size={14} color={theme.primary} />
+          <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+            {placeLabel.name}
+          </ThemedText>
+          <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+            {placeLabel.districts}
+          </ThemedText>
+        </View>
+      ) : null}
+
+      <View style={styles.countLabelRow}>
+        <ThemedText
+          type="caption"
+          style={[styles.countLabel, { color: theme.secondaryText }]}
+        >
+          {countLabel}
+        </ThemedText>
+        {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
+          <View style={styles.searchingIndicator}>
+            <ActivityIndicator size="small" color={theme.primary} />
+            <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+              Searching...
             </ThemedText>
           </View>
         ) : null}
-
-        <View style={styles.countLabelRow}>
-          <ThemedText
-            type="caption"
-            style={[styles.countLabel, { color: theme.secondaryText }]}
-          >
-            {countLabel}
-          </ThemedText>
-          {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
-            <View style={styles.searchingIndicator}>
-              <ActivityIndicator size="small" color={theme.primary} />
-              <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
-                Searching...
-              </ThemedText>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.searchRow}>
-          <View
-            style={[
-              styles.searchInputContainer,
-              { backgroundColor: theme.inputBackground, borderColor: theme.border },
-            ]}
-          >
-            <Feather name="search" size={18} color={theme.secondaryText} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.text }]}
-              placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
-              placeholderTextColor={theme.secondaryText}
-              value={searchText}
-              onChangeText={setSearchText}
-              returnKeyType="search"
-            />
-            {searchText.length > 0 ? (
-              <Pressable onPress={() => setSearchText("")}>
-                <Feather name="x" size={18} color={theme.secondaryText} />
-              </Pressable>
-            ) : null}
-          </View>
-          <Pressable
-            onPress={() => setShowPlaceSearch(true)}
-            style={({ pressed }) => [
-              styles.placeSearchButton,
-              { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
-            ]}
-          >
-            <Feather name="map-pin" size={20} color="#FFFFFF" />
-          </Pressable>
-        </View>
       </View>
 
+      <View style={styles.searchRow}>
+        <View
+          style={[
+            styles.searchInputContainer,
+            { backgroundColor: theme.inputBackground, borderColor: theme.border },
+          ]}
+        >
+          <Feather name="search" size={18} color={theme.secondaryText} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.text }]}
+            placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
+            placeholderTextColor={theme.secondaryText}
+            value={searchText}
+            onChangeText={setSearchText}
+            returnKeyType="search"
+          />
+          {searchText.length > 0 ? (
+            <Pressable onPress={() => setSearchText("")}>
+              <Feather name="x" size={18} color={theme.secondaryText} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          onPress={() => setShowPlaceSearch(true)}
+          style={({ pressed }) => [
+            styles.placeSearchButton,
+            { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
+          ]}
+        >
+          <Feather name="map-pin" size={20} color="#FFFFFF" />
+        </Pressable>
+      </View>
+    </View>
+  ), [isOffline, showOfflineBanner, sources, selectedSource, theme, placeLabel, countLabel, searchText, debouncedSearch]);
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <FlatList
         data={officials}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
+        ListHeaderComponent={ListHeaderComponent}
         contentContainerStyle={[
           styles.listContent,
-          { paddingBottom: tabBarHeight + Spacing.xl },
+          { 
+            paddingTop: headerHeight + Spacing.sm,
+            paddingBottom: tabBarHeight + Spacing.xl,
+          },
         ]}
         ListEmptyComponent={ListEmptyComponent}
         refreshControl={
@@ -495,11 +493,7 @@ export default function BrowseOfficialsScreen() {
         maxToRenderPerBatch={10}
         windowSize={11}
         removeClippedSubviews={false}
-        getItemLayout={(_, index) => ({
-          length: 120,
-          offset: 120 * index,
-          index,
-        })}
+        stickyHeaderIndices={[0]}
       />
       
       <PlaceSearchModal
@@ -515,7 +509,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
+  listHeader: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
   },

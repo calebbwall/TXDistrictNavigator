@@ -8,9 +8,7 @@ import {
   Linking,
   Platform,
   Alert,
-  Modal,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useRoute, useNavigation, RouteProp, useFocusEffect } from "@react-navigation/native";
@@ -929,51 +927,51 @@ export default function OfficialProfileScreen() {
                     />
                   ) : (
                     <View>
-                      <DateTimePicker
-                        value={selectedDate}
-                        mode="date"
-                        display={Platform.OS === "ios" ? "spinner" : "default"}
-                        onChange={(event, date) => {
-                          if (Platform.OS === "android") {
-                            setShowDatePicker(false);
-                            if (event.type === "set" && date) {
-                              handleSetEngagementDate(date);
-                            }
-                          } else if (date) {
-                            setSelectedDate(date);
+                      <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+                        Enter date (YYYY-MM-DD):
+                      </ThemedText>
+                      <TextInput
+                        style={[
+                          styles.noteInput,
+                          { backgroundColor: theme.inputBackground, color: theme.text },
+                        ]}
+                        placeholder="2026-01-15"
+                        placeholderTextColor={theme.secondaryText}
+                        value={selectedDate.toISOString().split('T')[0]}
+                        onChangeText={(text) => {
+                          const parsed = new Date(text);
+                          if (!isNaN(parsed.getTime()) && parsed <= new Date()) {
+                            setSelectedDate(parsed);
                           }
                         }}
-                        maximumDate={new Date()}
-                        style={{ height: 150 }}
+                        keyboardType="default"
                       />
-                      {Platform.OS === "ios" ? (
-                        <View style={styles.iosPickerButtons}>
-                          <Pressable
-                            onPress={() => handleSetEngagementDate(new Date())}
-                            style={({ pressed }) => [
-                              styles.setTodayButton,
-                              { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1 },
-                            ]}
-                          >
-                            <Feather name="calendar" size={16} color={theme.text} />
-                            <ThemedText type="caption" style={{ color: theme.text, marginLeft: Spacing.xs }}>
-                              Today
-                            </ThemedText>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleSetEngagementDate(selectedDate)}
-                            style={({ pressed }) => [
-                              styles.setTodayButton,
-                              { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.sm },
-                            ]}
-                          >
-                            <Feather name="check" size={16} color="#FFFFFF" />
-                            <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: Spacing.xs }}>
-                              Confirm
-                            </ThemedText>
-                          </Pressable>
-                        </View>
-                      ) : null}
+                      <View style={styles.iosPickerButtons}>
+                        <Pressable
+                          onPress={() => handleSetEngagementDate(new Date())}
+                          style={({ pressed }) => [
+                            styles.setTodayButton,
+                            { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1 },
+                          ]}
+                        >
+                          <Feather name="calendar" size={16} color={theme.text} />
+                          <ThemedText type="caption" style={{ color: theme.text, marginLeft: Spacing.xs }}>
+                            Today
+                          </ThemedText>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => handleSetEngagementDate(selectedDate)}
+                          style={({ pressed }) => [
+                            styles.setTodayButton,
+                            { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.sm },
+                          ]}
+                        >
+                          <Feather name="check" size={16} color="#FFFFFF" />
+                          <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: Spacing.xs }}>
+                            Confirm
+                          </ThemedText>
+                        </Pressable>
+                      </View>
                     </View>
                   )}
                   <Pressable 

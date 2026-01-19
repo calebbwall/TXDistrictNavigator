@@ -1,0 +1,146 @@
+Restating what’s broken (and what “done” looks like)
+	1.	Browse tab layout: the search bar + section counts are overlapping the top tiles/list area. So the header area isn’t reserving space correctly (likely absolute positioning or list not padded).
+	2.	Follow-up dashboard behavior + content:
+
+	•	Tapping a follow-up tile currently does nothing → it should open the Official Profile (to the follow-up / notes area).
+	•	Each follow-up item needs a button like “Follow-up no longer needed” that archives that follow-up request (not deletes).
+	•	The follow-up tile title should be the official’s name, not “TX House District X”.
+
+⸻
+
+High-level diagnosis
+	•	Browse overlap: almost always caused by a header rendered “on top of” a FlatList without ListHeaderComponent, or a FlatList without top padding equal to header height.
+	•	Follow-up tiles not navigable: the list item likely isn’t wrapped in a Pressable, or navigation params are missing/incorrect.
+	•	Titles showing district instead of name: they’re building the list from the district key and not joining the follow-up items to the officials directory.
+
+⸻
+
+Replit Continuous Agent Prompt — Fix Browse Overlap + Make Follow-ups Actionable + Archive + Correct Titles
+
+Objective
+
+Make two fixes:
+
+A) Browse tab: fix header overlap
+
+B) Follow-up dashboard: make tiles navigate to official, show official names, and allow archiving follow-up requests
+
+Do not break existing map, overlays, draw-to-search, or private notes persistence.
+
+⸻
+
+A) Browse tab layout fix (header overlap)
+
+A1) Stop using absolute header overlay
+
+If the Browse screen uses a header view positioned absolutely over the list, remove that pattern.
+
+A2) Use FlatList/ListHeaderComponent
+
+Restructure Browse so the search bar + section count text are inside ListHeaderComponent (or are in normal layout flow above the list).
+
+Requirements:
+	•	Search bar and count text must never overlap tiles.
+	•	The list should start below the header naturally.
+
+Implementation options (pick one and do it fully):
+	1.	Preferred: FlatList with ListHeaderComponent that contains:
+	•	Search bar
+	•	“X officials” summary/counts
+	•	Any segmented filters/toggles
+	2.	Alternative: wrap header in a normal View above the FlatList, and ensure the list has no negative margins / absolute offsets.
+
+A3) Safe area + spacing
+	•	Ensure top padding respects safe area (notch).
+	•	If using SafeAreaView, do not also add extra manual padding that causes weird stacking.
+
+Acceptance for A
+	•	On iPhone (see screenshot context), the search bar and count text appear ABOVE the tiles with clear spacing.
+	•	No overlap in portrait and when scrolling.
+	•	Buttons remain tappable.
+
+⸻
+
+B) Follow-up dashboard: navigation, correct titles, and archiving
+
+B1) Follow-up tiles must be tappable and navigate
+
+Wrap each tile/card row in Pressable:
+	•	onPress navigates to OfficialProfileScreen
+	•	Pass an official identifier that is stable: {source, districtNumber} (same key you used for private notes)
+
+On open:
+	•	Auto-scroll or auto-focus to the “Private Notes & Prayer” section (or Follow-up section) so the user immediately lands where action is required.
+
+B2) Tile titles must be OFFICIAL NAME (not district)
+
+Currently titles show “TX House District 1” etc. Fix by joining follow-up items to the officials directory:
+	•	Look up the official record for {source, districtNumber}
+	•	Use official.fullName as the tile title
+	•	Show district/chamber as subtitle instead:
+	•	“TX House District 1”
+	•	“TX Senate District 28”
+	•	“US Congress District X”
+
+If the district is vacant:
+	•	Title: “Vacant District”
+	•	Subtitle still shows district/chamber
+
+B3) Follow-up items must support “archive” (not delete)
+
+Right now follow-up is a flag on a note entry. Implement archiving at the follow-up-item level:
+
+Data requirement
+
+When a note has followUpNeeded = true, treat it as an “active follow-up”.
+Add fields to the note entry (private storage):
+	•	followUpArchivedAt?: string (ISO)
+	•	followUpResolved?: boolean (or derive from archivedAt)
+
+Rules:
+	•	Active follow-ups = entries with followUpNeeded === true AND no followUpArchivedAt
+	•	Archived follow-ups = entries with followUpArchivedAt present
+
+UI requirement
+
+In each follow-up card row:
+	•	Add a button: “Follow-up no longer needed”
+	•	Tapping it:
+	•	sets followUpArchivedAt = now
+	•	keeps the note entry and its text
+	•	removes it from the Active list immediately
+
+Add an “Archived” toggle at top of Follow-up dashboard:
+	•	Default view: Active
+	•	Toggle: Archived
+	•	Archived view shows resolved items with:
+	•	resolved date
+	•	optional label “Resolved”
+
+B4) Ensure tapping a tile still works when button is present
+	•	Make the main card Pressable navigate.
+	•	Make the “Follow-up no longer needed” button stop propagation so it doesn’t also navigate.
+
+Acceptance for B
+	•	Follow-up dashboard shows official names as titles.
+	•	Tapping a tile opens the matching official profile and lands at the notes/follow-up area.
+	•	Each tile has a “Follow-up no longer needed” button that archives it.
+	•	Archived follow-ups are viewable in an Archived list.
+
+⸻
+
+Deliverables
+
+In the agent response, include:
+	•	Files changed for Browse layout
+	•	Files changed for Follow-up dashboard navigation + archive
+	•	How the follow-up join to official name is implemented
+	•	Storage migration approach (if existing notes already exist):
+	•	must be backward compatible (notes without archivedAt treated as active)
+
+⸻
+
+If you want this to be extremely bulletproof, the agent should also add a quick unit-style check (even just a dev-only log) showing:
+	•	number of active follow-ups
+	•	number archived
+	•	and number with missing official match (should be ~0 except vacancies).

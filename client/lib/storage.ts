@@ -122,6 +122,7 @@ export interface NotePrayerEntry {
   createdAt: string;
   text: string;
   followUpNeeded: boolean;
+  followUpArchivedAt?: string;
 }
 
 export interface EngagementEntry {
@@ -380,14 +381,20 @@ export async function addRecentPlace(place: Omit<RecentPlaceEntry, "timestamp">)
   }
 }
 
-export async function getAllFollowUps(): Promise<{ source: string; districtNumber: number; entries: NotePrayerEntry[] }[]> {
+export async function getAllFollowUps(includeArchived: boolean = false): Promise<{ source: string; districtNumber: number; entries: NotePrayerEntry[] }[]> {
   try {
     const allData = await AsyncStorage.getItem(NOTES_PRAYER_KEY);
     if (!allData) return [];
     const parsed = JSON.parse(allData) as Record<string, NotePrayerEntry[]>;
     const results: { source: string; districtNumber: number; entries: NotePrayerEntry[] }[] = [];
     for (const [key, entries] of Object.entries(parsed)) {
-      const followUps = entries.filter(e => e.followUpNeeded);
+      const followUps = entries.filter(e => {
+        if (!e.followUpNeeded) return false;
+        if (includeArchived) {
+          return !!e.followUpArchivedAt;
+        }
+        return !e.followUpArchivedAt;
+      });
       if (followUps.length > 0) {
         const parts = key.split(":");
         if (parts.length === 3 && parts[0] === "private") {
@@ -402,5 +409,29 @@ export async function getAllFollowUps(): Promise<{ source: string; districtNumbe
     return results;
   } catch {
     return [];
+  }
+}
+
+export async function archiveFollowUp(source: string, districtNumber: number, entryId: string): Promise<void> {
+  try {
+    const entries = await getNotesPrayer(source, districtNumber);
+    const updated = entries.map(e => 
+      e.id === entryId ? { ...e, followUpArchivedAt: new Date().toISOString() } : e
+    );
+    await saveNotesPrayer(source, districtNumber, updated);
+  } catch {
+    // Silently fail
+  }
+}
+
+export async function unarchiveFollowUp(source: string, districtNumber: number, entryId: string): Promise<void> {
+  try {
+    const entries = await getNotesPrayer(source, districtNumber);
+    const updated = entries.map(e => 
+      e.id === entryId ? { ...e, followUpArchivedAt: undefined } : e
+    );
+    await saveNotesPrayer(source, districtNumber, updated);
+  } catch {
+    // Silently fail
   }
 }
