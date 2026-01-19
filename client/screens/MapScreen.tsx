@@ -134,75 +134,245 @@ const MAP_HTML = `
       congress: false
     };
 
-    // Leaflet.draw setup
+    // Freehand drawing setup (replaces Leaflet.draw tap-to-place)
     const drawnItems = new L.FeatureGroup();
     map.addLayer(drawnItems);
 
-    const drawControl = new L.Control.Draw({
-      position: 'topright',
-      draw: {
-        polygon: {
-          allowIntersection: false,
-          shapeOptions: {
-            color: '#9B59B6',
-            weight: 3,
-            fillOpacity: 0.2
-          }
-        },
-        polyline: false,
-        circle: false,
-        rectangle: false,
-        marker: false,
-        circlemarker: false
-      },
-      edit: false
-    });
+    let freehandPoints = [];
+    let freehandPolyline = null;
+    let isDrawing = false;
+    const MIN_DISTANCE = 8; // Minimum pixel distance between sampled points
 
-    let drawHandler = null;
+    // Douglas-Peucker line simplification algorithm
+    function douglasPeucker(points, tolerance) {
+      if (points.length <= 2) return points;
+      
+      let maxDist = 0;
+      let maxIndex = 0;
+      const start = points[0];
+      const end = points[points.length - 1];
+      
+      for (let i = 1; i < points.length - 1; i++) {
+        const dist = perpendicularDistance(points[i], start, end);
+        if (dist > maxDist) {
+          maxDist = dist;
+          maxIndex = i;
+        }
+      }
+      
+      if (maxDist > tolerance) {
+        const left = douglasPeucker(points.slice(0, maxIndex + 1), tolerance);
+        const right = douglasPeucker(points.slice(maxIndex), tolerance);
+        return left.slice(0, -1).concat(right);
+      }
+      
+      return [start, end];
+    }
+    
+    function perpendicularDistance(point, lineStart, lineEnd) {
+      const dx = lineEnd[0] - lineStart[0];
+      const dy = lineEnd[1] - lineStart[1];
+      const lineLenSq = dx * dx + dy * dy;
+      
+      if (lineLenSq === 0) {
+        return Math.sqrt(
+          Math.pow(point[0] - lineStart[0], 2) + 
+          Math.pow(point[1] - lineStart[1], 2)
+        );
+      }
+      
+      const t = Math.max(0, Math.min(1, (
+        (point[0] - lineStart[0]) * dx + 
+        (point[1] - lineStart[1]) * dy
+      ) / lineLenSq));
+      
+      const projX = lineStart[0] + t * dx;
+      const projY = lineStart[1] + t * dy;
+      
+      return Math.sqrt(
+        Math.pow(point[0] - projX, 2) + 
+        Math.pow(point[1] - projY, 2)
+      );
+    }
+
+    function screenToLatLng(x, y) {
+      const rect = document.getElementById('map').getBoundingClientRect();
+      const point = L.point(x - rect.left, y - rect.top);
+      return map.containerPointToLatLng(point);
+    }
+
+    function getDistance(p1, p2) {
+      return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+    }
+
+    function handleDrawStart(e) {
+      if (!drawMode) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      isDrawing = true;
+      freehandPoints = [];
+      
+      // Disable map dragging while drawing
+      map.dragging.disable();
+      map.touchZoom.disable();
+      map.doubleClickZoom.disable();
+      map.scrollWheelZoom.disable();
+      
+      const touch = e.touches ? e.touches[0] : e;
+      const latlng = screenToLatLng(touch.clientX, touch.clientY);
+      freehandPoints.push({ 
+        x: touch.clientX, 
+        y: touch.clientY,
+        latlng: latlng
+      });
+      
+      // Create initial polyline
+      if (freehandPolyline) {
+        map.removeLayer(freehandPolyline);
+      }
+      freehandPolyline = L.polyline([latlng], {
+        color: 'rgba(255, 165, 0, 0.9)',
+        weight: 3,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+      
+      console.log('[DRAW] Freehand drawing started');
+    }
+
+    function handleDrawMove(e) {
+      if (!drawMode || !isDrawing) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const touch = e.touches ? e.touches[0] : e;
+      const lastPoint = freehandPoints[freehandPoints.length - 1];
+      
+      // Sample points at minimum distance to avoid too many points
+      if (lastPoint && getDistance(lastPoint, { x: touch.clientX, y: touch.clientY }) < MIN_DISTANCE) {
+        return;
+      }
+      
+      const latlng = screenToLatLng(touch.clientX, touch.clientY);
+      freehandPoints.push({
+        x: touch.clientX,
+        y: touch.clientY,
+        latlng: latlng
+      });
+      
+      // Update polyline in real-time
+      if (freehandPolyline) {
+        const latlngs = freehandPoints.map(p => p.latlng);
+        freehandPolyline.setLatLngs(latlngs);
+      }
+    }
+
+    function handleDrawEnd(e) {
+      if (!drawMode || !isDrawing) return;
+      
+      e.preventDefault();
+      isDrawing = false;
+      
+      // Re-enable map interactions
+      map.dragging.enable();
+      map.touchZoom.enable();
+      map.doubleClickZoom.enable();
+      map.scrollWheelZoom.enable();
+      
+      if (freehandPoints.length < 3) {
+        console.log('[DRAW] Not enough points, need at least 3');
+        if (freehandPolyline) {
+          map.removeLayer(freehandPolyline);
+          freehandPolyline = null;
+        }
+        freehandPoints = [];
+        return;
+      }
+      
+      // Remove temporary polyline
+      if (freehandPolyline) {
+        map.removeLayer(freehandPolyline);
+        freehandPolyline = null;
+      }
+      
+      // Convert to coordinates for simplification
+      const coords = freehandPoints.map(p => [p.latlng.lng, p.latlng.lat]);
+      
+      // Apply Douglas-Peucker simplification (tolerance in degrees, ~0.001 = ~100m)
+      const simplified = douglasPeucker(coords, 0.001);
+      
+      // Close the polygon by adding first point at end
+      if (simplified.length >= 3) {
+        simplified.push(simplified[0]);
+      }
+      
+      console.log('[DRAW] Raw points:', coords.length, '| Simplified:', simplified.length);
+      
+      // Create final polygon layer
+      drawnItems.clearLayers();
+      const latlngs = simplified.map(c => [c[1], c[0]]);
+      const polygon = L.polygon(latlngs, {
+        color: '#9B59B6',
+        weight: 3,
+        fillOpacity: 0.2
+      });
+      drawnItems.addLayer(polygon);
+      
+      // Send to React Native
+      const geometry = {
+        type: 'Polygon',
+        coordinates: [simplified]
+      };
+      
+      postMessage({
+        type: 'DRAW_COMPLETE',
+        geometry: geometry
+      });
+      
+      console.log('[DRAW] Polygon created with', simplified.length, 'points');
+      freehandPoints = [];
+    }
+
+    // Attach touch/mouse event listeners to map container
+    const mapContainer = document.getElementById('map');
+    mapContainer.addEventListener('touchstart', handleDrawStart, { passive: false });
+    mapContainer.addEventListener('touchmove', handleDrawMove, { passive: false });
+    mapContainer.addEventListener('touchend', handleDrawEnd, { passive: false });
+    mapContainer.addEventListener('mousedown', handleDrawStart, { passive: false });
+    mapContainer.addEventListener('mousemove', handleDrawMove, { passive: false });
+    mapContainer.addEventListener('mouseup', handleDrawEnd, { passive: false });
 
     function enableDrawMode() {
       drawMode = true;
-      if (!drawHandler) {
-        drawHandler = new L.Draw.Polygon(map, drawControl.options.draw.polygon);
-      }
-      drawHandler.enable();
-      console.log('[DRAW] Draw mode enabled');
+      mapContainer.style.cursor = 'crosshair';
+      console.log('[DRAW] Draw mode enabled (freehand)');
     }
 
     function disableDrawMode() {
       drawMode = false;
-      if (drawHandler) {
-        drawHandler.disable();
+      isDrawing = false;
+      mapContainer.style.cursor = '';
+      if (freehandPolyline) {
+        map.removeLayer(freehandPolyline);
+        freehandPolyline = null;
       }
+      freehandPoints = [];
       console.log('[DRAW] Draw mode disabled');
     }
 
     function clearDrawing() {
       drawnItems.clearLayers();
+      if (freehandPolyline) {
+        map.removeLayer(freehandPolyline);
+        freehandPolyline = null;
+      }
+      freehandPoints = [];
       postMessage({ type: 'DRAW_CLEARED' });
       console.log('[DRAW] Drawing cleared');
     }
-
-    map.on(L.Draw.Event.CREATED, function(event) {
-      const layer = event.layer;
-      drawnItems.clearLayers();
-      drawnItems.addLayer(layer);
-
-      const geojson = layer.toGeoJSON();
-      const pointCount = geojson.geometry.coordinates[0]?.length || 0;
-      console.log('[DRAW] Polygon created with', pointCount, 'points');
-
-      postMessage({
-        type: 'DRAW_COMPLETE',
-        geometry: geojson.geometry
-      });
-
-      disableDrawMode();
-    });
-
-    map.on(L.Draw.Event.DRAWSTART, function() {
-      console.log('[DRAW] Drawing started');
-    });
 
     function pointInPolygon(point, polygon) {
       const [x, y] = point;
@@ -849,6 +1019,10 @@ export default function MapScreen() {
 
   const handleDrawComplete = useCallback(async (geometry: { type: string; coordinates: number[][][] }) => {
     console.log('[MapScreen] Draw complete, geometry points:', geometry.coordinates[0]?.length);
+    
+    // Haptic feedback on draw complete
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
     setDrawLoading(true);
     setDrawModeActive(false);
     
