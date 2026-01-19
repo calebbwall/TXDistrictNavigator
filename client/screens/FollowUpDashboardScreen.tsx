@@ -156,50 +156,46 @@ export default function FollowUpDashboardScreen() {
         : (item.officialName || `${formatSource(item.source)} District ${item.districtNumber}`);
 
       return (
-        <Pressable
+        <Card 
+          style={styles.card}
           onPress={() => handleOfficialPress(item)}
-          style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
         >
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.officialInfo}>
-                <ThemedText style={styles.officialName}>
-                  {title}
-                </ThemedText>
-                <ThemedText style={[styles.districtLabel, { color: theme.secondaryText }]}>
-                  {formatSource(item.source)} District {item.districtNumber}
-                </ThemedText>
-                <ThemedText style={styles.entryCount}>
-                  {item.entries.length} follow-up{item.entries.length !== 1 ? "s" : ""}
-                </ThemedText>
-              </View>
-              <View style={[styles.badge, { backgroundColor: showArchived ? theme.success + "20" : theme.warning + "20" }]}>
-                <Feather 
-                  name={showArchived ? "check-circle" : "flag"} 
-                  size={12} 
-                  color={showArchived ? theme.success : theme.warning} 
-                />
-                <ThemedText style={[styles.badgeText, { color: showArchived ? theme.success : theme.warning }]}>
-                  {showArchived ? "Resolved" : "Follow Up"}
-                </ThemedText>
-              </View>
-            </View>
-            <View style={styles.notePreview}>
-              <ThemedText style={styles.noteText} numberOfLines={2}>
-                {latestEntry.text}
+          <View style={styles.cardHeader}>
+            <View style={styles.officialInfo}>
+              <ThemedText style={styles.officialName}>
+                {title}
               </ThemedText>
-              <ThemedText style={[styles.dateText, { color: theme.secondaryText }]}>
-                {showArchived && latestEntry.followUpArchivedAt 
-                  ? `Resolved ${formatDate(latestEntry.followUpArchivedAt)}`
-                  : formatDate(latestEntry.createdAt)}
+              <ThemedText style={[styles.districtLabel, { color: theme.secondaryText }]}>
+                {formatSource(item.source)} District {item.districtNumber}
+              </ThemedText>
+              <ThemedText style={styles.entryCount}>
+                {item.entries.length} follow-up{item.entries.length !== 1 ? "s" : ""}
               </ThemedText>
             </View>
-            <View style={styles.cardFooter}>
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleArchive(item, latestEntry.id);
-                }}
+            <View style={[styles.badge, { backgroundColor: showArchived ? theme.success + "20" : theme.warning + "20" }]}>
+              <Feather 
+                name={showArchived ? "check-circle" : "flag"} 
+                size={12} 
+                color={showArchived ? theme.success : theme.warning} 
+              />
+              <ThemedText style={[styles.badgeText, { color: showArchived ? theme.success : theme.warning }]}>
+                {showArchived ? "Resolved" : "Follow Up"}
+              </ThemedText>
+            </View>
+          </View>
+          <View style={styles.notePreview}>
+            <ThemedText style={styles.noteText} numberOfLines={2}>
+              {latestEntry.text}
+            </ThemedText>
+            <ThemedText style={[styles.dateText, { color: theme.secondaryText }]}>
+              {showArchived && latestEntry.followUpArchivedAt 
+                ? `Resolved ${formatDate(latestEntry.followUpArchivedAt)}`
+                : formatDate(latestEntry.createdAt)}
+            </ThemedText>
+          </View>
+          <View style={styles.cardFooter}>
+            <Pressable
+              onPress={() => handleArchive(item, latestEntry.id)}
                 style={({ pressed }) => [
                   styles.archiveButton,
                   { 
@@ -220,7 +216,6 @@ export default function FollowUpDashboardScreen() {
               <Feather name="chevron-right" size={20} color={theme.secondaryText} />
             </View>
           </Card>
-        </Pressable>
       );
     },
     [theme, handleOfficialPress, handleArchive, showArchived]
