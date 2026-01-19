@@ -249,6 +249,8 @@ export default function ProfileScreen() {
           <View style={styles.settingsGroup}>
             <SettingRow icon="info" label="App Version" value="1.0.0" />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <SettingRow icon="book-open" label="About This App" onPress={() => navigation.navigate("About")} />
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <SettingRow icon="shield" label="Privacy Policy" onPress={() => {}} />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <SettingRow icon="file-text" label="Terms of Service" onPress={() => {}} />
