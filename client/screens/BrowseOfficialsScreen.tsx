@@ -118,8 +118,10 @@ export default function BrowseOfficialsScreen() {
   const isLocalSource = selectedSource === "FAVORITES" || selectedSource === "RECENT";
   
   const queryKey = useMemo(
-    () => ["/api/officials", selectedSource, debouncedSearch],
-    [selectedSource, debouncedSearch]
+    () => ["/api/officials", selectedSource, debouncedSearch, 
+           selectedSource === "FAVORITES" ? favorites.join(",") : null,
+           selectedSource === "RECENT" ? recentViewed.map(r => `${r.source}:${r.districtNumber}`).join(",") : null],
+    [selectedSource, debouncedSearch, favorites, recentViewed]
   );
 
   const { data, isLoading, isFetching, refetch, isError } = useQuery<{
