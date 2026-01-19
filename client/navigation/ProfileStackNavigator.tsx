@@ -4,6 +4,7 @@ import ProfileScreen from "@/screens/ProfileScreen";
 import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
 import AboutScreen from "@/screens/AboutScreen";
 import FollowUpDashboardScreen from "@/screens/FollowUpDashboardScreen";
+import SavedOfficialsScreen from "@/screens/SavedOfficialsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type ProfileStackParamList = {
@@ -11,6 +12,7 @@ export type ProfileStackParamList = {
   OfficialProfile: { officialId: string; initialSection?: "privateNotes" };
   About: undefined;
   FollowUpDashboard: undefined;
+  SavedOfficials: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -46,6 +48,13 @@ export default function ProfileStackNavigator() {
         component={FollowUpDashboardScreen}
         options={{
           headerTitle: "Follow-Up Items",
+        }}
+      />
+      <Stack.Screen
+        name="SavedOfficials"
+        component={SavedOfficialsScreen}
+        options={{
+          headerTitle: "Saved Officials",
         }}
       />
     </Stack.Navigator>

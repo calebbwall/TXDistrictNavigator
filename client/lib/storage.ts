@@ -30,6 +30,17 @@ export interface PrivateNotes {
   notes?: string;
 }
 
+export interface SavedOfficialData {
+  source: string;
+  districtNumber: number;
+  fullName: string;
+  party?: string;
+  photoUrl?: string;
+  savedAt: string;
+}
+
+const SAVED_OFFICIALS_DATA_KEY = "@texas_districts:saved_officials_data";
+
 export async function getSavedOfficials(): Promise<string[]> {
   try {
     const saved = await AsyncStorage.getItem(SAVED_OFFICIALS_KEY);
@@ -37,6 +48,71 @@ export async function getSavedOfficials(): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+export async function getSavedOfficialsWithData(): Promise<SavedOfficialData[]> {
+  try {
+    const data = await AsyncStorage.getItem(SAVED_OFFICIALS_DATA_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveOfficialWithData(
+  source: string,
+  districtNumber: number,
+  fullName: string,
+  party?: string,
+  photoUrl?: string
+): Promise<void> {
+  try {
+    const key = `${source}:${districtNumber}`;
+    const saved = await getSavedOfficials();
+    if (!saved.includes(key)) {
+      saved.push(key);
+      await AsyncStorage.setItem(SAVED_OFFICIALS_KEY, JSON.stringify(saved));
+    }
+    
+    const allData = await getSavedOfficialsWithData();
+    const existing = allData.findIndex(o => o.source === source && o.districtNumber === districtNumber);
+    const entry: SavedOfficialData = {
+      source,
+      districtNumber,
+      fullName,
+      party,
+      photoUrl,
+      savedAt: new Date().toISOString(),
+    };
+    if (existing >= 0) {
+      allData[existing] = entry;
+    } else {
+      allData.unshift(entry);
+    }
+    await AsyncStorage.setItem(SAVED_OFFICIALS_DATA_KEY, JSON.stringify(allData));
+  } catch {
+    // Silently fail
+  }
+}
+
+export async function removeOfficialByKey(source: string, districtNumber: number): Promise<void> {
+  try {
+    const key = `${source}:${districtNumber}`;
+    const saved = await getSavedOfficials();
+    const updated = saved.filter((id) => id !== key);
+    await AsyncStorage.setItem(SAVED_OFFICIALS_KEY, JSON.stringify(updated));
+    
+    const allData = await getSavedOfficialsWithData();
+    const filtered = allData.filter(o => !(o.source === source && o.districtNumber === districtNumber));
+    await AsyncStorage.setItem(SAVED_OFFICIALS_DATA_KEY, JSON.stringify(filtered));
+  } catch {
+    // Silently fail
+  }
+}
+
+export async function isOfficialSavedByKey(source: string, districtNumber: number): Promise<boolean> {
+  const saved = await getSavedOfficials();
+  return saved.includes(`${source}:${districtNumber}`);
 }
 
 export async function saveOfficial(officialId: string): Promise<void> {

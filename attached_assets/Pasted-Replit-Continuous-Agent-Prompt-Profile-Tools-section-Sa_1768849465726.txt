@@ -1,0 +1,89 @@
+Replit Continuous Agent Prompt — Profile “Tools” section + Saved Officials button + Fix bookmark saving
+
+Objective
+
+Make three UI/behavior changes:
+	1.	In the Profile tab, combine the current “Saved Officials” and “Workflow Tools” sections into a single section header called “Tools”.
+	2.	Under Tools, keep “Follow-up Dashboard” exactly as-is. Add “Saved Officials” as a button-row that navigates to the Saved Officials list screen.
+	3.	In the Official Profile screen header/actions:
+
+	•	Remove the star icon entirely.
+	•	Keep the bookmark icon only, and make sure it actually saves/unsaves the official to the app’s Saved Officials list.
+	•	Saved Officials must persist locally and never be overwritten by refreshes.
+
+Do not change styling beyond what’s necessary to implement this cleanly. Do not change Follow-up Dashboard behavior.
+
+⸻
+
+A) Profile tab: restructure into “Tools” section
+
+Requirements
+	•	Replace the two headers (“Saved Officials” and “Workflow Tools”) with one header: “Tools”
+	•	Under “Tools”, render two rows/buttons:
+	1.	Saved Officials → navigates to Saved Officials list
+	2.	Follow-up Dashboard → navigates exactly as it does today
+
+Implementation details
+	•	Use the same row style as the existing Follow-up Dashboard row (icon, label, chevron).
+	•	Ensure spacing and safe area are unchanged.
+	•	If there is currently an empty-state card/image for Saved Officials (“No saved officials yet”), remove it from Profile (that content belongs in the Saved Officials screen).
+
+Acceptance criteria
+	•	Profile tab shows: Tools header, then Saved Officials row, then Follow-up Dashboard row.
+	•	Tapping Saved Officials row opens the Saved Officials list screen.
+
+⸻
+
+B) Saved Officials navigation target
+
+Requirements
+	•	The Saved Officials button must navigate to the existing Saved Officials list screen (or create it if missing).
+	•	The Saved Officials list screen must show:
+	•	list of saved officials (from local storage)
+	•	empty state if none saved
+	•	Must support tapping an official → open Official Profile screen
+
+Acceptance criteria
+	•	Saved Officials list loads and matches the saved set correctly after app restart.
+
+⸻
+
+C) Official Profile actions: remove star, fix bookmark saving
+
+Requirements
+	•	Remove the star icon from the Official Profile header entirely (and any related code/state).
+	•	Bookmark icon must:
+	•	toggle saved state (save/unsave)
+	•	update UI immediately (filled vs outline)
+	•	persist locally (AsyncStorage or existing local storage layer)
+	•	never be overwritten by public data refresh
+
+Implementation details
+	•	Define a stable Saved key:
+saved:<source>:<districtNumber> or a single saved index array keyed by source|districtNumber.
+	•	When saving:
+	•	add official key to saved index
+	•	optionally store a minimal snapshot (name, chamber, district, photoUrl) to render quickly in Saved list
+	•	but primary source of truth can still be the officials directory by key
+	•	When unsaving:
+	•	remove from saved index
+	•	Ensure it works from both:
+	•	Official Profile screen (bookmark tap)
+	•	Saved Officials list (optional: swipe/remove or bookmark toggle if present)
+
+Acceptance criteria
+	•	Bookmark toggles saved state reliably.
+	•	Saved Officials list updates immediately.
+	•	Saved Officials persist after closing/reopening the app.
+	•	No star icon appears anywhere.
+
+⸻
+
+Deliverables
+
+In your response, list:
+	•	Files changed (ProfileScreen, OfficialProfileScreen, SavedOfficials screen, storage util)
+	•	Where the saved index is stored and its schema
+	•	Confirmation that refresh logic does not touch saved/private storage
+
+⸻
