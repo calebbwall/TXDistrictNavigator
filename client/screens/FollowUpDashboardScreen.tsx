@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
@@ -30,6 +31,7 @@ type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
 export default function FollowUpDashboardScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   const navigation = useNavigation<NavigationProp>();
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,7 +154,7 @@ export default function FollowUpDashboardScreen() {
   return (
     <ThemedView style={styles.container}>
       {followUps.length === 0 ? (
-        <View style={styles.emptyContainer}>
+        <View style={[styles.emptyContainer, { paddingTop: headerHeight }]}>
           <Feather name="flag" size={48} color={theme.secondaryText} />
           <ThemedText style={[styles.emptyTitle, { marginTop: Spacing.lg }]}>
             No Follow-Ups
@@ -171,7 +173,10 @@ export default function FollowUpDashboardScreen() {
           renderItem={renderFollowUpCard}
           contentContainerStyle={[
             styles.listContent,
-            { paddingBottom: insets.bottom + Spacing.xl },
+            { 
+              paddingTop: headerHeight + Spacing.sm,
+              paddingBottom: insets.bottom + Spacing.xl,
+            },
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={

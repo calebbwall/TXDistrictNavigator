@@ -1,0 +1,128 @@
+Restating the problems (so the agent can’t wiggle out of them)
+	1.	Browse tab UI regression: you can’t see any of the buttons (likely tabs/filters/search controls) — they’re either off-screen, behind something, or zero-height.
+	2.	Last engaged date picker is broken: it effectively only allows today’s date. “Set Today” is helpful, but you need to pick any past date/time.
+	3.	Follow-up dashboard has the same UI issues as Browse (buttons/controls not visible / not usable).
+
+⸻
+
+High-level difficulty + likely causes
+	•	#1 & #3 (buttons not visible): Medium. Almost certainly a layout/safe-area/scroll container problem:
+	•	header overlay absolute positioned
+	•	SafeAreaInsets not applied on Android/iOS consistently
+	•	a parent ScrollView + FlatList conflict
+	•	position: absolute view covering the top area (often from debug banner or status overlay)
+	•	wrong zIndex / pointerEvents
+	•	#2 (date picker): Easy–Medium. Usually they implemented “Set Today” but didn’t wire a real picker, or they set min/max date incorrectly, or they’re storing date as “today” on save.
+
+Suggestion: Fix layout first (Browse + Follow-up), then fix date picker.
+
+⸻
+
+Replit Continuous Agent Prompt — Fix Browse UI + Follow-up UI + Last Engaged Date Picker
+
+Objective
+
+Fix 3 issues introduced during Phase F work:
+	1.	Browse tab: I can’t see any of the buttons/controls (tabs, filters, search controls, etc.).
+	2.	Last Engaged: I need to select dates other than today. Keep “Set Today” as a shortcut, but add a working date/time picker that allows past dates.
+	3.	Follow-up dashboard: has the same “buttons/controls not visible” problem as Browse.
+
+Do not change app functionality beyond these fixes. Prioritize correctness on iOS and Android (Expo Go and builds).
+
+⸻
+
+Part A — Fix Browse tab controls not visible
+
+A1) Identify the exact screen(s)
+
+Locate the Browse screen component (likely SearchScreen.tsx renamed or a new Browse screen). Confirm what “buttons” refer to:
+	•	segmented tabs (House/Senate/Congress/All)
+	•	favorites/recents/place search controls
+	•	search bar
+	•	any top action buttons
+
+A2) Fix the layout root
+
+Requirements:
+	•	Wrap the screen in SafeAreaView (or use insets) so controls are not under the notch/status bar.
+	•	Ensure the top controls are inside a non-absolute container:
+	•	Avoid position: 'absolute' for the main header controls unless you also reserve padding.
+	•	Ensure the list area (FlatList) is below the controls, not overlapping.
+
+Concrete layout rule:
+	•	Top controls live in a View with normal flow layout
+	•	Results list is a FlatList with contentContainerStyle padding
+	•	No nested ScrollView wrapping a FlatList
+
+A3) Fix zIndex / overlays
+
+If there are banners or overlays:
+	•	They must not cover controls or steal touches
+	•	Use pointerEvents="none" for decorative overlays
+	•	Ensure no hidden debug/status overlays remain
+
+A4) Acceptance for Browse
+	•	All controls are visible and tappable on both iOS and Android
+	•	Scrolling works
+	•	No header overlap or invisible tap zones
+
+⸻
+
+Part B — Fix Follow-up dashboard controls not visible
+
+Apply the same layout rules as Browse:
+	•	Safe area padding
+	•	No absolute overlays covering the header
+	•	FlatList not nested in ScrollView
+	•	Buttons visible and clickable
+
+Add a quick visual test:
+	•	ensure “Follow-up” title + any filters/buttons are visible at top
+	•	list scrolls properly
+
+⸻
+
+Part C — Fix “Last Engaged” date picker (must allow past dates)
+
+C1) Keep “Set Today” shortcut
+
+Retain the “Set Today” button to quickly fill now.
+
+C2) Add a real date/time selection UX
+
+Implement a proper date picker that lets me choose any date/time:
+	•	Use a standard Expo-compatible solution:
+	•	@react-native-community/datetimepicker (preferred)
+	•	or an Expo-friendly date picker library already in the project
+	•	Allow selecting:
+	•	date (past + present)
+	•	time (optional but preferred)
+
+C3) Fix constraints
+	•	Do not set minimumDate to today.
+	•	If you set a max date, set it to now (optional).
+	•	Ensure when saving, you use the selected date/time, not new Date().
+
+C4) Acceptance for Last Engaged
+	•	I can set “Last engaged” to any date in the past
+	•	“Set Today” still works as a shortcut
+	•	Saved engagement entries display the chosen date correctly after app restart
+
+⸻
+
+Debug requirement (so we can verify quickly)
+
+Add temporary console logs (or debug panel if enabled) for:
+	•	Browse: computed top padding/safe area insets, and a screenshot-worthy “controls mounted” log
+	•	Last Engaged: log selected date before save + persisted date after reload
+
+⸻
+
+Deliverables
+	•	List of files changed
+	•	Brief description of the root cause for the Browse/Follow-up button invisibility
+	•	What date picker component/library was used and how it is invoked
+
+⸻
+
+If you want, I can also give you a “regression checklist” template you can run in 2 minutes after each agent change (Map, Browse, Profile, Follow-up, offline mode).

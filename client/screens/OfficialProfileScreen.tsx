@@ -8,7 +8,9 @@ import {
   Linking,
   Platform,
   Alert,
+  Modal,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useRoute, useNavigation, RouteProp, useFocusEffect } from "@react-navigation/native";
@@ -179,6 +181,7 @@ export default function OfficialProfileScreen() {
   const [newNoteFollowUp, setNewNoteFollowUp] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [engagementNote, setEngagementNote] = useState("");
 
   const loadOfficial = useCallback(async () => {
@@ -925,18 +928,53 @@ export default function OfficialProfileScreen() {
                       }}
                     />
                   ) : (
-                    <Pressable
-                      onPress={() => handleSetEngagementDate(new Date())}
-                      style={({ pressed }) => [
-                        styles.setTodayButton,
-                        { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
-                      ]}
-                    >
-                      <Feather name="calendar" size={18} color="#FFFFFF" />
-                      <ThemedText type="body" style={{ color: "#FFFFFF", marginLeft: Spacing.sm }}>
-                        Set to Today
-                      </ThemedText>
-                    </Pressable>
+                    <View>
+                      <DateTimePicker
+                        value={selectedDate}
+                        mode="date"
+                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                        onChange={(event, date) => {
+                          if (Platform.OS === "android") {
+                            setShowDatePicker(false);
+                            if (event.type === "set" && date) {
+                              handleSetEngagementDate(date);
+                            }
+                          } else if (date) {
+                            setSelectedDate(date);
+                          }
+                        }}
+                        maximumDate={new Date()}
+                        style={{ height: 150 }}
+                      />
+                      {Platform.OS === "ios" ? (
+                        <View style={styles.iosPickerButtons}>
+                          <Pressable
+                            onPress={() => handleSetEngagementDate(new Date())}
+                            style={({ pressed }) => [
+                              styles.setTodayButton,
+                              { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1 },
+                            ]}
+                          >
+                            <Feather name="calendar" size={16} color={theme.text} />
+                            <ThemedText type="caption" style={{ color: theme.text, marginLeft: Spacing.xs }}>
+                              Today
+                            </ThemedText>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleSetEngagementDate(selectedDate)}
+                            style={({ pressed }) => [
+                              styles.setTodayButton,
+                              { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.sm },
+                            ]}
+                          >
+                            <Feather name="check" size={16} color="#FFFFFF" />
+                            <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: Spacing.xs }}>
+                              Confirm
+                            </ThemedText>
+                          </Pressable>
+                        </View>
+                      ) : null}
+                    </View>
                   )}
                   <Pressable 
                     onPress={() => setShowDatePicker(false)}
@@ -1215,5 +1253,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
     borderRadius: BorderRadius.md,
+  },
+  iosPickerButtons: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: Spacing.sm,
   },
 });
