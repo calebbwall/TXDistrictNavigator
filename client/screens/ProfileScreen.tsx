@@ -1,19 +1,16 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { StyleSheet, View, ScrollView, Image, Pressable, RefreshControl } from "react-native";
+import React, { useState, useCallback } from "react";
+import { StyleSheet, View, ScrollView, Pressable, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import Animated, { FadeIn } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
-import { OfficialCard } from "@/components/OfficialCard";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { getSavedOfficials, getOverlayPreferences, saveOverlayPreferences, type OverlayPreferences } from "@/lib/storage";
-import { getOfficialById, type Official } from "@/lib/mockData";
+import { getOverlayPreferences, saveOverlayPreferences, type OverlayPreferences } from "@/lib/storage";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
@@ -93,7 +90,6 @@ export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { theme } = useTheme();
 
-  const [savedOfficials, setSavedOfficials] = useState<Official[]>([]);
   const [overlayPrefs, setOverlayPrefs] = useState<OverlayPreferences>({
     senate: false,
     house: false,
@@ -102,12 +98,6 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
-    const savedIds = await getSavedOfficials();
-    const officials = savedIds
-      .map((id) => getOfficialById(id))
-      .filter((o): o is Official => o !== undefined);
-    setSavedOfficials(officials);
-
     const prefs = await getOverlayPreferences();
     setOverlayPrefs(prefs);
   }, []);
@@ -132,13 +122,6 @@ export default function ProfileScreen() {
       await saveOverlayPreferences(newPrefs);
     },
     [overlayPrefs]
-  );
-
-  const handleOfficialPress = useCallback(
-    (official: Official) => {
-      navigation.navigate("OfficialProfile", { officialId: official.id });
-    },
-    [navigation]
   );
 
   return (
@@ -171,45 +154,11 @@ export default function ProfileScreen() {
 
         <View style={styles.section}>
           <ThemedText type="h3" style={styles.sectionTitle}>
-            Saved Officials
-          </ThemedText>
-          {savedOfficials.length > 0 ? (
-            savedOfficials.map((official) => (
-              <View key={official.id} style={styles.savedItem}>
-                <OfficialCard
-                  official={official}
-                  onPress={() => handleOfficialPress(official)}
-                />
-              </View>
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <Image
-                source={require("../../assets/images/empty-saved.png")}
-                style={styles.emptyImage}
-                resizeMode="contain"
-              />
-              <ThemedText
-                type="body"
-                style={{ color: theme.secondaryText, textAlign: "center" }}
-              >
-                No saved officials yet
-              </ThemedText>
-              <ThemedText
-                type="caption"
-                style={{ color: theme.secondaryText, textAlign: "center", marginTop: Spacing.xs }}
-              >
-                Tap the bookmark icon on an official's profile to save them
-              </ThemedText>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <ThemedText type="h3" style={styles.sectionTitle}>
-            Workflow Tools
+            Tools
           </ThemedText>
           <View style={styles.settingsGroup}>
+            <SettingRow icon="bookmark" label="Saved Officials" onPress={() => navigation.navigate("SavedOfficials")} />
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <SettingRow icon="flag" label="Follow-up Dashboard" onPress={() => navigation.navigate("FollowUpDashboard")} />
           </View>
         </View>

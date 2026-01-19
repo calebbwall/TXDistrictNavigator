@@ -41,18 +41,15 @@ import { apiOfficialToLegacy } from "@/lib/officialsAdapter";
 import {
   getPrivateNotes,
   savePrivateNotes,
-  isOfficialSaved,
-  saveOfficial,
-  removeOfficial,
+  saveOfficialWithData,
+  removeOfficialByKey,
+  isOfficialSavedByKey,
   getNotesPrayer,
   addNotePrayer,
   deleteNotePrayer,
   getEngagementLog,
   addEngagement,
   deleteEngagement,
-  isFavorite,
-  addFavorite,
-  removeFavorite,
   addRecentEngaged,
   type PrivateNotes,
   type NotePrayerEntry,
@@ -176,7 +173,6 @@ export default function OfficialProfileScreen() {
 
   const [activeTab, setActiveTab] = useState<TabType>(initialSection === "privateNotes" ? "private" : "public");
   const [isSaved, setIsSaved] = useState(false);
-  const [isFav, setIsFav] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [privateNotes, setPrivateNotes] = useState<PrivateNotes>({});
   const [notesPrayer, setNotesPrayer] = useState<NotePrayerEntry[]>([]);
@@ -208,12 +204,12 @@ export default function OfficialProfileScreen() {
 
   const loadSavedState = useCallback(async () => {
     if (official) {
-      const saved = await isOfficialSaved(official.id);
-      setIsSaved(saved);
       const notes = await getPrivateNotes(official.id);
       if (notes) setPrivateNotes(notes);
       
       if (official.source && official.districtNumber) {
+        const saved = await isOfficialSavedByKey(official.source, official.districtNumber);
+        setIsSaved(saved);
         const npEntries = await getNotesPrayer(official.source, official.districtNumber);
         setNotesPrayer(npEntries);
         const engEntries = await getEngagementLog(official.source, official.districtNumber);
@@ -221,8 +217,6 @@ export default function OfficialProfileScreen() {
         if (engEntries.length > 0 && engEntries[0].summary) {
           setEngagementNote(engEntries[0].summary);
         }
-        const fav = await isFavorite(official.source, official.districtNumber);
-        setIsFav(fav);
       }
     }
   }, [official]);
@@ -273,28 +267,22 @@ export default function OfficialProfileScreen() {
   }, []);
 
   const handleToggleSaved = useCallback(async () => {
-    if (!official) return;
+    if (!official || !official.source || !official.districtNumber) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (isSaved) {
-      await removeOfficial(official.id);
+      await removeOfficialByKey(official.source, official.districtNumber);
       setIsSaved(false);
     } else {
-      await saveOfficial(official.id);
+      await saveOfficialWithData(
+        official.source,
+        official.districtNumber,
+        official.fullName,
+        undefined,
+        official.photoUrl || undefined
+      );
       setIsSaved(true);
     }
   }, [official, isSaved]);
-
-  const handleToggleFavorite = useCallback(async () => {
-    if (!official || !official.source || !official.districtNumber) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (isFav) {
-      await removeFavorite(official.source, official.districtNumber);
-      setIsFav(false);
-    } else {
-      await addFavorite(official.source, official.districtNumber);
-      setIsFav(true);
-    }
-  }, [official, isFav]);
 
   const handleSaveNotes = useCallback(async () => {
     if (!official) return;
@@ -510,36 +498,20 @@ export default function OfficialProfileScreen() {
               </ThemedText>
             ) : null}
           </View>
-          <View style={styles.headerButtons}>
-            <Pressable
-              onPress={handleToggleFavorite}
-              style={({ pressed }) => [
-                styles.saveButton,
-                { opacity: pressed ? 0.7 : 1 },
-              ]}
-            >
-              <Feather
-                name={isFav ? "star" : "star"}
-                size={24}
-                color={isFav ? "#FFD700" : theme.secondaryText}
-                style={{ opacity: isFav ? 1 : 0.5 }}
-              />
-            </Pressable>
-            <Pressable
-              onPress={handleToggleSaved}
-              style={({ pressed }) => [
-                styles.saveButton,
-                { opacity: pressed ? 0.7 : 1 },
-              ]}
-            >
-              <Feather
-                name={isSaved ? "bookmark" : "bookmark"}
-                size={24}
-                color={isSaved ? theme.primary : theme.secondaryText}
-                style={{ opacity: isSaved ? 1 : 0.5 }}
-              />
-            </Pressable>
-          </View>
+          <Pressable
+            onPress={handleToggleSaved}
+            style={({ pressed }) => [
+              styles.saveButton,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Feather
+              name={isSaved ? "bookmark" : "bookmark"}
+              size={24}
+              color={isSaved ? theme.primary : theme.secondaryText}
+              style={{ opacity: isSaved ? 1 : 0.5 }}
+            />
+          </Pressable>
         </View>
 
         <View style={styles.tabContainer}>
