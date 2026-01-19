@@ -147,7 +147,7 @@ export default function BrowseOfficialsScreen() {
           const officialsRes = await fetch(new URL("/api/officials/by-districts", getApiUrl()).toString(), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ hits: filteredHits }),
+            body: JSON.stringify({ districts: filteredHits }),
           });
 
           if (!officialsRes.ok) {
