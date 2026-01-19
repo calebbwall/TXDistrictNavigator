@@ -177,9 +177,9 @@ export default function OfficialProfileScreen() {
   const [engagementLog, setEngagementLog] = useState<EngagementEntry[]>([]);
   const [newNoteText, setNewNoteText] = useState("");
   const [newNoteFollowUp, setNewNoteFollowUp] = useState(false);
-  const [newEngagementSummary, setNewEngagementSummary] = useState("");
   const [showAddNote, setShowAddNote] = useState(false);
-  const [showAddEngagement, setShowAddEngagement] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [engagementNote, setEngagementNote] = useState("");
 
   const loadOfficial = useCallback(async () => {
     setIsLoading(true);
@@ -211,6 +211,9 @@ export default function OfficialProfileScreen() {
         setNotesPrayer(npEntries);
         const engEntries = await getEngagementLog(official.source, official.districtNumber);
         setEngagementLog(engEntries);
+        if (engEntries.length > 0 && engEntries[0].summary) {
+          setEngagementNote(engEntries[0].summary);
+        }
         const fav = await isFavorite(official.source, official.districtNumber);
         setIsFav(fav);
       }
@@ -324,36 +327,52 @@ export default function OfficialProfileScreen() {
     ]);
   }, [official]);
 
-  const handleAddEngagement = useCallback(async () => {
+  const handleSetEngagementDate = useCallback(async (selectedDate: Date) => {
     if (!official?.source || !official?.districtNumber) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const entry = await addEngagement(
       official.source, 
       official.districtNumber, 
-      new Date().toISOString(), 
-      newEngagementSummary.trim() || undefined
+      selectedDate.toISOString(), 
+      engagementNote.trim() || undefined
     );
-    setEngagementLog(prev => [entry, ...prev]);
-    setNewEngagementSummary("");
-    setShowAddEngagement(false);
+    setEngagementLog([entry]);
     addRecentEngaged(official.source, official.districtNumber);
-  }, [official, newEngagementSummary]);
+    setShowDatePicker(false);
+  }, [official, engagementNote]);
 
-  const handleDeleteEngagement = useCallback(async (entryId: string) => {
+  const handleSaveEngagementNote = useCallback(async () => {
     if (!official?.source || !official?.districtNumber) return;
-    Alert.alert("Delete Engagement", "Are you sure you want to delete this engagement record?", [
+    if (engagementLog.length === 0) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const currentEntry = engagementLog[0];
+    const updatedEntry = await addEngagement(
+      official.source,
+      official.districtNumber,
+      currentEntry.engagedAt,
+      engagementNote.trim() || undefined
+    );
+    setEngagementLog([updatedEntry]);
+  }, [official, engagementLog, engagementNote]);
+
+  const handleClearEngagement = useCallback(async () => {
+    if (!official?.source || !official?.districtNumber) return;
+    Alert.alert("Clear Engagement", "Are you sure you want to clear the last engaged date?", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: "Clear",
         style: "destructive",
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          await deleteEngagement(official.source!, official.districtNumber!, entryId);
-          setEngagementLog(prev => prev.filter(e => e.id !== entryId));
+          if (engagementLog.length > 0) {
+            await deleteEngagement(official.source!, official.districtNumber!, engagementLog[0].id);
+          }
+          setEngagementLog([]);
+          setEngagementNote("");
         },
       },
     ]);
-  }, []);
+  }, [official, engagementLog]);
 
   if (isLoading) {
     return (
@@ -846,72 +865,111 @@ export default function OfficialProfileScreen() {
             </View>
 
             <View style={[styles.section, { marginTop: Spacing.xl }]}>
-              <View style={styles.editHeader}>
-                <View>
-                  <ThemedText type="h3">Last Engaged</ThemedText>
-                  {engagementLog.length > 0 ? (
-                    <ThemedText type="body" style={{ color: theme.secondaryText }}>
-                      {new Date(engagementLog[0].engagedAt).toLocaleDateString()}
+              <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>Last Engaged</ThemedText>
+              
+              <View style={styles.engagementDateRow}>
+                <View style={styles.engagementDateInfo}>
+                  <Feather name="calendar" size={18} color={theme.secondaryText} />
+                  <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
+                    {engagementLog.length > 0 
+                      ? new Date(engagementLog[0].engagedAt).toLocaleDateString()
+                      : "Not set"}
+                  </ThemedText>
+                </View>
+                <View style={styles.engagementDateActions}>
+                  <Pressable
+                    onPress={() => setShowDatePicker(true)}
+                    style={({ pressed }) => [
+                      styles.dateButton,
+                      { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                    ]}
+                  >
+                    <ThemedText type="caption" style={{ color: "#FFFFFF" }}>
+                      {engagementLog.length > 0 ? "Change" : "Set Date"}
                     </ThemedText>
+                  </Pressable>
+                  {engagementLog.length > 0 ? (
+                    <Pressable
+                      onPress={handleClearEngagement}
+                      style={({ pressed }) => [
+                        styles.dateButton,
+                        { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.xs },
+                      ]}
+                    >
+                      <Feather name="x" size={14} color={theme.secondaryText} />
+                    </Pressable>
                   ) : null}
                 </View>
-                <Pressable
-                  onPress={() => setShowAddEngagement(!showAddEngagement)}
-                  style={({ pressed }) => [
-                    styles.addButton,
-                    { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
-                  ]}
-                >
-                  <Feather name={showAddEngagement ? "x" : "plus"} size={16} color="#FFFFFF" />
-                  <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: 4 }}>
-                    {showAddEngagement ? "Cancel" : "Log Engagement"}
-                  </ThemedText>
-                </Pressable>
               </View>
 
-              {showAddEngagement ? (
-                <View style={[styles.addEntryForm, { backgroundColor: theme.cardBackground }]}>
-                  <TextInput
-                    style={[
-                      styles.noteInput,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
-                    ]}
-                    value={newEngagementSummary}
-                    onChangeText={setNewEngagementSummary}
-                    placeholder="Optional summary (e.g., 'Met at Capitol')"
-                    placeholderTextColor={theme.secondaryText}
-                  />
-                  <Button onPress={handleAddEngagement}>
-                    Log Engagement Now
-                  </Button>
+              {showDatePicker ? (
+                <View style={[styles.webDatePickerContainer, { backgroundColor: theme.cardBackground }]}>
+                  {Platform.OS === "web" ? (
+                    <input
+                      type="date"
+                      value={engagementLog.length > 0 
+                        ? new Date(engagementLog[0].engagedAt).toISOString().split('T')[0]
+                        : new Date().toISOString().split('T')[0]}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const date = new Date(e.target.value);
+                        handleSetEngagementDate(date);
+                      }}
+                      style={{
+                        padding: 12,
+                        fontSize: 16,
+                        borderRadius: 8,
+                        border: `1px solid ${theme.border}`,
+                        backgroundColor: theme.inputBackground,
+                        color: theme.text,
+                        width: "100%",
+                      }}
+                    />
+                  ) : (
+                    <Pressable
+                      onPress={() => handleSetEngagementDate(new Date())}
+                      style={({ pressed }) => [
+                        styles.setTodayButton,
+                        { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                      ]}
+                    >
+                      <Feather name="calendar" size={18} color="#FFFFFF" />
+                      <ThemedText type="body" style={{ color: "#FFFFFF", marginLeft: Spacing.sm }}>
+                        Set to Today
+                      </ThemedText>
+                    </Pressable>
+                  )}
+                  <Pressable 
+                    onPress={() => setShowDatePicker(false)}
+                    style={{ marginTop: Spacing.sm, alignItems: "center" }}
+                  >
+                    <ThemedText type="caption" style={{ color: theme.secondaryText }}>Cancel</ThemedText>
+                  </Pressable>
                 </View>
               ) : null}
 
-              {engagementLog.length > 0 ? (
-                <View style={styles.entriesList}>
-                  {engagementLog.map((entry) => (
-                    <View key={entry.id} style={[styles.entryCard, { backgroundColor: theme.cardBackground }]}>
-                      <View style={styles.entryHeader}>
-                        <ThemedText type="body" style={{ fontWeight: "600" }}>
-                          {new Date(entry.engagedAt).toLocaleDateString()} at {new Date(entry.engagedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </ThemedText>
-                        <Pressable onPress={() => handleDeleteEngagement(entry.id)}>
-                          <Feather name="trash-2" size={16} color={theme.secondaryText} />
-                        </Pressable>
-                      </View>
-                      {entry.summary ? (
-                        <ThemedText type="body" style={{ color: theme.secondaryText }}>
-                          {entry.summary}
-                        </ThemedText>
-                      ) : null}
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <ThemedText type="body" style={{ color: theme.secondaryText, fontStyle: "italic" }}>
-                  No engagements logged yet.
+              <View style={{ marginTop: Spacing.md }}>
+                <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+                  Note (optional)
                 </ThemedText>
-              )}
+                <TextInput
+                  style={[
+                    styles.noteInput,
+                    { backgroundColor: theme.inputBackground, color: theme.text },
+                  ]}
+                  value={engagementNote}
+                  onChangeText={setEngagementNote}
+                  onBlur={handleSaveEngagementNote}
+                  placeholder="e.g., 'Met at Capitol'"
+                  placeholderTextColor={theme.secondaryText}
+                  multiline
+                  editable={engagementLog.length > 0}
+                />
+                {engagementLog.length === 0 ? (
+                  <ThemedText type="caption" style={{ color: theme.secondaryText, fontStyle: "italic", marginTop: Spacing.xs }}>
+                    Set a date first to add a note
+                  </ThemedText>
+                ) : null}
+              </View>
             </View>
           </Animated.View>
         )}
@@ -1126,5 +1184,36 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: Spacing.xs,
     borderRadius: BorderRadius.xs,
+  },
+  engagementDateRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  engagementDateInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  engagementDateActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  dateButton: {
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+  },
+  webDatePickerContainer: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
+  },
+  setTodayButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
   },
 });
