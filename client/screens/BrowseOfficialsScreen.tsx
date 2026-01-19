@@ -373,7 +373,55 @@ export default function BrowseOfficialsScreen() {
     <View style={[styles.listHeader, { backgroundColor: theme.backgroundRoot }]}>
       <OfflineBanner visible={isOffline || showOfflineBanner} />
       
-      {/* 1. Search bar row */}
+      {/* 1. Filter tiles (tabs) - FIRST */}
+      <View style={styles.segmentedControl}>
+        {sources.map((source) => (
+          <Pressable
+            key={source}
+            style={[
+              styles.segmentButton,
+              {
+                backgroundColor:
+                  selectedSource === source
+                    ? theme.primary
+                    : theme.inputBackground,
+                borderColor: theme.border,
+              },
+            ]}
+            onPress={() => handleSourceChange(source)}
+          >
+            <ThemedText
+              type="caption"
+              style={{
+                color: selectedSource === source ? "#FFFFFF" : theme.text,
+                fontWeight: selectedSource === source ? "600" : "400",
+              }}
+            >
+              {SOURCE_LABELS[source]}
+            </ThemedText>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* 2. Counts/summary row - SECOND */}
+      <View style={styles.countLabelRow}>
+        <ThemedText
+          type="caption"
+          style={[styles.countLabel, { color: theme.secondaryText }]}
+        >
+          {countLabel}
+        </ThemedText>
+        {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
+          <View style={styles.searchingIndicator}>
+            <ActivityIndicator size="small" color={theme.primary} />
+            <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+              Searching...
+            </ThemedText>
+          </View>
+        ) : null}
+      </View>
+
+      {/* 3. Search bar row - THIRD */}
       <View style={styles.searchRow}>
         <View
           style={[
@@ -407,25 +455,7 @@ export default function BrowseOfficialsScreen() {
         </Pressable>
       </View>
 
-      {/* 2. Counts/summary row */}
-      <View style={styles.countLabelRow}>
-        <ThemedText
-          type="caption"
-          style={[styles.countLabel, { color: theme.secondaryText }]}
-        >
-          {countLabel}
-        </ThemedText>
-        {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
-          <View style={styles.searchingIndicator}>
-            <ActivityIndicator size="small" color={theme.primary} />
-            <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
-              Searching...
-            </ThemedText>
-          </View>
-        ) : null}
-      </View>
-
-      {/* 3. Place label (if searching by location) */}
+      {/* 4. Place label (if searching by location) */}
       {placeLabel ? (
         <View style={styles.placeLabelContainer}>
           <Feather name="map-pin" size={14} color={theme.primary} />
@@ -437,36 +467,6 @@ export default function BrowseOfficialsScreen() {
           </ThemedText>
         </View>
       ) : null}
-
-      {/* 4. Filter tiles (tabs) */}
-      <View style={styles.segmentedControl}>
-        {sources.map((source) => (
-          <Pressable
-            key={source}
-            style={[
-              styles.segmentButton,
-              {
-                backgroundColor:
-                  selectedSource === source
-                    ? theme.primary
-                    : theme.inputBackground,
-                borderColor: theme.border,
-              },
-            ]}
-            onPress={() => handleSourceChange(source)}
-          >
-            <ThemedText
-              type="caption"
-              style={{
-                color: selectedSource === source ? "#FFFFFF" : theme.text,
-                fontWeight: selectedSource === source ? "600" : "400",
-              }}
-            >
-              {SOURCE_LABELS[source]}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </View>
     </View>
   ), [isOffline, showOfflineBanner, sources, selectedSource, theme, placeLabel, countLabel, searchText, debouncedSearch]);
 
@@ -522,6 +522,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   segmentButton: {
     minWidth: "30%",
