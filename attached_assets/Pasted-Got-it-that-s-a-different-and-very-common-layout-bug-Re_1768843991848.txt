@@ -1,0 +1,123 @@
+Got it — that’s a different (and very common) layout bug:
+
+Restating the actual issue
+
+On the Browse tab, the search bar + “counts” header is overlapping the filter tiles (House / Senate / Congress / All). So the overlap is happening within the header area, not the results list.
+
+That means the fix is not “ListHeaderComponent vs list padding.” It’s the internal header layout: something is absolute-positioned, using a negative margin, or the header container isn’t tall enough to contain both the search bar + counts + filter tiles.
+
+⸻
+
+Replit Continuous Agent Prompt — Fix Browse Header Overlap (Search/Counts overlapping Filter Tiles) + Fix Follow-up Deep-Link-to-Notes
+
+Objective
+
+Fix two items:
+	1.	Browse header layout: Search bar + counts overlap the House/Senate/Congress filter tiles. Must be fixed so the header stacks correctly with consistent spacing on iOS and Android.
+	2.	Follow-up tile navigation: Tapping a follow-up tile must deep-link to the official profile and auto-scroll to the Private Notes & Prayer / follow-up section.
+
+Keep archive button behavior unchanged.
+
+⸻
+
+Part A — Browse: Fix header overlap (search/counts vs filter tiles)
+
+A1) Locate Browse header component
+
+Find the header section that contains:
+	•	Search bar
+	•	“counts” text (how many officials per group)
+	•	Filter tiles (House/Senate/Congress/All)
+
+This is likely a View above the list or inside a header component.
+
+A2) Remove any absolute positioning and “overlay” styling in the header
+
+Search within Browse header styles for:
+	•	position: 'absolute'
+	•	top: ...
+	•	negative margins (marginTop: -...)
+	•	zIndex used to layer header elements
+	•	fixed heights (height: ...) on the header container
+
+If any exist in the header: remove them and use normal flex layout.
+
+A3) Ensure the header container grows to fit its content
+
+This bug often happens because the container height is fixed or constrained.
+
+Rules:
+	•	The outer header wrapper must have:
+	•	no fixed height
+	•	flexShrink: 0
+	•	The filter tiles container must wrap:
+	•	flexDirection: 'row'
+	•	flexWrap: 'wrap' (so it wraps on small screens)
+	•	gap or margins for spacing
+
+A4) Stack order must be explicit and vertical
+
+Structure the header like this (vertical stack):
+	1.	Search bar row
+	2.	Counts/summary text block
+	3.	Filter tiles grid (House/Senate/Congress/All)
+
+Make each block its own View with spacing:
+	•	marginBottom: 12 between blocks (or your theme spacing)
+
+A5) Fix Safe Area / notch spacing (common culprit)
+
+If the search bar is pushed down with manual padding AND also wrapped in SafeAreaView, it can compress the remaining header space.
+
+Use exactly one:
+	•	SafeAreaView wrapping the whole screen, OR
+	•	useSafeAreaInsets() and paddingTop: insets.top
+
+Do not double-apply.
+
+A6) Add a one-time debug measurement (dev-only)
+
+Add onLayout logs for:
+	•	search bar block height
+	•	counts block height
+	•	filter tiles block height
+	•	total header height
+
+This confirms the header container includes the filter tiles instead of collapsing.
+
+Acceptance criteria for Browse
+	•	The filter tiles are fully visible and not overlapped by search/counts.
+	•	On small screens, filter tiles wrap cleanly instead of being hidden.
+	•	No element covers another; all buttons are tappable.
+
+⸻
+
+Part B — Follow-up tiles deep-link into Private Notes section
+
+B1) Pass an explicit “scroll target” param when navigating
+
+From Follow-up tile press:
+	•	navigate('OfficialProfile', { source, districtNumber, initialSection: 'privateNotes' })
+
+B2) Implement scroll-to-notes using onLayout measurement (not timing)
+
+In OfficialProfileScreen.tsx:
+	•	Wrap notes section in a View with onLayout capturing y
+	•	When screen mounts and param is present, call scrollTo({ y: notesY - 12 })
+	•	Must happen after layout is measured (use state and effect)
+
+Acceptance criteria for Follow-up navigation
+	•	Tile tap opens the official and lands at Private Notes & Prayer area.
+	•	Archive button still works and does NOT navigate.
+
+⸻
+
+Deliverables
+	•	Files changed
+	•	Confirm removal of absolute/height constraints in Browse header
+	•	Confirm filter tiles now wrap and are not overlapped
+	•	Confirm follow-up navigation passes initialSection and profile scrolls correctly
+
+⸻
+
+If you paste this as-is, the agent should stop “fixing the wrong layer” and actually address the header container collapsing/overlaying the filter tiles.

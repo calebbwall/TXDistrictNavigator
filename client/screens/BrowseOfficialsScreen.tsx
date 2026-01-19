@@ -373,64 +373,7 @@ export default function BrowseOfficialsScreen() {
     <View style={[styles.listHeader, { backgroundColor: theme.backgroundRoot }]}>
       <OfflineBanner visible={isOffline || showOfflineBanner} />
       
-      <View style={styles.segmentedControl}>
-        {sources.map((source) => (
-          <Pressable
-            key={source}
-            style={[
-              styles.segmentButton,
-              {
-                backgroundColor:
-                  selectedSource === source
-                    ? theme.primary
-                    : theme.inputBackground,
-                borderColor: theme.border,
-              },
-            ]}
-            onPress={() => handleSourceChange(source)}
-          >
-            <ThemedText
-              type="caption"
-              style={{
-                color: selectedSource === source ? "#FFFFFF" : theme.text,
-                fontWeight: selectedSource === source ? "600" : "400",
-              }}
-            >
-              {SOURCE_LABELS[source]}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </View>
-
-      {placeLabel ? (
-        <View style={styles.placeLabelContainer}>
-          <Feather name="map-pin" size={14} color={theme.primary} />
-          <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
-            {placeLabel.name}
-          </ThemedText>
-          <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-            {placeLabel.districts}
-          </ThemedText>
-        </View>
-      ) : null}
-
-      <View style={styles.countLabelRow}>
-        <ThemedText
-          type="caption"
-          style={[styles.countLabel, { color: theme.secondaryText }]}
-        >
-          {countLabel}
-        </ThemedText>
-        {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
-          <View style={styles.searchingIndicator}>
-            <ActivityIndicator size="small" color={theme.primary} />
-            <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
-              Searching...
-            </ThemedText>
-          </View>
-        ) : null}
-      </View>
-
+      {/* 1. Search bar row */}
       <View style={styles.searchRow}>
         <View
           style={[
@@ -462,6 +405,67 @@ export default function BrowseOfficialsScreen() {
         >
           <Feather name="map-pin" size={20} color="#FFFFFF" />
         </Pressable>
+      </View>
+
+      {/* 2. Counts/summary row */}
+      <View style={styles.countLabelRow}>
+        <ThemedText
+          type="caption"
+          style={[styles.countLabel, { color: theme.secondaryText }]}
+        >
+          {countLabel}
+        </ThemedText>
+        {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
+          <View style={styles.searchingIndicator}>
+            <ActivityIndicator size="small" color={theme.primary} />
+            <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+              Searching...
+            </ThemedText>
+          </View>
+        ) : null}
+      </View>
+
+      {/* 3. Place label (if searching by location) */}
+      {placeLabel ? (
+        <View style={styles.placeLabelContainer}>
+          <Feather name="map-pin" size={14} color={theme.primary} />
+          <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+            {placeLabel.name}
+          </ThemedText>
+          <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+            {placeLabel.districts}
+          </ThemedText>
+        </View>
+      ) : null}
+
+      {/* 4. Filter tiles (tabs) */}
+      <View style={styles.segmentedControl}>
+        {sources.map((source) => (
+          <Pressable
+            key={source}
+            style={[
+              styles.segmentButton,
+              {
+                backgroundColor:
+                  selectedSource === source
+                    ? theme.primary
+                    : theme.inputBackground,
+                borderColor: theme.border,
+              },
+            ]}
+            onPress={() => handleSourceChange(source)}
+          >
+            <ThemedText
+              type="caption"
+              style={{
+                color: selectedSource === source ? "#FFFFFF" : theme.text,
+                fontWeight: selectedSource === source ? "600" : "400",
+              }}
+            >
+              {SOURCE_LABELS[source]}
+            </ThemedText>
+          </Pressable>
+        ))}
       </View>
     </View>
   ), [isOffline, showOfflineBanner, sources, selectedSource, theme, placeLabel, countLabel, searchText, debouncedSearch]);
@@ -512,12 +516,12 @@ const styles = StyleSheet.create({
   listHeader: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
+    flexShrink: 0,
   },
   segmentedControl: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: Spacing.xs,
-    marginBottom: Spacing.sm,
   },
   segmentButton: {
     minWidth: "30%",
@@ -554,6 +558,7 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: "row",
     gap: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   searchInputContainer: {
     flex: 1,
