@@ -146,6 +146,8 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-19: Added MapResultsPanel component - scrollable bottom sheet for map results using FlatList
+- 2026-01-19: Map results panel now supports collapse/expand, shows official count in header
 - 2026-01-19: Phase D.2 - Added searchZips and searchCities normalized columns for faster ZIP/city search
 - 2026-01-19: Phase D.2 - Created backfill script (scripts/backfill-search-fields.ts) for existing data
 - 2026-01-19: Phase D.2 - Updated refresh job to populate normalized fields on future syncs

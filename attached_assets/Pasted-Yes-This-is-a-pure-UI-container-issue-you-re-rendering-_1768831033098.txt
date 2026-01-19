@@ -1,0 +1,102 @@
+Yes. This is a pure UI/container issue: you’re rendering a list of result cards in a fixed-height area without a scrollable container (or the gesture is being eaten by the WebView).
+
+Here’s a Replit prompt that fixes it in a robust way: make the results panel a scrollable bottom sheet (or a fixed panel) using FlatList, with proper gesture handling so it scrolls even over a WebView.
+
+⸻
+
+Replit Continuous Agent Prompt
+
+Fix Map draw results: make the official cards list scrollable (bottom sheet / panel)
+
+Problem
+
+When using Draw-to-search, multiple official cards appear, but:
+	•	cards that extend off-screen can’t be seen
+	•	there is no scrolling
+	•	user can’t browse all results
+
+This happens on the Map tab results panel.
+
+Goal
+
+Make the map results panel (used for both tap selection and draw results) support:
+	•	vertical scrolling through all official cards
+	•	a clean UI that doesn’t cover the entire map
+	•	gesture behavior that works reliably with a WebView underneath (scroll should not be swallowed)
+
+⸻
+
+1) Replace the results container with a FlatList inside a scrollable panel
+
+In MapScreen.tsx (or the component that renders selected officials):
+	•	Render results in a bottom panel that has:
+	•	max height: ~45–60% of screen
+	•	rounded corners + subtle shadow
+	•	header row with:
+	•	result count (e.g., “23 officials”)
+	•	optional “Clear” button
+	•	optional “Collapse” button
+	•	Inside the panel use FlatList (not a manual mapped list) with:
+	•	data={results}
+	•	renderItem={() => <OfficialCard ... />}
+	•	keyExtractor stable: use officialId
+	•	keyboardShouldPersistTaps="handled"
+
+This ensures the list is actually scrollable and performant.
+
+⸻
+
+2) Ensure scroll gestures work over a WebView
+
+WebView often eats gestures. Do these:
+	•	Set the results panel to sit above the WebView with:
+	•	position: 'absolute'
+	•	bottom: 0
+	•	left/right: 0
+	•	high zIndex and elevation
+	•	Ensure the panel view uses:
+	•	pointerEvents="auto"
+
+Optional but recommended:
+	•	When the panel is open, reduce map interaction conflicts by disabling map gestures only if needed, but do not break drawing mode.
+
+⸻
+
+3) Add “collapsed / expanded” behavior (simple, not fancy)
+
+Implement a simple two-state panel height:
+	•	collapsed: shows header + 1–2 cards (e.g., 160px)
+	•	expanded: shows up to ~60% screen height with full list scroll
+
+Add a chevron button to toggle collapse/expand.
+
+Use a calm Animated.timing transition (no bouncy springs).
+
+⸻
+
+4) Preserve existing functionality
+	•	Tapping an official card still opens OfficialProfileScreen (public + private notes)
+	•	Works for:
+	•	tap selection results
+	•	draw-to-search results
+	•	If results are empty, show an empty state message in the panel and allow closing.
+
+⸻
+
+5) Acceptance criteria
+	•	If 20+ officials are returned, I can scroll and view every card.
+	•	Scrolling is smooth on iOS Expo Go.
+	•	Panel doesn’t block the entire map; can be collapsed.
+	•	No gesture dead-zones (scroll works reliably).
+	•	Card press still navigates to full profile.
+
+⸻
+
+Deliverables
+	•	Updated Map results panel UI using FlatList
+	•	Any small helper components added (e.g., MapResultsPanel.tsx)
+	•	Confirmation of stable keyExtractor and max height behavior
+
+⸻
+
+If the agent runs into “scroll doesn’t work because WebView steals touch,” the most reliable fallback is a true bottom sheet component (e.g., @gorhom/bottom-sheet). But start with the FlatList-in-overlay approach first—it’s usually enough.

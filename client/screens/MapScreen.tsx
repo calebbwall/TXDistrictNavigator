@@ -19,6 +19,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { OverlayToggle } from "@/components/OverlayToggle";
+import { MapResultsPanel } from "@/components/MapResultsPanel";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing, Shadows } from "@/constants/theme";
@@ -1425,89 +1426,14 @@ export default function MapScreen() {
       ) : null}
 
       {selectedDistrict ? (
-        <Animated.View
-          entering={SlideInDown.springify().damping(25)}
-          exiting={SlideOutDown.springify().damping(25)}
-          style={[
-            styles.districtCardContainer,
-            {
-              bottom: insets.bottom + Spacing.lg,
-              backgroundColor: theme.cardBackground,
-            },
-            Shadows.lg,
-          ]}
-        >
-          <Pressable onPress={handleCloseDistrictCard} style={styles.closeButton}>
-            <Feather name="x" size={20} color={theme.secondaryText} />
-          </Pressable>
-          
-          {showDebug ? (
-            <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', padding: 4, borderRadius: 4, marginBottom: 8 }}>
-              <ThemedText type="small" style={{ color: '#0f0', fontFamily: 'monospace', fontSize: 10 }}>
-                Hits: {selectedDistrict.hits.length} | Officials: {selectedDistrict.officials.length}
-              </ThemedText>
-              {selectedDistrict.officials.length > 0 ? (
-                <ThemedText type="small" style={{ color: '#ff0', fontFamily: 'monospace', fontSize: 9 }}>
-                  First: {JSON.stringify({ id: selectedDistrict.officials[0].id.slice(0, 8), name: selectedDistrict.officials[0].fullName, source: selectedDistrict.officials[0].officeType })}
-                </ThemedText>
-              ) : null}
-            </View>
-          ) : null}
-          
-          {selectedDistrict.officials.length > 0 ? (
-            selectedDistrict.officials.map((official, index) => (
-              <Pressable 
-                key={official.id} 
-                onPress={() => handleOfficialCardPress(official)}
-                style={({ pressed }) => [
-                  styles.officialInfo, 
-                  index > 0 && { marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: Spacing.md },
-                  pressed && { opacity: 0.7, backgroundColor: theme.border }
-                ]}
-              >
-                <View style={styles.districtCardHeader}>
-                  <View 
-                    style={[
-                      styles.districtBadge, 
-                      { backgroundColor: LAYER_COLORS[official.officeType === "us_house" ? "us_congress" : official.officeType].stroke }
-                    ]}
-                  >
-                    <ThemedText type="small" style={{ color: "#FFFFFF", fontWeight: "600" }}>
-                      {getOfficeTypeLabel(official.officeType)}
-                    </ThemedText>
-                  </View>
-                  <View style={{ flexDirection: 'row', flex: 1, justifyContent: 'space-between', alignItems: 'center' }}>
-                    <ThemedText type="h3" style={{ color: theme.text }}>
-                      District {official.districtNumber}
-                    </ThemedText>
-                    <Feather name="chevron-right" size={18} color={theme.secondaryText} />
-                  </View>
-                </View>
-                <ThemedText type="body" style={{ color: theme.text, fontWeight: "600", marginTop: Spacing.sm, fontStyle: official.isVacant ? "italic" : "normal" }}>
-                  {official.fullName}
-                </ThemedText>
-                {!official.isVacant && official.party ? (
-                  <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.xs }}>
-                    {official.party === "R" ? "Republican" : official.party === "D" ? "Democrat" : official.party}
-                  </ThemedText>
-                ) : null}
-                {official.capitolPhone ? (
-                  <View style={{ marginTop: Spacing.sm }}>
-                    <ThemedText type="small" style={{ color: theme.secondaryText }}>
-                      {official.capitolPhone}
-                    </ThemedText>
-                  </View>
-                ) : null}
-              </Pressable>
-            ))
-          ) : (
-            <View style={styles.officialInfo}>
-              <ThemedText type="small" style={{ color: theme.secondaryText }}>
-                Loading official info...
-              </ThemedText>
-            </View>
-          )}
-        </Animated.View>
+        <MapResultsPanel
+          officials={selectedDistrict.officials}
+          hits={selectedDistrict.hits}
+          onClose={handleCloseDistrictCard}
+          onOfficialPress={handleOfficialCardPress}
+          onClearDrawing={selectedDistrict.hits.length > 1 ? handleClearDrawing : undefined}
+          showDebug={showDebug}
+        />
       ) : null}
     </View>
   );
