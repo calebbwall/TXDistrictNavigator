@@ -263,7 +263,7 @@ export default function ProfileScreen() {
             marginTop: Spacing.lg,
           }}
         >
-          Built for Texas citizens
+          Built for the State Minister of Texas
         </ThemedText>
       </ScrollView>
     </View>
