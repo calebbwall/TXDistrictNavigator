@@ -4,19 +4,25 @@
 A mobile application for Texas citizens to view legislative districts, search for representatives, and manage private notes about officials. Built with Expo + React Native and Express.js backend with PostgreSQL database.
 
 ## Current State
-**Phase F Complete** - Private Notes & Prayer system with engagement tracking.
+**Phase F Complete** - Workflow tools, offline-first polish, and place search.
 
 ### Features:
 - **Map Screen**: Interactive Leaflet map via WebView with tappable GeoJSON polygon overlays for TX Senate (31), TX House (150), and US Congress (38). Color-coded layers with toggle controls. Works in Expo Go on iOS/Android and on web.
 - **Draw-to-Search**: Polygon drawing mode using Leaflet.draw - tap points to draw an area, and find all officials in overlapping districts. Integrated with area-hits API using Turf.js spatial intersection.
 - **Locate Me**: GPS location button using browser geolocation (web) or Expo Location (native) - shows user position with blue marker and accuracy circle on map.
-- **Browse Screen**: Complete roster browsing with 4 tabs (TX House, TX Senate, US House, All Officials). Single search bar with multi-criteria matching (name, district, party, addresses, email, website). Count labels show member count and vacancy count.
-- **Official Profiles**: View public info (offices, contact) and manage private notes
+- **Browse Screen**: Complete roster browsing with 6 tabs (TX House, TX Senate, US House, All Officials, Favorites, Recent). Single search bar with multi-criteria matching. Count labels show member count and vacancy count.
+- **Favorites System**: Gold star button on Official Profile to favorite officials, dedicated Favorites tab in Browse
+- **Recent Tracking**: Automatically tracks viewed and engaged officials, dedicated Recent tab in Browse (max 20 entries)
+- **Official Profiles**: View public info (offices, contact), manage private notes, quick actions
+- **Quick Actions**: "Quick Note" and "Log Engagement" buttons on Official Profile for rapid workflow
 - **Notes & Prayer**: Multi-entry private notes per official with timestamps and optional follow-up flags. Data keyed by `private:{source}:{districtNumber}` to survive vacancies/refreshes.
 - **Last Engaged**: Track last engagement date per official with optional summary. "Log Engagement Now" button for quick timestamping.
-- **Profile Screen**: Saved officials list and default overlay preferences
+- **Follow-up Dashboard**: Accessible from Profile screen, shows officials with pending follow-ups
+- **Place Search**: GeoNames-powered search for any Texas city/ZIP, multi-candidate disambiguation with recent searches
+- **Profile Screen**: Saved officials list, default overlay preferences, About This App link
 - **About Screen**: App purpose description and link to Capitol Commission Texas website
-- **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences (notes, engagement, preferences)
+- **Offline-First**: NetInfo-based offline detection, cache-first loading with 25% validation threshold, OfflineBanner component
+- **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences (notes, engagement, favorites, recents)
 - **Weekly Refresh**: Automatic data sync from Texas Legislature Online and Congress.gov
 - **Vacancy Display**: Complete district rosters show vacant seats with distinct styling (dashed borders, user-x icon, "Seat Currently Vacant" label)
 
@@ -149,8 +155,12 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-19: Phase F - Complete workflow tools: Favorites (gold star), Recent tracking (viewed+engaged), Follow-up Dashboard
+- 2026-01-19: Phase F - Offline-first polish: NetInfo detection, OfflineBanner, cache-first loading with 25% validation threshold
+- 2026-01-19: Phase F - Place search: GeoNames API with multi-candidate disambiguation, recent places storage
+- 2026-01-19: Phase F - Browse screen expanded to 6 tabs (TX House, TX Senate, US House, All, Favorites, Recent)
+- 2026-01-19: Phase F - Quick actions on Official Profile (Quick Note, Log Engagement buttons)
 - 2026-01-19: Phase F - Added About screen with purpose text and Capitol Commission Texas website link
-- 2026-01-19: Phase F - Added "About This App" navigation button to Profile screen
 - 2026-01-19: Phase F - Private Notes & Prayer system with multi-entry support, timestamps, and optional follow-up flags
 - 2026-01-19: Phase F - Last Engaged tracker with "Log Engagement Now" button and optional summary
 - 2026-01-19: Phase F - Private data keyed by `private:{source}:{districtNumber}` to survive vacancies/refreshes

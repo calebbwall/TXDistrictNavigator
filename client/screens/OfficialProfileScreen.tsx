@@ -252,22 +252,15 @@ export default function OfficialProfileScreen() {
   }, [official, isSaved]);
 
   const handleToggleFavorite = useCallback(async () => {
-    console.log("[OfficialProfile] Toggle favorite called, official:", official?.source, official?.districtNumber, "isFav:", isFav);
-    if (!official || !official.source || !official.districtNumber) {
-      console.log("[OfficialProfile] Missing official data, aborting");
-      return;
-    }
+    if (!official || !official.source || !official.districtNumber) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (isFav) {
-      console.log("[OfficialProfile] Removing favorite");
       await removeFavorite(official.source, official.districtNumber);
       setIsFav(false);
     } else {
-      console.log("[OfficialProfile] Adding favorite");
       await addFavorite(official.source, official.districtNumber);
       setIsFav(true);
     }
-    console.log("[OfficialProfile] Toggle complete, new isFav:", !isFav);
   }, [official, isFav]);
 
   const handleSaveNotes = useCallback(async () => {

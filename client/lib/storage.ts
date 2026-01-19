@@ -272,19 +272,14 @@ export async function getFavorites(): Promise<string[]> {
 
 export async function addFavorite(source: string, districtNumber: number): Promise<void> {
   try {
-    console.log(`[Favorites] Adding favorite: source=${source}, districtNumber=${districtNumber}`);
     const favorites = await getFavorites();
     const key = getFavoriteKey(source, districtNumber);
-    console.log(`[Favorites] Key: ${key}, current favorites:`, favorites);
     if (!favorites.includes(key)) {
       favorites.push(key);
       await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
-      console.log(`[Favorites] Added ${key}, new favorites:`, favorites);
-    } else {
-      console.log(`[Favorites] ${key} already in favorites`);
     }
-  } catch (err) {
-    console.error(`[Favorites] Error adding favorite:`, err);
+  } catch {
+    // Silently fail
   }
 }
 
