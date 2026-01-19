@@ -12,22 +12,33 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { OfficialCard } from "@/components/OfficialCard";
 import { ThemedText } from "@/components/ThemedText";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { useTheme } from "@/hooks/useTheme";
+import { useNetwork } from "@/hooks/useNetwork";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
 import { apiOfficialToNormalized } from "@/lib/officialsAdapter";
+import {
+  getCachedOfficials,
+  setCachedOfficials,
+  validateCacheData,
+  getFavorites,
+  addRecentViewed,
+  getRecentViewed,
+  type OfficialsCacheData,
+} from "@/lib/storage";
 import type { Official } from "@/lib/officials";
 import type { BrowseStackParamList } from "@/navigation/BrowseStackNavigator";
 
 type NavigationProp = NativeStackNavigationProp<BrowseStackParamList>;
 
-type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "ALL";
+type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "ALL" | "FAVORITES" | "RECENT";
 
 interface PlaceResult {
   name: string;
@@ -46,6 +57,8 @@ const SOURCE_LABELS: Record<SourceType, string> = {
   TX_SENATE: "TX Senate",
   US_HOUSE: "US House",
   ALL: "All",
+  FAVORITES: "Favorites",
+  RECENT: "Recent",
 };
 
 const SEARCH_PLACEHOLDERS: Record<SourceType, string> = {
@@ -53,6 +66,8 @@ const SEARCH_PLACEHOLDERS: Record<SourceType, string> = {
   TX_SENATE: "Search by name, district, city, ZIP...",
   US_HOUSE: "Search by name, district, city, ZIP...",
   ALL: "Search any TX city/ZIP or name...",
+  FAVORITES: "Search favorites...",
+  RECENT: "Search recent...",
 };
 
 export default function BrowseOfficialsScreen() {
@@ -61,12 +76,28 @@ export default function BrowseOfficialsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NavigationProp>();
   const { theme } = useTheme();
+  const { isOffline } = useNetwork();
 
   const [selectedSource, setSelectedSource] = useState<SourceType>("TX_HOUSE");
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [placeInfo, setPlaceInfo] = useState<{ name: string; districts: DistrictHit[] } | null>(null);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [recentViewed, setRecentViewed] = useState<{ source: string; districtNumber: number }[]>([]);
+  const [cachedData, setCachedData] = useState<OfficialsCacheData | null>(null);
+  const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      getFavorites().then(setFavorites);
+      getRecentViewed().then(setRecentViewed);
+    }, [])
+  );
+
+  useEffect(() => {
+    getCachedOfficials("ALL").then(setCachedData);
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) {
@@ -82,12 +113,14 @@ export default function BrowseOfficialsScreen() {
     };
   }, [searchText]);
 
+  const isLocalSource = selectedSource === "FAVORITES" || selectedSource === "RECENT";
+  
   const queryKey = useMemo(
     () => ["/api/officials", selectedSource, debouncedSearch],
     [selectedSource, debouncedSearch]
   );
 
-  const { data, isLoading, isFetching, refetch } = useQuery<{
+  const { data, isLoading, isFetching, refetch, isError } = useQuery<{
     officials: any[];
     count: number;
     vacancyCount?: number;
@@ -95,13 +128,80 @@ export default function BrowseOfficialsScreen() {
     queryKey,
     queryFn: async () => {
       setPlaceInfo(null);
+      setShowOfflineBanner(false);
+      
+      if (isLocalSource) {
+        if (!cachedData?.officials) return { officials: [], count: 0 };
+        let filtered = cachedData.officials;
+        
+        if (selectedSource === "FAVORITES") {
+          filtered = cachedData.officials.filter(o => 
+            favorites.includes(`${o.source}:${o.districtNumber}`)
+          );
+        } else if (selectedSource === "RECENT") {
+          const recentKeys = new Set(recentViewed.map(r => `${r.source}:${r.districtNumber}`));
+          filtered = cachedData.officials.filter(o => 
+            recentKeys.has(`${o.source}:${o.districtNumber}`)
+          );
+          filtered.sort((a, b) => {
+            const aIdx = recentViewed.findIndex(r => r.source === a.source && r.districtNumber === a.districtNumber);
+            const bIdx = recentViewed.findIndex(r => r.source === b.source && r.districtNumber === b.districtNumber);
+            return aIdx - bIdx;
+          });
+        }
+        
+        if (debouncedSearch.trim()) {
+          const q = debouncedSearch.toLowerCase();
+          filtered = filtered.filter(o => 
+            o.fullName.toLowerCase().includes(q) ||
+            String(o.districtNumber).includes(q)
+          );
+        }
+        
+        return { officials: filtered, count: filtered.length };
+      }
       
       if (!debouncedSearch.trim()) {
+        const apiSource = selectedSource as "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "ALL";
         const url = new URL("/api/officials", getApiUrl());
-        url.searchParams.set("source", selectedSource);
-        const response = await fetch(url.toString());
-        if (!response.ok) throw new Error("Failed to fetch officials");
-        return response.json();
+        url.searchParams.set("source", apiSource);
+        
+        try {
+          const response = await fetch(url.toString());
+          if (!response.ok) throw new Error("Failed to fetch officials");
+          const result = await response.json();
+          
+          const normalized = result.officials.map(apiOfficialToNormalized);
+          const isValid = await validateCacheData(normalized, cachedData);
+          
+          if (isValid && normalized.length > 0) {
+            const newCache: OfficialsCacheData = {
+              officials: normalized,
+              source: apiSource,
+              timestamp: new Date().toISOString(),
+              counts: {
+                txHouse: normalized.filter((o: Official) => o.source === "TX_HOUSE").length,
+                txSenate: normalized.filter((o: Official) => o.source === "TX_SENATE").length,
+                usHouse: normalized.filter((o: Official) => o.source === "US_HOUSE").length,
+                total: normalized.length,
+              },
+            };
+            setCachedOfficials("ALL", newCache);
+            setCachedData(newCache);
+          }
+          
+          return result;
+        } catch (err) {
+          setShowOfflineBanner(true);
+          if (cachedData?.officials) {
+            let filtered = cachedData.officials;
+            if (selectedSource !== "ALL") {
+              filtered = filtered.filter(o => o.source === selectedSource);
+            }
+            return { officials: filtered, count: filtered.length };
+          }
+          throw err;
+        }
       }
 
       const query = debouncedSearch.trim();
@@ -190,6 +290,7 @@ export default function BrowseOfficialsScreen() {
 
   const handleOfficialPress = useCallback(
     (official: Official) => {
+      addRecentViewed(official.source, official.districtNumber);
       navigation.navigate("OfficialProfile", { officialId: official.id });
     },
     [navigation]
@@ -255,7 +356,7 @@ export default function BrowseOfficialsScreen() {
     );
   }, [isLoading, theme, debouncedSearch]);
 
-  const sources: SourceType[] = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "ALL"];
+  const sources: SourceType[] = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "ALL", "FAVORITES", "RECENT"];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -268,6 +369,8 @@ export default function BrowseOfficialsScreen() {
           },
         ]}
       >
+        <OfflineBanner visible={isOffline || showOfflineBanner} />
+        
         <View style={styles.segmentedControl}>
           {sources.map((source) => (
             <Pressable
@@ -390,12 +493,15 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.xs,
     marginBottom: Spacing.sm,
   },
   segmentButton: {
+    minWidth: "30%",
     flex: 1,
     paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
     alignItems: "center",
