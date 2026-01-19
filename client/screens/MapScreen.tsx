@@ -48,9 +48,10 @@ interface SelectedDistrict {
 }
 
 const springConfig: WithSpringConfig = {
-  damping: 25,
-  mass: 0.6,
-  stiffness: 150,
+  damping: 30,
+  mass: 0.5,
+  stiffness: 200,
+  overshootClamping: true,
 };
 
 const LAYER_COLORS: Record<DistrictType, { fill: string; stroke: string }> = {
@@ -544,6 +545,9 @@ interface GeoJSONLoadStatus {
   congress: { loaded: boolean; features: number; error: string | null };
 }
 
+const geoJSONCache: Record<string, { data: any; timestamp: number }> = {};
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -617,12 +621,28 @@ export default function MapScreen() {
   const fetchGeoJSON = useCallback(async (layerType: DistrictType) => {
     const layerKey = layerType === 'tx_house' ? 'house' : 
                      layerType === 'tx_senate' ? 'senate' : 'congress';
+    
+    const cached = geoJSONCache[layerType];
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      const featureCount = cached.data?.features?.length || 0;
+      console.log(`[MapScreen] ${layerType} served from cache (${featureCount} features)`);
+      setLoadStatus(prev => ({
+        ...prev,
+        [layerKey]: { loaded: true, features: featureCount, error: null }
+      }));
+      return cached.data;
+    }
+    
     try {
       const baseUrl = getApiUrl();
       const url = new URL(`/api/geojson/${layerType}`, baseUrl);
       console.log(`[MapScreen] Fetching ${layerType} from: ${url.toString()}`);
       
-      const response = await fetch(url.toString());
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
+      const response = await fetch(url.toString(), { signal: controller.signal });
+      clearTimeout(timeoutId);
       console.log(`[MapScreen] ${layerType} response status: ${response.status}`);
       
       if (!response.ok) {
@@ -638,6 +658,8 @@ export default function MapScreen() {
       const featureCount = data?.features?.length || 0;
       console.log(`[MapScreen] ${layerType} loaded: ${featureCount} features`);
       
+      geoJSONCache[layerType] = { data, timestamp: Date.now() };
+      
       setLoadStatus(prev => ({
         ...prev,
         [layerKey]: { loaded: true, features: featureCount, error: null }
@@ -645,7 +667,9 @@ export default function MapScreen() {
       
       return data;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      const errorMsg = error instanceof Error ? 
+        (error.name === 'AbortError' ? 'Request timeout' : error.message) : 
+        'Unknown error';
       console.error(`[MapScreen] Error fetching ${layerType}:`, error);
       setLoadStatus(prev => ({
         ...prev,
