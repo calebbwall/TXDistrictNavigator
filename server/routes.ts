@@ -76,7 +76,7 @@ function fillVacancies(
   return result;
 }
 import { maybeRunScheduledRefresh } from "./jobs/refreshOfficials";
-import { lookupPlace, getCacheStats } from "./geonames";
+import { lookupPlace, lookupPlaceCandidates, getCacheStats, type PlaceResult } from "./geonames";
 
 type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
@@ -623,6 +623,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ ...result, fromCache });
     } catch (err) {
       console.error("[Lookup] Place error:", err);
+      res.status(500).json({ error: "Place lookup failed" });
+    }
+  });
+
+  app.get("/api/lookup/place/candidates", async (req, res) => {
+    try {
+      const q = String(req.query.q || "").trim();
+      const maxResults = Math.min(parseInt(String(req.query.max || "5"), 10) || 5, 10);
+      
+      if (q.length < 2) {
+        return res.status(400).json({ error: "Query too short (min 2 characters)" });
+      }
+
+      const { results, fromCache, error } = await lookupPlaceCandidates(q, maxResults);
+
+      if (error) {
+        console.log(`[Lookup] Place candidates error: ${error}`);
+        return res.status(500).json({ error });
+      }
+
+      console.log(`[Lookup] Place candidates: "${q}" → ${results.length} results [cache=${fromCache}]`);
+      res.json({ results, fromCache });
+    } catch (err) {
+      console.error("[Lookup] Place candidates error:", err);
       res.status(500).json({ error: "Place lookup failed" });
     }
   });
