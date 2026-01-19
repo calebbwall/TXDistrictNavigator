@@ -5,12 +5,14 @@ import { db } from "./db";
 import { 
   officialPublic, 
   officialPrivate, 
+  refreshJobLog,
   updateOfficialPrivateSchema,
   DISTRICT_RANGES,
   type MergedOfficial,
   type OfficialPublic,
   type OfficialPrivate 
 } from "@shared/schema";
+import { desc } from "drizzle-orm";
 import { eq, and, sql, or, ilike } from "drizzle-orm";
 import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
@@ -452,17 +454,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(officialPublic.active, true))
         .groupBy(officialPublic.source);
       
-      const result: Record<string, number> = {
+      const countsBySource: Record<string, number> = {
         TX_HOUSE: 0,
         TX_SENATE: 0,
         US_HOUSE: 0,
       };
       
       for (const { source, count } of counts) {
-        result[source] = count;
+        countsBySource[source] = count;
       }
       
-      console.log("[API] Admin officials counts:", result);
+      const lastRefreshJobs = await db.select()
+        .from(refreshJobLog)
+        .orderBy(desc(refreshJobLog.startedAt))
+        .limit(5);
+      
+      const lastSuccessfulRefresh = lastRefreshJobs.find(j => j.status === 'success');
+      const lastFailedRefresh = lastRefreshJobs.find(j => j.status === 'failed' || j.status === 'aborted');
+      
+      const result = {
+        counts: countsBySource,
+        total: countsBySource.TX_HOUSE + countsBySource.TX_SENATE + countsBySource.US_HOUSE,
+        lastRefresh: lastSuccessfulRefresh ? {
+          source: lastSuccessfulRefresh.source,
+          completedAt: lastSuccessfulRefresh.completedAt,
+          parsedCount: lastSuccessfulRefresh.parsedCount,
+          upsertedCount: lastSuccessfulRefresh.upsertedCount,
+          durationMs: lastSuccessfulRefresh.durationMs,
+        } : null,
+        lastError: lastFailedRefresh ? {
+          source: lastFailedRefresh.source,
+          startedAt: lastFailedRefresh.startedAt,
+          status: lastFailedRefresh.status,
+          errorMessage: lastFailedRefresh.errorMessage,
+        } : null,
+        recentJobs: lastRefreshJobs.map(j => ({
+          source: j.source,
+          status: j.status,
+          startedAt: j.startedAt,
+          completedAt: j.completedAt,
+          errorMessage: j.errorMessage,
+        })),
+      };
+      
+      console.log("[API] Admin officials counts:", result.counts);
       
       res.set("Cache-Control", "no-store, no-cache, must-revalidate");
       res.json(result);
