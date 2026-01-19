@@ -10,19 +10,19 @@ A mobile application for Texas citizens to view legislative districts, search fo
 - **Map Screen**: Interactive Leaflet map via WebView with tappable GeoJSON polygon overlays for TX Senate (31), TX House (150), and US Congress (38). Color-coded layers with toggle controls. Works in Expo Go on iOS/Android and on web.
 - **Draw-to-Search**: Continuous freehand polygon drawing - drag your finger/mouse to draw a smooth shape. Features real-time polyline preview, Douglas-Peucker simplification for performance, auto-closing polygon on release, and haptic feedback. Finds all officials in overlapping districts via area-hits API with Turf.js spatial intersection.
 - **Locate Me**: GPS location button using browser geolocation (web) or Expo Location (native) - shows user position with blue marker and accuracy circle on map.
-- **Browse Screen**: Complete roster browsing with 6 tabs (TX House, TX Senate, US House, All Officials, Favorites, Recent). Single search bar with multi-criteria matching. Count labels show member count and vacancy count.
-- **Favorites System**: Gold star button on Official Profile to favorite officials, dedicated Favorites tab in Browse
-- **Recent Tracking**: Automatically tracks viewed and engaged officials, dedicated Recent tab in Browse (max 20 entries)
+- **Browse Screen**: Complete roster browsing with 4 tabs (TX House, TX Senate, US House, All Officials). Single search bar with multi-criteria matching. Count labels show member count and vacancy count.
+- **Saved Officials**: Bookmark button on Official Profile to save/unsave officials. Saved Officials screen accessible from Profile > Tools.
+- **Recent Tracking**: Automatically tracks viewed and engaged officials (max 20 entries)
 - **Official Profiles**: View public info (offices, contact), manage private notes, quick actions
 - **Quick Actions**: "Quick Note" and "Log Engagement" buttons on Official Profile for rapid workflow
 - **Notes & Prayer**: Multi-entry private notes per official with timestamps and optional follow-up flags. Data keyed by `private:{source}:{districtNumber}` to survive vacancies/refreshes.
 - **Last Engaged**: Track last engagement date per official with optional summary. "Log Engagement Now" button for quick timestamping.
 - **Follow-up Dashboard**: Accessible from Profile screen, shows officials with pending follow-ups
 - **Place Search**: GeoNames-powered search for any Texas city/ZIP, multi-candidate disambiguation with recent searches
-- **Profile Screen**: Saved officials list, default overlay preferences, About This App link
+- **Profile Screen**: Tools section with navigation to Saved Officials and Follow-up Dashboard, default overlay preferences, About This App link
 - **About Screen**: App purpose description and link to Capitol Commission Texas website
 - **Offline-First**: NetInfo-based offline detection, cache-first loading with 25% validation threshold, OfflineBanner component
-- **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences (notes, engagement, favorites, recents)
+- **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences (notes, engagement, saved officials, recents)
 - **Weekly Refresh**: Automatic data sync from Texas Legislature Online and Congress.gov
 - **Vacancy Display**: Complete district rosters show vacant seats with distinct styling (dashed borders, user-x icon, "Seat Currently Vacant" label)
 
