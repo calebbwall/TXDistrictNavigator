@@ -273,6 +273,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ official: vacant });
       }
       
+      // Handle SOURCE:DISTRICT format (e.g., TX_HOUSE:1)
+      const sourceDistrictMatch = id.match(/^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/);
+      if (sourceDistrictMatch) {
+        const source = sourceDistrictMatch[1] as SourceType;
+        const district = sourceDistrictMatch[2];
+        
+        const [pub] = await db.select()
+          .from(officialPublic)
+          .where(and(
+            eq(officialPublic.source, source),
+            eq(officialPublic.district, district),
+            eq(officialPublic.active, true)
+          ))
+          .limit(1);
+        
+        if (!pub) {
+          // Return vacancy if no official found
+          const vacant = createVacantOfficial(source, parseInt(district, 10));
+          return res.json({ official: vacant });
+        }
+        
+        const [priv] = await db.select()
+          .from(officialPrivate)
+          .where(eq(officialPrivate.officialPublicId, pub.id))
+          .limit(1);
+        
+        const official = mergeOfficial(pub, priv || null);
+        official.isVacant = false;
+        return res.json({ official });
+      }
+      
       const [pub] = await db.select()
         .from(officialPublic)
         .where(eq(officialPublic.id, id))
