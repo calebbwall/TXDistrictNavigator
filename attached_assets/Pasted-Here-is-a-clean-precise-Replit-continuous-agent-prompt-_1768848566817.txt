@@ -1,0 +1,107 @@
+Here is a clean, precise Replit continuous-agent prompt to improve touch-to-draw so it behaves like a true continuous freehand line, not a jagged polygon made of taps. This is written to work with your existing map + draw-to-search implementation, not replace it.
+
+⸻
+
+Replit Prompt — Improve Draw-to-Search (Continuous Freehand Drawing)
+
+Objective
+
+Improve the Draw to Search interaction so the user can draw one continuous, smooth shape with their finger, instead of placing discrete polygon points. The resulting shape should feel natural, responsive, and accurate, and still return all districts/officials that intersect the drawn area.
+
+⸻
+
+Requirements
+
+1. Replace “tap-to-add-points” with continuous touch tracking
+	•	Track finger movement continuously using:
+	•	onTouchStart
+	•	onTouchMove
+	•	onTouchEnd
+	•	Capture points at a controlled sampling rate (e.g., every 8–12px of movement)
+	•	Prevent duplicate or near-duplicate points
+
+Result:
+	•	The user draws a single flowing line, not multiple straight segments
+
+⸻
+
+2. Real-time visual feedback while drawing
+	•	Render the in-progress path on the map as the user draws
+	•	Use a semi-transparent stroke (e.g.:
+	•	strokeColor: rgba(255, 165, 0, 0.9)
+	•	strokeWidth: 3)
+	•	Update the polyline smoothly without reloading the map
+
+⸻
+
+3. Automatically close the polygon on touch end
+	•	When drawing ends:
+	•	Connect the final point back to the first point
+	•	Convert the polyline into a closed polygon
+	•	Do NOT require the user to “close” it manually
+
+⸻
+
+4. Simplify the drawn geometry (critical)
+
+Raw finger paths are noisy. Before spatial queries:
+	•	Apply Douglas–Peucker simplification
+	•	Preserve shape fidelity but reduce point count dramatically
+	•	Target ~30–100 points max after simplification
+
+This improves:
+	•	Performance
+	•	Intersection accuracy
+	•	Stability across devices
+
+⸻
+
+5. Convert screen points → map coordinates correctly
+	•	Convert touch screen coordinates into map lat/lng using the existing map projection
+	•	Ensure conversion works consistently across:
+	•	iOS
+	•	Android
+	•	Different zoom levels
+
+Do NOT store screen coordinates long-term — store geographic coordinates only.
+
+⸻
+
+6. Spatial query behavior remains unchanged
+
+After polygon is finalized:
+	•	Find all intersecting districts for:
+	•	TX House
+	•	TX Senate
+	•	US Congress
+	•	Respect currently enabled overlay toggles
+	•	Return all matching officials, not just one
+
+⸻
+
+7. UX polish
+	•	Disable map pan/zoom only while drawing
+	•	Re-enable map gestures immediately after draw completes
+	•	Add a subtle haptic or visual confirmation when the draw completes
+	•	Keep existing “Clear Draw” behavior intact
+
+⸻
+
+8. Backward compatibility
+	•	Do NOT break:
+	•	Existing draw-to-search logic
+	•	Existing overlay toggles
+	•	Existing district intersection code
+	•	This is a UX/input upgrade only
+
+⸻
+
+Acceptance Criteria
+	•	User can draw one continuous shape without lifting their finger
+	•	Shape looks smooth and natural while drawing
+	•	Polygon closes automatically
+	•	All intersecting districts and officials are returned
+	•	Performance remains stable on large districts
+	•	No “dot-by-dot” polygon behavior remains
+
+
