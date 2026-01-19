@@ -29,6 +29,18 @@ type NavigationProp = NativeStackNavigationProp<BrowseStackParamList>;
 
 type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "ALL";
 
+interface PlaceResult {
+  name: string;
+  lat: number;
+  lng: number;
+  fromCache?: boolean;
+}
+
+interface DistrictHit {
+  source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+  districtNumber: number;
+}
+
 const SOURCE_LABELS: Record<SourceType, string> = {
   TX_HOUSE: "TX House",
   TX_SENATE: "TX Senate",
@@ -37,10 +49,10 @@ const SOURCE_LABELS: Record<SourceType, string> = {
 };
 
 const SEARCH_PLACEHOLDERS: Record<SourceType, string> = {
-  TX_HOUSE: "Search by name, district, city...",
-  TX_SENATE: "Search by name, district, city...",
-  US_HOUSE: "Search by name, district, city...",
-  ALL: "Search all officials...",
+  TX_HOUSE: "Search by name, district, city, ZIP...",
+  TX_SENATE: "Search by name, district, city, ZIP...",
+  US_HOUSE: "Search by name, district, city, ZIP...",
+  ALL: "Search any TX city/ZIP or name...",
 };
 
 export default function BrowseOfficialsScreen() {
@@ -53,6 +65,7 @@ export default function BrowseOfficialsScreen() {
   const [selectedSource, setSelectedSource] = useState<SourceType>("TX_HOUSE");
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [placeInfo, setPlaceInfo] = useState<{ name: string; districts: DistrictHit[] } | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -61,7 +74,7 @@ export default function BrowseOfficialsScreen() {
     }
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(searchText);
-    }, 250);
+    }, 300);
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
@@ -81,15 +94,84 @@ export default function BrowseOfficialsScreen() {
   }>({
     queryKey,
     queryFn: async () => {
+      setPlaceInfo(null);
+      
+      if (!debouncedSearch.trim()) {
+        const url = new URL("/api/officials", getApiUrl());
+        url.searchParams.set("source", selectedSource);
+        const response = await fetch(url.toString());
+        if (!response.ok) throw new Error("Failed to fetch officials");
+        return response.json();
+      }
+
+      const query = debouncedSearch.trim();
+      console.log(`[Browse] Searching for: "${query}"`);
+
+      try {
+        const placeUrl = new URL("/api/lookup/place", getApiUrl());
+        placeUrl.searchParams.set("q", query);
+        const placeRes = await fetch(placeUrl.toString());
+
+        if (placeRes.ok) {
+          const place: PlaceResult = await placeRes.json();
+          console.log(`[Browse] Place found: ${place.name} (${place.lat}, ${place.lng}) [cache=${place.fromCache}]`);
+
+          const districtsRes = await fetch(new URL("/api/lookup/districts-at-point", getApiUrl()).toString(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lat: place.lat, lng: place.lng }),
+          });
+
+          if (!districtsRes.ok) {
+            console.log("[Browse] Districts lookup failed, falling back to text search");
+            throw new Error("Districts lookup failed");
+          }
+
+          const { hits } = await districtsRes.json() as { hits: DistrictHit[] };
+          console.log(`[Browse] Districts found: ${hits.map(h => `${h.source}:${h.districtNumber}`).join(", ")}`);
+
+          if (hits.length === 0) {
+            console.log("[Browse] No districts found at location, falling back to text search");
+            throw new Error("No districts found");
+          }
+
+          const filteredHits = selectedSource === "ALL" 
+            ? hits 
+            : hits.filter(h => h.source === selectedSource);
+
+          if (filteredHits.length === 0) {
+            setPlaceInfo({ name: place.name, districts: hits });
+            return { officials: [], count: 0, vacancyCount: 0 };
+          }
+
+          const officialsRes = await fetch(new URL("/api/officials/by-districts", getApiUrl()).toString(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hits: filteredHits }),
+          });
+
+          if (!officialsRes.ok) {
+            console.log("[Browse] Officials by-districts failed, falling back to text search");
+            throw new Error("Officials lookup failed");
+          }
+
+          const officialsData = await officialsRes.json();
+          console.log(`[Browse] Found ${officialsData.count} officials for place "${place.name}"`);
+
+          setPlaceInfo({ name: place.name, districts: filteredHits });
+          return officialsData;
+        }
+
+        console.log(`[Browse] No place found, using text search for "${query}"`);
+      } catch (err) {
+        console.log(`[Browse] Place lookup error, falling back to text search`);
+      }
+
       const url = new URL("/api/officials", getApiUrl());
       url.searchParams.set("source", selectedSource);
-      if (debouncedSearch.trim()) {
-        url.searchParams.set("q", debouncedSearch.trim());
-      }
+      url.searchParams.set("q", query);
       const response = await fetch(url.toString());
-      if (!response.ok) {
-        throw new Error("Failed to fetch officials");
-      }
+      if (!response.ok) throw new Error("Failed to fetch officials");
       return response.json();
     },
     placeholderData: (prev) => prev,
@@ -138,6 +220,15 @@ export default function BrowseOfficialsScreen() {
     }
     return `${count} member${count !== 1 ? "s" : ""}${vacancyText}`;
   }, [isLoading, data, officials, debouncedSearch]);
+
+  const placeLabel = useMemo(() => {
+    if (!placeInfo) return null;
+    const districtNames = placeInfo.districts.map(d => {
+      const chamber = d.source === "TX_HOUSE" ? "House" : d.source === "TX_SENATE" ? "Senate" : "Congress";
+      return `${chamber} ${d.districtNumber}`;
+    }).join(", ");
+    return { name: placeInfo.name, districts: districtNames };
+  }, [placeInfo]);
 
   const ListEmptyComponent = useMemo(() => {
     if (isLoading) {
@@ -205,6 +296,18 @@ export default function BrowseOfficialsScreen() {
             </Pressable>
           ))}
         </View>
+
+        {placeLabel ? (
+          <View style={styles.placeLabelContainer}>
+            <Feather name="map-pin" size={14} color={theme.primary} />
+            <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+              {placeLabel.name}
+            </ThemedText>
+            <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+              {placeLabel.districts}
+            </ThemedText>
+          </View>
+        ) : null}
 
         <ThemedText
           type="caption"
@@ -282,6 +385,14 @@ const styles = StyleSheet.create({
   countLabel: {
     textAlign: "center",
     marginBottom: Spacing.sm,
+  },
+  placeLabelContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs,
+    marginBottom: Spacing.xs,
+    flexWrap: "wrap",
   },
   searchInputContainer: {
     flexDirection: "row",
