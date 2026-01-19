@@ -19,6 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { OfficialCard } from "@/components/OfficialCard";
 import { ThemedText } from "@/components/ThemedText";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { PlaceSearchModal, PlaceCandidate } from "@/components/PlaceSearchModal";
 import { useTheme } from "@/hooks/useTheme";
 import { useNetwork } from "@/hooks/useNetwork";
 import { BorderRadius, Spacing } from "@/constants/theme";
@@ -86,6 +87,7 @@ export default function BrowseOfficialsScreen() {
   const [recentViewed, setRecentViewed] = useState<{ source: string; districtNumber: number }[]>([]);
   const [cachedData, setCachedData] = useState<OfficialsCacheData | null>(null);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
+  const [showPlaceSearch, setShowPlaceSearch] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   useFocusEffect(
@@ -288,6 +290,13 @@ export default function BrowseOfficialsScreen() {
     setDebouncedSearch("");
   }, []);
 
+  const handlePlaceSelect = useCallback(async (place: PlaceCandidate) => {
+    setSelectedSource("ALL");
+    setSearchText(place.name);
+    setDebouncedSearch(place.name);
+    setPlaceInfo(null);
+  }, []);
+
   const handleOfficialPress = useCallback(
     (official: Official) => {
       addRecentViewed(official.source, official.districtNumber);
@@ -429,26 +438,37 @@ export default function BrowseOfficialsScreen() {
           ) : null}
         </View>
 
-        <View
-          style={[
-            styles.searchInputContainer,
-            { backgroundColor: theme.inputBackground, borderColor: theme.border },
-          ]}
-        >
-          <Feather name="search" size={18} color={theme.secondaryText} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
-            placeholderTextColor={theme.secondaryText}
-            value={searchText}
-            onChangeText={setSearchText}
-            returnKeyType="search"
-          />
-          {searchText.length > 0 ? (
-            <Pressable onPress={() => setSearchText("")}>
-              <Feather name="x" size={18} color={theme.secondaryText} />
-            </Pressable>
-          ) : null}
+        <View style={styles.searchRow}>
+          <View
+            style={[
+              styles.searchInputContainer,
+              { backgroundColor: theme.inputBackground, borderColor: theme.border },
+            ]}
+          >
+            <Feather name="search" size={18} color={theme.secondaryText} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
+              placeholderTextColor={theme.secondaryText}
+              value={searchText}
+              onChangeText={setSearchText}
+              returnKeyType="search"
+            />
+            {searchText.length > 0 ? (
+              <Pressable onPress={() => setSearchText("")}>
+                <Feather name="x" size={18} color={theme.secondaryText} />
+              </Pressable>
+            ) : null}
+          </View>
+          <Pressable
+            onPress={() => setShowPlaceSearch(true)}
+            style={({ pressed }) => [
+              styles.placeSearchButton,
+              { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Feather name="map-pin" size={20} color="#FFFFFF" />
+          </Pressable>
         </View>
       </View>
 
@@ -478,6 +498,12 @@ export default function BrowseOfficialsScreen() {
           offset: 120 * index,
           index,
         })}
+      />
+      
+      <PlaceSearchModal
+        visible={showPlaceSearch}
+        onClose={() => setShowPlaceSearch(false)}
+        onSelectPlace={handlePlaceSelect}
       />
     </View>
   );
@@ -529,7 +555,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
     flexWrap: "wrap",
   },
+  searchRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
   searchInputContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
@@ -542,6 +573,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     height: "100%",
+  },
+  placeSearchButton: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    justifyContent: "center",
+    alignItems: "center",
   },
   listContent: {
     paddingHorizontal: Spacing.lg,
