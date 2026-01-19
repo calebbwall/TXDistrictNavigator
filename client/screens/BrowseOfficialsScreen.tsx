@@ -522,7 +522,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: Spacing.xs,
-    marginBottom: Spacing.md,
   },
   segmentButton: {
     minWidth: "30%",
@@ -538,6 +537,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    marginTop: Spacing.md,
     marginBottom: Spacing.sm,
     gap: Spacing.md,
   },
