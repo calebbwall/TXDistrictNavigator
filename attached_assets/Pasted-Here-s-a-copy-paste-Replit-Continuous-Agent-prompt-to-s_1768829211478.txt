@@ -1,0 +1,146 @@
+Here’s a copy/paste Replit Continuous Agent prompt to switch your “search any Texas town/city → districts → officials” flow to GeoNames.
+
+⸻
+
+Replit Continuous Agent Prompt
+
+Implement GeoNames-powered place search → district lookup → officials (Texas only)
+
+Objective
+
+Update the app so the Browse search can accept any Texas city/town (and ZIP codes), convert it to a lat/lng using GeoNames, then determine which TX House / TX Senate / US House TX districts contain that point, and return the officials for those districts (home districts), using the existing /api/officials/by-districts pipeline.
+
+This must NOT depend on officials’ office addresses.
+
+⸻
+
+1) Setup: add GeoNames username as a secret
+
+I (user) will do this part:
+	•	In Replit Secrets, add:
+	•	GEONAMES_USERNAME = <my geonames username>
+
+In code, read it from process.env.GEONAMES_USERNAME. If missing, return a clear error message from the new place endpoint.
+
+⸻
+
+2) Server: Add GeoNames client + caching
+
+Create a small server module (e.g., geonames.ts) that:
+	•	Calls GeoNames over HTTPS
+	•	Uses server-side caching with TTL (e.g., 30 days) keyed by normalized query
+	•	Debounces/limits repeated calls (cache will handle most of this)
+
+GeoNames endpoints to use
+
+Implement geocoding for:
+
+A) City/Town search
+	•	Use GeoNames searchJSON
+	•	Restrict to Texas with adminCode1=TX and country=US
+	•	Request geometry:
+	•	featureClass=P (populated places) preferred
+	•	maxRows=1 (or 5 with best-match selection)
+	•	Example request pattern:
+	•	http://api.geonames.org/searchJSON?q=<query>&country=US&adminCode1=TX&featureClass=P&maxRows=5&username=<user>
+
+Pick the best match:
+	•	Prefer exact name match if present
+	•	Otherwise take top result
+
+Return:
+
+{ "name": "Lubbock, Texas", "lat": 33.5779, "lng": -101.8552, "geonameId": 5525577 }
+
+B) ZIP search
+If the query matches ZIP regex ^\d{5}(-\d{4})?$:
+	•	Use postalCodeSearchJSON (country US)
+	•	Example:
+	•	http://api.geonames.org/postalCodeSearchJSON?postalcode=<zip>&country=US&maxRows=1&username=<user>
+
+Return the postalCode result point.
+
+Add a new endpoint
+
+GET /api/lookup/place?q=<query>
+
+Behavior:
+	•	Validate q length (min 2)
+	•	If ZIP → postalCodeSearchJSON
+	•	Else → searchJSON (TX-only)
+	•	If no results → return 404 { message: "No Texas place found" }
+	•	Cache successful results
+
+⸻
+
+3) Server: Point → districts-at-point endpoint (Texas overlays)
+
+Add:
+POST /api/lookup/districts-at-point
+
+Body:
+
+{ "lat": 33.5779, "lng": -101.8552 }
+
+Behavior:
+	•	Use Turf.js point-in-polygon across:
+	•	tx_house GeoJSON
+	•	tx_senate GeoJSON
+	•	us_congress GeoJSON
+	•	Use simplified GeoJSON for speed
+	•	Extract district numbers reliably from feature properties (verify existing property keys in the geojson files)
+	•	Return:
+
+{
+  "hits": [
+    { "source": "TX_HOUSE", "districtNumber": 84 },
+    { "source": "TX_SENATE", "districtNumber": 28 },
+    { "source": "US_HOUSE_TX", "districtNumber": 19 }
+  ]
+}
+
+Cache parsed geojson collections in memory so the server doesn’t re-read/re-parse per request.
+
+⸻
+
+4) Client: Browse search becomes “place-first, fallback-to-text”
+
+In the Browse tab:
+
+When user enters a query q:
+	1.	Call GET /api/lookup/place?q=...
+	2.	If 200:
+	•	Call POST /api/lookup/districts-at-point with returned lat/lng
+	•	Then call existing POST /api/officials/by-districts with the returned hits
+	•	Display those officials as results
+	•	Show a small label: Place: <name> and optionally show which districts were found
+	3.	If 404 “No Texas place found”:
+	•	Fall back to existing text search (/api/officials?source=ALL&q=...) so name search still works
+
+Important UI behavior:
+	•	Debounce input (250–400ms)
+	•	Do not spam GeoNames on every keystroke (call only after debounce)
+	•	Show loading indicator while place lookup is happening
+
+⸻
+
+5) Logging + verification (required)
+
+Add dev logs (and/or a debug panel line) showing:
+	•	GeoNames query URL (without username)
+	•	whether result came from cache
+	•	chosen place + lat/lng
+	•	district hits returned
+	•	number of officials returned
+
+⸻
+
+Acceptance criteria
+	•	Searching “Amarillo” returns officials for the districts containing Amarillo (House + Senate + Congress).
+	•	Searching a small TX town works, not dependent on official addresses.
+	•	Searching ZIP like “78701” returns the districts for that ZIP point.
+	•	Name search still works via fallback.
+
+⸻
+
+If you want, I can also give you a stricter “Texas only” check (bounding box + adminName1 === "Texas" validation) so odd edge cases don’t return a place in another state that shares a name.

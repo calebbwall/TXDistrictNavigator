@@ -74,6 +74,7 @@ function fillVacancies(
   return result;
 }
 import { maybeRunScheduledRefresh } from "./jobs/refreshOfficials";
+import { lookupPlace, getCacheStats } from "./geonames";
 
 type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
@@ -562,6 +563,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const districtNum = props.district || props.SLDUST || props.SLDLST || props.CD;
     return districtNum ? parseInt(String(districtNum)) : null;
   }
+
+  app.get("/api/lookup/place", async (req, res) => {
+    try {
+      const q = String(req.query.q || "").trim();
+      
+      if (q.length < 2) {
+        return res.status(400).json({ error: "Query too short (min 2 characters)" });
+      }
+
+      const { result, fromCache, error } = await lookupPlace(q);
+
+      if (error) {
+        console.log(`[Lookup] Place error: ${error}`);
+        return res.status(500).json({ error });
+      }
+
+      if (!result) {
+        console.log(`[Lookup] No Texas place found for "${q}"`);
+        return res.status(404).json({ message: "No Texas place found" });
+      }
+
+      console.log(`[Lookup] Place: "${q}" → ${result.name} (${result.lat}, ${result.lng}) [cache=${fromCache}]`);
+      res.json({ ...result, fromCache });
+    } catch (err) {
+      console.error("[Lookup] Place error:", err);
+      res.status(500).json({ error: "Place lookup failed" });
+    }
+  });
+
+  app.post("/api/lookup/districts-at-point", (req, res) => {
+    try {
+      const { lat, lng } = req.body;
+
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        return res.status(400).json({ error: "lat and lng (numbers) are required" });
+      }
+
+      console.log(`[Lookup] Districts at point: (${lat}, ${lng})`);
+
+      const point = turf.point([lng, lat]);
+      const hits: { source: SourceType; districtNumber: number }[] = [];
+
+      const overlayMappings: Array<{ overlay: "house" | "senate" | "congress"; source: SourceType }> = [
+        { overlay: "house", source: "TX_HOUSE" },
+        { overlay: "senate", source: "TX_SENATE" },
+        { overlay: "congress", source: "US_HOUSE" },
+      ];
+
+      for (const { overlay, source } of overlayMappings) {
+        const featureCollection = getGeoJSONForOverlay(overlay);
+        if (!featureCollection || !featureCollection.features) continue;
+
+        for (const feature of featureCollection.features) {
+          try {
+            if (turf.booleanPointInPolygon(point, feature as Feature<Polygon>)) {
+              const districtNumber = getDistrictNumber(feature as Feature);
+              if (districtNumber !== null) {
+                hits.push({ source, districtNumber });
+                break;
+              }
+            }
+          } catch {
+          }
+        }
+      }
+
+      console.log(`[Lookup] Districts found: ${hits.map(h => `${h.source}:${h.districtNumber}`).join(", ") || "none"}`);
+      res.json({ hits, lat, lng });
+    } catch (err) {
+      console.error("[Lookup] Districts-at-point error:", err);
+      res.status(500).json({ error: "Failed to find districts at point" });
+    }
+  });
+
+  app.get("/api/lookup/cache-stats", (req, res) => {
+    res.json(getCacheStats());
+  });
 
   app.post("/api/map/area-hits", (req, res) => {
     try {
