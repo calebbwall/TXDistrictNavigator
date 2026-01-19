@@ -146,6 +146,13 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-19: Phase E - Debug overlays hidden by default, accessible via 2-second long-press on Map header
+- 2026-01-19: Phase E - Created useDebugFlags hook with AsyncStorage persistence for global debug toggle
+- 2026-01-19: Phase E - Added ErrorBanner component for user-friendly error display with retry button
+- 2026-01-19: Phase E - GeoJSON caching (5-min TTL) and 15-second fetch timeout for Map performance
+- 2026-01-19: Phase E - Browse screen "Searching..." indicator and FlatList optimizations (initialNumToRender, windowSize, getItemLayout)
+- 2026-01-19: Phase E - Enhanced /api/admin/officials-counts with last refresh status and job history
+- 2026-01-19: Phase E - Smoother animations with overshootClamping in springConfig
 - 2026-01-19: Added MapResultsPanel component - scrollable bottom sheet for map results using FlatList
 - 2026-01-19: Map results panel now supports collapse/expand, shows official count in header
 - 2026-01-19: Phase D.2 - Added searchZips and searchCities normalized columns for faster ZIP/city search
