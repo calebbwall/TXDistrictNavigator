@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -8,6 +8,8 @@ import {
   Linking,
   Platform,
   Alert,
+  ScrollView,
+  LayoutChangeEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -58,7 +60,8 @@ import {
 } from "@/lib/storage";
 import type { MapStackParamList } from "@/navigation/MapStackNavigator";
 
-type RouteParams = RouteProp<MapStackParamList, "OfficialProfile">;
+type OfficialProfileParams = { officialId: string; initialSection?: "privateNotes" };
+type RouteParams = RouteProp<{ OfficialProfile: OfficialProfileParams }, "OfficialProfile">;
 
 type TabType = "public" | "private";
 
@@ -162,13 +165,16 @@ export default function OfficialProfileScreen() {
   const navigation = useNavigation();
   const { theme } = useTheme();
 
-  const { officialId } = route.params;
+  const { officialId, initialSection } = route.params;
   const [official, setOfficial] = useState<Official | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [notesSectionY, setNotesSectionY] = useState<number | null>(null);
+  const [hasScrolledToNotes, setHasScrolledToNotes] = useState(false);
 
   const district = official ? getDistrictById(official.districtId) : undefined;
 
-  const [activeTab, setActiveTab] = useState<TabType>("public");
+  const [activeTab, setActiveTab] = useState<TabType>(initialSection === "privateNotes" ? "private" : "public");
   const [isSaved, setIsSaved] = useState(false);
   const [isFav, setIsFav] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -242,6 +248,29 @@ export default function OfficialProfileScreen() {
       });
     }
   }, [navigation, official]);
+
+  useEffect(() => {
+    if (
+      initialSection === "privateNotes" &&
+      notesSectionY !== null &&
+      !hasScrolledToNotes &&
+      !isLoading &&
+      scrollViewRef.current
+    ) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({
+          y: notesSectionY - 20,
+          animated: true,
+        });
+        setHasScrolledToNotes(true);
+      }, 100);
+    }
+  }, [initialSection, notesSectionY, hasScrolledToNotes, isLoading]);
+
+  const handleNotesSectionLayout = useCallback((event: LayoutChangeEvent) => {
+    const { y } = event.nativeEvent.layout;
+    setNotesSectionY(y);
+  }, []);
 
   const handleToggleSaved = useCallback(async () => {
     if (!official) return;
@@ -447,6 +476,7 @@ export default function OfficialProfileScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <KeyboardAwareScrollViewCompat
+        ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
@@ -778,7 +808,10 @@ export default function OfficialProfileScreen() {
               </View>
             </View>
 
-            <View style={[styles.section, { marginTop: Spacing.xl }]}>
+            <View 
+              style={[styles.section, { marginTop: Spacing.xl }]}
+              onLayout={handleNotesSectionLayout}
+            >
               <View style={styles.editHeader}>
                 <View>
                   <ThemedText type="h3">Private Notes & Prayer</ThemedText>

@@ -8,7 +8,7 @@ import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type ProfileStackParamList = {
   Profile: undefined;
-  OfficialProfile: { officialId: string };
+  OfficialProfile: { officialId: string; initialSection?: "privateNotes" };
   About: undefined;
   FollowUpDashboard: undefined;
 };

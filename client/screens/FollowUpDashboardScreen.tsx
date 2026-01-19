@@ -88,6 +88,7 @@ export default function FollowUpDashboardScreen() {
       const officialId = `${item.source}:${item.districtNumber}`;
       navigation.navigate("OfficialProfile", {
         officialId,
+        initialSection: "privateNotes",
       });
     },
     [navigation]
