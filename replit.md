@@ -146,6 +146,10 @@ For production, set up a Replit Scheduled Deployment:
 3. Schedule: Weekly (e.g., Sunday 3am Central)
 
 ## Recent Changes
+- 2026-01-19: Phase D.2 - Added searchZips and searchCities normalized columns for faster ZIP/city search
+- 2026-01-19: Phase D.2 - Created backfill script (scripts/backfill-search-fields.ts) for existing data
+- 2026-01-19: Phase D.2 - Updated refresh job to populate normalized fields on future syncs
+- 2026-01-19: Phase D.1 - Added server-side search logging: [Search] q="term" | before=X | after=Y
 - 2026-01-18: Phase D - Replaced Search tab with Browse tab
 - 2026-01-18: Phase D - Added "All Officials" tab showing combined roster (219 members)
 - 2026-01-18: Phase D - Extended /api/officials with source=ALL and multi-field search (name, district, party, addresses, email, website)
