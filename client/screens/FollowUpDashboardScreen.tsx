@@ -7,7 +7,9 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/hooks/useTheme";
 import { ThemedText } from "@/components/ThemedText";
@@ -15,7 +17,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { Card } from "@/components/Card";
 import { getAllFollowUps, NotePrayerEntry } from "@/lib/storage";
 import { Spacing, BorderRadius, Typography } from "@/constants/theme";
-import { useNavigation, NavigationProp, ParamListBase } from "@react-navigation/native";
+import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 
 interface FollowUpItem {
   source: string;
@@ -23,9 +25,12 @@ interface FollowUpItem {
   entries: NotePrayerEntry[];
 }
 
+type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
+
 export default function FollowUpDashboardScreen() {
   const { theme } = useTheme();
-  const navigation = useNavigation<NavigationProp<ParamListBase>>();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NavigationProp>();
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,9 +63,9 @@ export default function FollowUpDashboardScreen() {
 
   const handleOfficialPress = useCallback(
     (item: FollowUpItem) => {
+      const officialId = `${item.source}:${item.districtNumber}`;
       navigation.navigate("OfficialProfile", {
-        source: item.source,
-        districtNumber: item.districtNumber,
+        officialId,
       });
     },
     [navigation]
@@ -164,7 +169,11 @@ export default function FollowUpDashboardScreen() {
           data={followUps}
           keyExtractor={(item) => `${item.source}-${item.districtNumber}`}
           renderItem={renderFollowUpCard}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: insets.bottom + Spacing.xl },
+          ]}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
