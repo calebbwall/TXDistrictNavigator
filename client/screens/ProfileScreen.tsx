@@ -244,6 +244,15 @@ export default function ProfileScreen() {
 
         <View style={styles.section}>
           <ThemedText type="h3" style={styles.sectionTitle}>
+            Workflow Tools
+          </ThemedText>
+          <View style={styles.settingsGroup}>
+            <SettingRow icon="flag" label="Follow-up Dashboard" onPress={() => navigation.navigate("FollowUpDashboard")} />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText type="h3" style={styles.sectionTitle}>
             About
           </ThemedText>
           <View style={styles.settingsGroup}>

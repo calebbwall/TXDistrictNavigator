@@ -3,12 +3,14 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import ProfileScreen from "@/screens/ProfileScreen";
 import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
 import AboutScreen from "@/screens/AboutScreen";
+import FollowUpDashboardScreen from "@/screens/FollowUpDashboardScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type ProfileStackParamList = {
   Profile: undefined;
   OfficialProfile: { officialId: string };
   About: undefined;
+  FollowUpDashboard: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -37,6 +39,13 @@ export default function ProfileStackNavigator() {
         component={AboutScreen}
         options={{
           headerTitle: "About",
+        }}
+      />
+      <Stack.Screen
+        name="FollowUpDashboard"
+        component={FollowUpDashboardScreen}
+        options={{
+          headerTitle: "Follow-Up Items",
         }}
       />
     </Stack.Navigator>
