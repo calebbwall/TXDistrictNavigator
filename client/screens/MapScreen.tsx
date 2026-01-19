@@ -38,6 +38,7 @@ import {
   type DistrictHit,
 } from "@/lib/officials";
 import type { MapStackParamList } from "@/navigation/MapStackNavigator";
+import { useDebugFlags, BUILD_MARKER } from "@/hooks/useDebugFlags";
 
 type NavigationProp = NativeStackNavigationProp<MapStackParamList>;
 
@@ -535,8 +536,7 @@ const MAP_HTML = `
 </html>
 `;
 
-// BUILD MARKER: 2026-01-17 PhaseA - Multi-overlay debug
-const BUILD_TIMESTAMP = "2026-01-17 PhaseA";
+// BUILD MARKER: PhaseE 2026-01-19
 
 interface GeoJSONLoadStatus {
   house: { loaded: boolean; features: number; error: string | null };
@@ -560,7 +560,7 @@ export default function MapScreen() {
   const [selectedDistrict, setSelectedDistrict] = useState<SelectedDistrict | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [showDebug, setShowDebug] = useState(true);
+  const { debugEnabled, toggleDebug } = useDebugFlags();
   const [loadStatus, setLoadStatus] = useState<GeoJSONLoadStatus>({
     house: { loaded: false, features: 0, error: null },
     senate: { loaded: false, features: 0, error: null },
@@ -1210,13 +1210,13 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {showDebug ? (
+      {debugEnabled ? (
         <View style={[styles.debugPanel, { top: headerHeight + Spacing.sm, backgroundColor: 'rgba(0,0,0,0.85)' }]}>
-          <Pressable onPress={() => setShowDebug(false)} style={styles.debugClose}>
+          <Pressable onPress={toggleDebug} style={styles.debugClose}>
             <ThemedText type="small" style={{ color: '#fff' }}>X</ThemedText>
           </Pressable>
           <ThemedText type="small" style={{ color: '#0f0', fontFamily: 'monospace' }}>
-            BUILD: {BUILD_TIMESTAMP}
+            BUILD: {BUILD_MARKER}
           </ThemedText>
           <ThemedText type="small" style={{ color: '#ff0', fontFamily: 'monospace', fontSize: 9 }} numberOfLines={1}>
             API: {(() => { try { return getApiUrl(); } catch { return 'ERROR'; } })()}
@@ -1351,7 +1351,7 @@ export default function MapScreen() {
       </View>
 
       {/* Location debug status line */}
-      {showDebug ? (
+      {debugEnabled ? (
         <View
           style={[
             styles.locationDebug,
@@ -1432,7 +1432,6 @@ export default function MapScreen() {
           onClose={handleCloseDistrictCard}
           onOfficialPress={handleOfficialCardPress}
           onClearDrawing={selectedDistrict.hits.length > 1 ? handleClearDrawing : undefined}
-          showDebug={showDebug}
         />
       ) : null}
     </View>

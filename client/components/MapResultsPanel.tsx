@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
+import { useDebugFlags } from "@/hooks/useDebugFlags";
 import { BorderRadius, Spacing, Shadows } from "@/constants/theme";
 import type { Official, DistrictHit } from "@/lib/officials";
 import { getOfficeTypeLabel } from "@/lib/officials";
@@ -38,7 +39,6 @@ interface MapResultsPanelProps {
   onClose: () => void;
   onOfficialPress: (official: Official) => void;
   onClearDrawing?: () => void;
-  showDebug?: boolean;
 }
 
 interface OfficialCardItemProps {
@@ -109,9 +109,9 @@ export function MapResultsPanel({
   onClose,
   onOfficialPress,
   onClearDrawing,
-  showDebug = false,
 }: MapResultsPanelProps) {
   const { theme } = useTheme();
+  const { debugEnabled } = useDebugFlags();
   const insets = useSafeAreaInsets();
   const isExpanded = useSharedValue(officials.length > 2);
   const panelHeight = useSharedValue(officials.length > 2 ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT);
@@ -149,7 +149,7 @@ export function MapResultsPanel({
   const ListHeader = useCallback(
     () => (
       <View style={styles.listHeader}>
-        {showDebug ? (
+        {debugEnabled ? (
           <View style={styles.debugRow}>
             <ThemedText type="small" style={{ color: "#0f0", fontFamily: "monospace", fontSize: 10 }}>
               Hits: {hits.length} | Officials: {officials.length}
@@ -158,7 +158,7 @@ export function MapResultsPanel({
         ) : null}
       </View>
     ),
-    [showDebug, hits.length, officials.length]
+    [debugEnabled, hits.length, officials.length]
   );
 
   const ListEmpty = useCallback(
@@ -226,7 +226,7 @@ export function MapResultsPanel({
         data={officials}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        ListHeaderComponent={showDebug ? ListHeader : null}
+        ListHeaderComponent={debugEnabled ? ListHeader : null}
         ListEmptyComponent={ListEmpty}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={true}

@@ -1,0 +1,103 @@
+Yes. That box is your debug/status overlay (super useful while building, ugly in production). Phase E is the right time to (a) implement hardening + performance and (b) gate all debug UI behind a toggle and default it OFF.
+
+Below is a single Replit prompt that does all of Phase E and removes/hides boxes like that.
+
+⸻
+
+Replit Continuous Agent Prompt — Phase E + Remove Debug Overlays
+
+Goal
+
+Implement Phase E fully:
+	•	E1 Map performance + stability
+	•	E2 Browse performance + correctness
+	•	E3 Refresh guardrails + last-known-good protection
+	•	E4 Failure visibility + debug toggle
+
+AND remove/hide all on-screen debug/status boxes (like the black overlay shown in my screenshot) by default, while keeping a hidden way to re-enable them for troubleshooting.
+
+Do not change core functionality (overlays/toggles, tap-to-profile, draw-to-search, browse lists, private notes).
+
+⸻
+
+0) Identify and remove the visible debug overlay (must be first)
+	1.	Find where the on-screen debug/status box is rendered (likely in MapScreen.tsx or a DebugPanel component).
+	2.	Make it disabled by default (not rendered in normal app use).
+	3.	Keep it available behind a hidden debug toggle (see section 1).
+
+Acceptance for this step: when I open the Map tab normally, no debug/status box appears.
+
+⸻
+
+1) Implement a global debug toggle (dev tools hidden)
+
+Create a single source of truth, e.g. debugFlags.ts or useDebugFlags.ts, with:
+	•	debugEnabled: boolean default false
+	•	persisted with AsyncStorage (so I can turn it on and it stays on until I turn it off)
+
+Add a hidden gesture to toggle:
+	•	Example: long-press the Map header title for 2–3 seconds toggles debugEnabled
+	•	Show a one-time toast/alert: “Debug ON” / “Debug OFF”
+
+All debug UI overlays (Map overlay status, feature counts, network timing, etc.) must render only when debugEnabled is true.
+
+⸻
+
+2) E4 Failure visibility (user-friendly, not debug spam)
+
+Add small non-intrusive banners for real failures (these are NOT debug boxes):
+	•	“Server not reachable. Tap to retry.”
+	•	“House overlay failed to load. Tap to retry.”
+
+These should be visible even when debug is OFF, but only when there is an actual problem.
+
+⸻
+
+3) E3 Refresh guardrails + status endpoint
+	1.	Add refresh validation:
+
+	•	If counts drop to 0 or drop by >25% vs last success, abort applying update.
+	•	Track last success counts + timestamp.
+
+	2.	Store last refresh status + error text.
+	3.	Add:
+GET /api/admin/officials-counts
+Return counts by source + last refresh status + last error.
+
+⸻
+
+4) E2 Browse performance + correctness
+	•	Ensure one canonical Official DTO mapping is used everywhere (Map results, Browse, Profile).
+	•	Debounce search (250–400ms) and show a small “Searching…” indicator.
+	•	FlatList tuning: stable keys, sane window sizes, no aggressive clipping unless tested stable.
+
+⸻
+
+5) E1 Map performance + stability
+	•	Cache GeoJSON in memory (client and/or server) so overlays don’t refetch unnecessarily.
+	•	Never leave overlays stuck in “pending”; use a timeout and show error banner with retry.
+	•	Reduce bounce/jitter: replace springy animations with calm timing and ensure card list doesn’t remount on every selection.
+	•	Keep simplified GeoJSON for rendering unless the user explicitly requests full precision.
+
+⸻
+
+6) Proof markers (so we know the build is updated)
+
+Instead of the big debug overlay, add a tiny build marker visible only when debugEnabled is ON:
+	•	PhaseE <date/time>
+
+This prevents “agent says it’s done but it isn’t running” issues without cluttering normal use.
+
+⸻
+
+Acceptance criteria
+	•	Debug/status overlay boxes like the screenshot are gone by default.
+	•	Hidden long-press toggles debug ON/OFF.
+	•	Real errors show small banners with retry (even when debug is OFF).
+	•	Map overlays remain stable and fast; draw-to-search works.
+	•	Browse is smooth and search is reliable.
+	•	Refresh guardrails prevent data wipes; /api/admin/officials-counts works.
+
+⸻
+
+If you want, we can also add a simple “Debug” toggle inside Profile > Settings later, but the hidden gesture is the cleanest way to keep the app looking finished while still having diagnostics when you need them.
