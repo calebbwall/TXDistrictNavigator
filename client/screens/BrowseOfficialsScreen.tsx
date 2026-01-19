@@ -375,7 +375,7 @@ export default function BrowseOfficialsScreen() {
         style={[
           styles.header,
           {
-            paddingTop: headerHeight + Spacing.md,
+            paddingTop: Spacing.md,
             backgroundColor: theme.backgroundRoot,
           },
         ]}

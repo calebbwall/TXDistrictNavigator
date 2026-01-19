@@ -1,0 +1,79 @@
+Here’s a Replit Agent prompt you can paste in that addresses your 4 issues precisely.
+
+⸻
+
+Replit Prompt: Fix Browse header overlap, simplify member page, change “Last Engaged” to date+note, and fix Follow-Up dashboard
+
+Context: This is the TXDistrict Navigator / Texas Districts & Officials Expo/React Native app. The last update introduced UI/layout regressions and a broken Follow-Up dashboard interaction.
+
+1) Browse screen: top tiles are covered/overlapped
+	•	On the Browse Officials screen, the top segmented tiles (TX House / TX Senate / US House + All/Favorites/Recent) are being visually covered by the search bar / header area.
+	•	Fix layout so nothing overlaps:
+	•	Ensure the screen uses SafeAreaView (or react-native-safe-area-context).
+	•	Ensure the header area respects safe area insets.
+	•	Make the tiles + search bar stack vertically with proper spacing.
+	•	If a ScrollView is used, set contentContainerStyle={{ paddingTop: ... }} appropriately.
+	•	If a sticky header is used, ensure z-index layering is correct (tiles should remain visible and tappable).
+	•	Acceptance test:
+	•	On iOS, the tiles must be fully visible and tappable.
+	•	The search bar must not cover the tiles in any state (initial load, scrolling, keyboard open).
+
+2) Official detail screen: remove “Quick” buttons at top of the card
+	•	On the official detail screen (ex: Gary VanDeaver), remove the two large buttons at the top:
+	•	Quick Note
+	•	Log Engagement
+	•	I should manage notes/engagement only inside the Private Notes section.
+	•	After removal, the top layout should be cleaner with:
+	•	Name, chamber/district, favorite toggle, etc.
+	•	Tabs: Public Info / Private Notes (keep)
+
+3) “Last Engaged” redesign: date field + optional note underneath
+
+Current behavior: “Last Engaged” looks like a text input with a “Log Engagement Now” button.
+
+Replace with:
+	•	A date field (stored per official) called lastEngagedAt:
+	•	UI: show a row like Last engaged: [Select date]
+	•	Use a date picker (platform-appropriate). Default to today if user chooses “Set to today” (optional).
+	•	An optional note field under it called lastEngagedNote:
+	•	Multiline text input, optional.
+	•	This should NOT be required to set a date.
+	•	Add a single action like Save or auto-save (choose whichever matches the current pattern), but do not reintroduce “quick” buttons at the top of the page.
+	•	Data rules:
+	•	lastEngagedAt is a real date (ISO string stored locally is fine).
+	•	lastEngagedNote is plain text.
+	•	Both persist locally per official (same storage approach you’re using for private notes).
+	•	Acceptance test:
+	•	I can set a date, optionally add a note, leave and return, and it persists.
+	•	If no date is set, it clearly shows “Not set”.
+
+4) Follow-Up dashboard: card is off-screen + tap does nothing
+
+Current behavior: the Follow-Up Items screen shows an item partially off-screen; tapping does nothing.
+
+Fixes required:
+	•	Make Follow-Up Items a proper list (FlatList preferred).
+	•	Each follow-up row/card must:
+	•	Render fully on screen with padding/margins.
+	•	Be entirely tappable (Pressable or TouchableOpacity).
+	•	Navigate to the correct official detail screen and scroll/focus to the relevant section (Private Notes or the specific note).
+	•	Ensure:
+	•	No absolute positioning that pushes cards off-screen.
+	•	Correct keyExtractor.
+	•	Correct navigation route name + params.
+	•	Acceptance test:
+	•	Follow-up items are fully visible.
+	•	Tapping an item reliably opens the official detail view tied to that item.
+
+Implementation notes (don’t skip)
+	•	Keep styling consistent with the existing dark theme.
+	•	Don’t change underlying data sources for officials; only fix UI + local private fields.
+	•	After changes, run through iOS layout sanity checks: safe area, keyboard avoiding view for text inputs, scrolling.
+
+Deliverable
+	•	Commit these changes with a clear summary of files changed.
+	•	Include before/after notes in the Replit Agent response describing how each of the 4 issues was fixed.
+
+⸻
+
+Would you like this expanded, simplified, or explored from another angle?

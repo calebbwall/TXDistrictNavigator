@@ -492,35 +492,6 @@ export default function OfficialProfileScreen() {
           </View>
         </View>
 
-        <View style={styles.quickActionsContainer}>
-          <Pressable
-            onPress={() => {
-              setActiveTab("private");
-              setShowAddNote(true);
-            }}
-            style={({ pressed }) => [
-              styles.quickActionButton,
-              { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
-            ]}
-          >
-            <Feather name="edit-3" size={16} color="#FFFFFF" />
-            <ThemedText style={styles.quickActionText}>Quick Note</ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              setActiveTab("private");
-              setShowAddEngagement(true);
-            }}
-            style={({ pressed }) => [
-              styles.quickActionButton,
-              { backgroundColor: theme.success, opacity: pressed ? 0.8 : 1 },
-            ]}
-          >
-            <Feather name="clock" size={16} color="#FFFFFF" />
-            <ThemedText style={styles.quickActionText}>Log Engagement</ThemedText>
-          </Pressable>
-        </View>
-
         <View style={styles.tabContainer}>
           <TabButton
             label="Public Info"
