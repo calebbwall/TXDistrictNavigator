@@ -42,6 +42,9 @@ export const officialPublic = pgTable("official_public", {
   email: varchar("email", { length: 255 }),
   active: boolean("active").default(true).notNull(),
   lastRefreshedAt: timestamp("last_refreshed_at").defaultNow().notNull(),
+  // Normalized search fields - derived from addresses for faster search
+  searchZips: text("search_zips"), // Comma-separated unique ZIPs (e.g., "78711,75570")
+  searchCities: text("search_cities"), // Comma-separated unique cities (e.g., "Austin,New Boston")
 }, (table) => ({
   sourceIdUnique: uniqueIndex("source_member_unique_idx").on(table.source, table.sourceMemberId),
 }));

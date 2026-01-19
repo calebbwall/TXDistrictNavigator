@@ -8,6 +8,34 @@ const CONGRESS_API_BASE = "https://api.congress.gov/v3";
 
 type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
 
+const CITY_STATE_ZIP_REGEX = /,\s*TX\s+(\d{5})(?:-\d{4})?\b/gi;
+const CITY_REGEX = /([A-Z][a-zA-Z\s]+),\s*TX\b/gi;
+
+function extractSearchZips(addresses: string[]): string | null {
+  const zips = new Set<string>();
+  for (const addr of addresses) {
+    const matches = addr.matchAll(CITY_STATE_ZIP_REGEX);
+    for (const match of matches) {
+      zips.add(match[1]);
+    }
+  }
+  return zips.size > 0 ? Array.from(zips).join(",") : null;
+}
+
+function extractSearchCities(addresses: string[]): string | null {
+  const cities = new Set<string>();
+  for (const addr of addresses) {
+    const matches = addr.matchAll(CITY_REGEX);
+    for (const match of matches) {
+      const city = match[1].trim();
+      if (city.length > 1 && city.length < 50) {
+        cities.add(city);
+      }
+    }
+  }
+  return cities.size > 0 ? Array.from(cities).join(",") : null;
+}
+
 interface ParsedOfficial {
   sourceMemberId: string;
   fullName: string;
@@ -294,6 +322,10 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
           ))
           .limit(1);
         
+        const allAddresses: string[] = [];
+        if (record.capitolAddress) allAddresses.push(record.capitolAddress);
+        if (record.districtAddresses) allAddresses.push(...record.districtAddresses);
+        
         const insertData: InsertOfficialPublic = {
           source,
           sourceMemberId: record.sourceMemberId,
@@ -310,6 +342,8 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
           email: record.email,
           active: true,
           lastRefreshedAt: new Date(),
+          searchZips: extractSearchZips(allAddresses),
+          searchCities: extractSearchCities(allAddresses),
         };
         
         if (existing.length > 0) {
@@ -468,6 +502,8 @@ async function refreshUSHouse(): Promise<RefreshResult> {
           ))
           .limit(1);
         
+        const congressAddresses: string[] = ["Washington, DC 20515"];
+        
         const insertData: InsertOfficialPublic = {
           source,
           sourceMemberId: record.sourceMemberId,
@@ -479,6 +515,8 @@ async function refreshUSHouse(): Promise<RefreshResult> {
           capitolAddress: "Washington, DC 20515",
           active: true,
           lastRefreshedAt: new Date(),
+          searchZips: extractSearchZips(congressAddresses),
+          searchCities: extractSearchCities(congressAddresses),
         };
         
         if (existing.length > 0) {

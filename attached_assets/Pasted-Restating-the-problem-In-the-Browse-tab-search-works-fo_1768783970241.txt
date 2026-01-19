@@ -1,0 +1,132 @@
+Restating the problem
+
+In the Browse tab, search works for some things (likely name/district), but searching by ZIP code and city name doesn’t return results, even when it should.
+
+Difficulty + suggestions
+
+Difficulty: Medium. This isn’t a UI problem; it’s almost always a data + indexing problem:
+	•	If ZIP/city aren’t stored as their own fields, searching them reliably depends on parsing them out of address blobs (Capitol + District offices). That can work, but needs a deliberate implementation.
+	•	If the app is searching only fullName (or only a couple fields), it will never match ZIP/city.
+
+Best practical approach
+	•	Phase D.1 (fast fix): expand backend search so q matches ZIP/city inside existing address text fields (capitol + district offices). This is quick and immediately improves results.
+	•	Phase D.2 (robust fix): add normalized fields like SearchCities and SearchZips derived from addresses during refresh (and backfill existing rows). This makes search faster and more reliable long-term.
+
+You don’t need external geocoding to do this; ZIP is straightforward to parse, and “city” can be parsed heuristically from common address formats. It won’t be perfect, but it will be dramatically better than today.
+
+⸻
+
+Replit Continuous Agent Prompt
+
+Fix Browse search to support ZIP codes + city names
+
+Problem
+Browse tab search does not return results for ZIP codes and city names. I need search to match:
+	•	ZIP codes (5-digit, and optionally ZIP+4)
+	•	City names (e.g., “Austin”, “Houston”)
+
+Goal
+Update the existing codebase so searching in Browse works for:
+	•	name, district (existing behavior)
+	•	ZIP codes
+	•	city names
+
+Do this primarily server-side so both Browse and Map features share the same search behavior.
+
+⸻
+
+1) Confirm current search behavior and where it’s implemented
+
+Locate the endpoint used by Browse for listing/searching officials (likely GET /api/officials).
+
+Identify what fields are currently searched (often only full_name).
+
+⸻
+
+2) Phase D.1 — Immediate fix: search across address text
+
+Update GET /api/officials?source=...&q=... so q matches case-insensitively against these fields (where present):
+	•	full_name
+	•	district / districtNumber
+	•	capitol_address
+	•	district_office_addresses (may be multiline text or JSON text)
+	•	optionally email, website, party
+
+ZIP matching
+	•	If q looks like a ZIP (^\d{5}(-\d{4})?$), search for that exact ZIP substring in address fields.
+
+City matching
+	•	If q contains letters (e.g., “Austin”), match it as a substring within address fields as well.
+
+Make sure this works for both:
+	•	officials with Capitol addresses only
+	•	officials with district office addresses only
+	•	officials with district offices stored as JSON text
+
+⸻
+
+3) Phase D.2 — Robust fix: normalize searchable city/zip fields (recommended)
+
+Add derived fields to the public officials table (or a separate search helper table) to improve reliability and performance:
+
+Add columns (or equivalent):
+	•	SearchZips (text; e.g., comma-separated unique zips)
+	•	SearchCities (text; comma-separated unique cities)
+
+Populate these fields by parsing:
+	•	capitol_address
+	•	all district office addresses
+
+Parsing rules
+	•	ZIP regex: \b\d{5}(?:-\d{4})?\b
+	•	City heuristic:
+	•	For lines resembling City, TX 78701 extract City
+	•	Accept City tokens that precede , TX or TX
+	•	De-dupe and store upper/lower normalized (store original casing or standardized Title Case; search should be case-insensitive)
+
+Backfill
+	•	Create a one-time script or migration step that iterates through all existing officials and populates SearchZips and SearchCities.
+	•	Also ensure the refresh job updates these fields whenever addresses change.
+
+Then update the search filter to include:
+	•	SearchZips
+	•	SearchCities
+
+⸻
+
+4) Client-side (Browse) expectations
+
+Do not change Browse UI except:
+	•	Ensure it passes the raw q string to the API as it does now.
+	•	Ensure it doesn’t block numeric-only search strings (e.g., “78701”).
+
+⸻
+
+5) Add a minimal verification endpoint/logging (required)
+
+Add temporary server logs (or a dev-only endpoint) so we can verify quickly:
+	•	When q=78701, log how many matches were found per source.
+	•	When q=Austin, same.
+
+Also add a tiny debug line in Browse (dev-only) showing:
+	•	query string
+	•	results count
+
+⸻
+
+Acceptance criteria
+	•	Searching 78701 returns officials with any office address containing 78701.
+	•	Searching Austin returns officials with any office address containing “Austin, TX …”
+	•	Works for all four Browse lists (House/Senate/Congress/All).
+	•	No regressions for name/district search.
+
+⸻
+
+Deliverables
+	•	Updated backend search logic for ZIP/city
+	•	(Preferred) normalized SearchZips / SearchCities population + backfill
+	•	Brief note listing files changed and how to validate with example searches
+
+⸻
+
+If you want the “city” match to be district-based (e.g., “Austin” returns anyone whose district touches Austin), that’s a different feature (it’s GIS-based and would reuse your map intersection logic). The prompt above targets the simpler interpretation: city/zip appearing in the officials’ office addresses.

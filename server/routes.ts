@@ -42,6 +42,8 @@ function createVacantOfficial(source: SourceType, district: number): MergedOffic
     email: null,
     active: true,
     lastRefreshedAt: new Date(),
+    searchZips: null,
+    searchCities: null,
     isVacant: true,
     private: null,
   };
@@ -184,6 +186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const searchTerm = search || q;
       if (searchTerm && typeof searchTerm === "string") {
         const term = searchTerm.toLowerCase();
+        const beforeCount = officials.length;
         officials = officials.filter(o => {
           // Name match
           if (o.fullName.toLowerCase().includes(term)) return true;
@@ -205,8 +208,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (o.email && o.email.toLowerCase().includes(term)) return true;
           // Website match
           if (o.website && o.website.toLowerCase().includes(term)) return true;
+          // Normalized search fields (faster for ZIP/city lookups)
+          if (o.searchZips && o.searchZips.toLowerCase().includes(term)) return true;
+          if (o.searchCities && o.searchCities.toLowerCase().includes(term)) return true;
           return false;
         });
+        
+        // Log search results for verification
+        const afterCount = officials.length;
+        const bySource: Record<string, number> = {};
+        for (const o of officials) {
+          bySource[o.source] = (bySource[o.source] || 0) + 1;
+        }
+        console.log(`[Search] q="${searchTerm}" | before=${beforeCount} | after=${afterCount} | bySource=${JSON.stringify(bySource)}`);
       }
       
       // Sorting: group by source (House, Senate, Congress), then by district asc, then by name
