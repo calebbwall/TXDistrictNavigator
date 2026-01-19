@@ -309,12 +309,22 @@ export default function BrowseOfficialsScreen() {
           </View>
         ) : null}
 
-        <ThemedText
-          type="caption"
-          style={[styles.countLabel, { color: theme.secondaryText }]}
-        >
-          {countLabel}
-        </ThemedText>
+        <View style={styles.countLabelRow}>
+          <ThemedText
+            type="caption"
+            style={[styles.countLabel, { color: theme.secondaryText }]}
+          >
+            {countLabel}
+          </ThemedText>
+          {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
+            <View style={styles.searchingIndicator}>
+              <ActivityIndicator size="small" color={theme.primary} />
+              <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+                Searching...
+              </ThemedText>
+            </View>
+          ) : null}
+        </View>
 
         <View
           style={[
@@ -356,6 +366,15 @@ export default function BrowseOfficialsScreen() {
           />
         }
         showsVerticalScrollIndicator={true}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={11}
+        removeClippedSubviews={false}
+        getItemLayout={(_, index) => ({
+          length: 120,
+          offset: 120 * index,
+          index,
+        })}
       />
     </View>
   );
@@ -382,9 +401,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  countLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.sm,
+    gap: Spacing.md,
+  },
   countLabel: {
     textAlign: "center",
-    marginBottom: Spacing.sm,
+  },
+  searchingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   placeLabelContainer: {
     flexDirection: "row",
