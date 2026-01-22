@@ -1,0 +1,98 @@
+Yes — this is fixable. What you’re seeing (“random symbols” on Android) is almost always an icon font not loading (or the app is using a font-based icon set that iOS happens to find, but Android doesn’t). The cure is to make icon rendering platform-consistent by using Expo’s supported icon pipeline and loading fonts correctly before rendering navigation.
+
+Here’s a Replit agent prompt that usually nails it.
+
+⸻
+
+Replit Continuous Agent Prompt — Fix Android Navigation Icons Showing Random Symbols
+
+Problem
+
+On Android Expo Go, the bottom navigation icons render as random symbols/glyphs instead of the correct icons. iOS looks correct. This indicates the icon font is not loading/linked properly on Android.
+
+Goal
+
+Make navigation icons render identically on iOS and Android by:
+	•	Standardizing on Expo-supported icon components
+	•	Ensuring required fonts are loaded before any navigation renders
+	•	Removing any unsupported icon/font usage that depends on platform quirks
+
+⸻
+
+Step 1 — Audit icon usage (do this first)
+
+Search the codebase for icon usage and identify what library is used:
+	•	react-native-vector-icons/*
+	•	@expo/vector-icons
+	•	Ionicons, MaterialIcons, FontAwesome, etc.
+	•	Any custom icon font (e.g., createIconSet, .ttf in assets, custom fontFamily)
+
+If any navigation icons come from react-native-vector-icons directly, replace them with @expo/vector-icons equivalents.
+
+Rule: In Expo-managed apps, prefer @expo/vector-icons everywhere for consistency.
+
+⸻
+
+Step 2 — Ensure icon fonts load before navigation mounts
+
+Implement font loading at app startup so icons never render before fonts exist.
+
+Requirements
+	•	Use expo-font (and @expo/vector-icons font helpers) to load fonts.
+	•	Block rendering of the navigation container until fonts are loaded (show a small splash/loader).
+
+Implementation approach
+
+In App.tsx (or the actual root entry used by Expo):
+	•	Use useFonts() and load required icon fonts.
+	•	Only render <NavigationContainer /> once fontsLoaded === true.
+
+Also confirm index.js registers the correct root and doesn’t bypass the font-loading wrapper.
+
+⸻
+
+Step 3 — Replace “font glyph icons” with SVG-based icons if needed (optional fallback)
+
+If some icons are custom font glyphs or a niche icon set:
+	•	Replace them with a non-font icon system (e.g., lucide-react-native or inline SVG via react-native-svg)
+	•	But only if Step 2 doesn’t fully solve it.
+
+⸻
+
+Step 4 — Verify dependencies are installed the Expo way
+
+Run/ensure these dependencies are installed with Expo compatibility:
+	•	expo install @expo/vector-icons expo-font
+
+If react-native-vector-icons is installed directly, keep only if necessary, but icons used in nav should come from @expo/vector-icons.
+
+⸻
+
+Step 5 — Clear caches and retest
+
+After changes:
+	•	restart the Expo dev server with cache clear (equivalent of expo start -c)
+	•	reload Android Expo Go
+	•	confirm nav icons render correctly
+
+⸻
+
+Acceptance criteria
+	•	Bottom tab icons look correct on Android Expo Go
+	•	Icons match iOS
+	•	No “random symbol” glyphs anywhere (tabs, headers, buttons)
+	•	No flicker where icons appear wrong then correct (fonts must load before render)
+
+⸻
+
+Deliverables
+
+In the agent’s response, include:
+	•	which icon library was used before and after
+	•	where fonts are loaded
+	•	which fonts are explicitly loaded
+	•	which files were changed (likely App.tsx, navigators, and any icon component wrappers)
+
+⸻
+
+If you want to be extra strict, tell the agent to create a tiny Icon.tsx wrapper component and force all icons through it, so you never regress later.
