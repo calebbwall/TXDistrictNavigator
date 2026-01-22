@@ -6,7 +6,7 @@ import Animated, {
   withSpring,
   WithSpringConfig,
 } from "react-native-reanimated";
-import { Feather } from "@expo/vector-icons";
+import AppIcon from "@/components/AppIcon";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing, Shadows } from "@/constants/theme";
@@ -88,7 +88,7 @@ export function DistrictCard({
               { opacity: pressed ? 0.6 : 1 },
             ]}
           >
-            <Feather name="x" size={20} color={theme.secondaryText} />
+            <AppIcon name="x" size={20} color={theme.secondaryText} />
           </Pressable>
         </View>
       </View>
@@ -119,7 +119,7 @@ export function DistrictCard({
               {getOfficeTypeLabel(official.officeType)} - {official.city}
             </ThemedText>
           </View>
-          <Feather name="chevron-right" size={20} color={theme.secondaryText} />
+          <AppIcon name="chevron-right" size={20} color={theme.secondaryText} />
         </View>
       ) : (
         <View style={styles.emptyRow}>

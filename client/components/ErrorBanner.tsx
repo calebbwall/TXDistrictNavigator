@@ -1,7 +1,7 @@
 import React from "react";
 import { View, StyleSheet, Pressable } from "react-native";
 import Animated, { FadeIn, FadeOut, SlideInUp, SlideOutUp } from "react-native-reanimated";
-import { Feather } from "@expo/vector-icons";
+import AppIcon from "@/components/AppIcon";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
@@ -25,7 +25,7 @@ export function ErrorBanner({ message, onRetry, type = "error" }: ErrorBannerPro
       style={[styles.container, { backgroundColor }]}
     >
       <View style={styles.content}>
-        <Feather
+        <AppIcon
           name={type === "error" ? "alert-circle" : "alert-triangle"}
           size={16}
           color={iconColor}
@@ -49,7 +49,7 @@ export function ErrorBanner({ message, onRetry, type = "error" }: ErrorBannerPro
           <ThemedText type="small" style={[styles.retryText, { color: textColor }]}>
             Retry
           </ThemedText>
-          <Feather name="refresh-cw" size={14} color={iconColor} />
+          <AppIcon name="refresh-cw" size={14} color={iconColor} />
         </Pressable>
       ) : null}
     </Animated.View>

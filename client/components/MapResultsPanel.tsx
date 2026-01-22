@@ -14,7 +14,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import AppIcon from "@/components/AppIcon";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { useDebugFlags } from "@/hooks/useDebugFlags";
@@ -75,7 +75,7 @@ function OfficialCardItem({ official, onPress, isFirst }: OfficialCardItemProps)
           <ThemedText type="h3" style={{ color: theme.text }}>
             District {official.districtNumber}
           </ThemedText>
-          <Feather name="chevron-right" size={18} color={theme.secondaryText} />
+          <AppIcon name="chevron-right" size={18} color={theme.secondaryText} />
         </View>
       </View>
       <ThemedText
@@ -164,7 +164,7 @@ export function MapResultsPanel({
   const ListEmpty = useCallback(
     () => (
       <View style={styles.emptyState}>
-        <Feather name="info" size={24} color={theme.secondaryText} />
+        <AppIcon name="info" size={24} color={theme.secondaryText} />
         <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.sm, textAlign: "center" }}>
           No officials found in this area
         </ThemedText>
@@ -202,7 +202,7 @@ export function MapResultsPanel({
               onPress={onClearDrawing}
               style={[styles.headerButton, { backgroundColor: theme.cardBackground }]}
             >
-              <Feather name="trash-2" size={16} color={theme.secondaryText} />
+              <AppIcon name="trash-2" size={16} color={theme.secondaryText} />
             </Pressable>
           ) : null}
           <Pressable
@@ -210,14 +210,14 @@ export function MapResultsPanel({
             style={[styles.headerButton, { backgroundColor: theme.cardBackground }]}
           >
             <Animated.View style={chevronStyle}>
-              <Feather name="chevron-up" size={20} color={theme.text} />
+              <AppIcon name="chevron-up" size={20} color={theme.text} />
             </Animated.View>
           </Pressable>
           <Pressable
             onPress={onClose}
             style={[styles.headerButton, { backgroundColor: theme.cardBackground }]}
           >
-            <Feather name="x" size={20} color={theme.secondaryText} />
+            <AppIcon name="x" size={20} color={theme.secondaryText} />
           </Pressable>
         </View>
       </View>

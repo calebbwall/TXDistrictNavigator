@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, View, Linking, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import AppIcon from "@/components/AppIcon";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
@@ -30,7 +30,7 @@ export default function AboutScreen() {
       >
         <View style={styles.header}>
           <View style={[styles.iconContainer, { backgroundColor: theme.primary }]}>
-            <Feather name="map" size={40} color="#FFFFFF" />
+            <AppIcon name="map" size={40} color="#FFFFFF" />
           </View>
           <ThemedText type="h1" style={styles.title}>
             About
@@ -46,7 +46,7 @@ export default function AboutScreen() {
         <View style={styles.linkSection}>
           <Button onPress={handleVisitWebsite} style={styles.linkButton}>
             <View style={styles.buttonContent}>
-              <Feather name="external-link" size={18} color="#FFFFFF" />
+              <AppIcon name="external-link" size={18} color="#FFFFFF" />
               <ThemedText type="body" style={styles.buttonText}>
                 Visit Capitol Commission Texas
               </ThemedText>

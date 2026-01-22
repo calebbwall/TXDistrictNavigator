@@ -6,7 +6,7 @@ import Animated, {
   withSpring,
   WithSpringConfig,
 } from "react-native-reanimated";
-import { Feather } from "@expo/vector-icons";
+import AppIcon from "@/components/AppIcon";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
@@ -60,7 +60,7 @@ export function OfficialCard({ official, onPress }: OfficialCardProps) {
       <View style={[styles.avatarContainer, isVacant && styles.vacantAvatarContainer]}>
         {isVacant ? (
           <View style={[styles.vacantAvatar, { backgroundColor: theme.backgroundDefault }]}>
-            <Feather name="user-x" size={24} color={theme.secondaryText} />
+            <AppIcon name="user-x" size={24} color={theme.secondaryText} />
           </View>
         ) : official.photoUrl ? (
           <Image source={{ uri: official.photoUrl }} style={styles.avatar} />
@@ -89,7 +89,7 @@ export function OfficialCard({ official, onPress }: OfficialCardProps) {
           </ThemedText>
         ) : null}
       </View>
-      <Feather name="chevron-right" size={20} color={theme.secondaryText} />
+      <AppIcon name="chevron-right" size={20} color={theme.secondaryText} />
     </AnimatedPressable>
   );
 }

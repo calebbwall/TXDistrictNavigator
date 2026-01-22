@@ -21,7 +21,8 @@ import Animated, {
   FadeIn,
   WithSpringConfig,
 } from "react-native-reanimated";
-import { Feather } from "@expo/vector-icons";
+import AppIcon from "@/components/AppIcon";
+import type { IconName } from "@/components/AppIcon";
 import * as Haptics from "expo-haptics";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ThemedText } from "@/components/ThemedText";
@@ -119,7 +120,7 @@ function TabButton({ label, isActive, onPress }: TabButtonProps) {
 }
 
 interface ContactRowProps {
-  icon: keyof typeof Feather.glyphMap;
+  icon: IconName;
   label: string;
   value: string;
   onPress?: () => void;
@@ -138,7 +139,7 @@ function ContactRow({ icon, label, value, onPress }: ContactRowProps) {
       ]}
     >
       <View style={[styles.contactIcon, { backgroundColor: theme.backgroundDefault }]}>
-        <Feather name={icon} size={16} color={theme.primary} />
+        <AppIcon name={icon} size={16} color={theme.primary} />
       </View>
       <View style={styles.contactContent}>
         <ThemedText type="small" style={{ color: theme.secondaryText }}>
@@ -149,7 +150,7 @@ function ContactRow({ icon, label, value, onPress }: ContactRowProps) {
         </ThemedText>
       </View>
       {onPress ? (
-        <Feather name="external-link" size={16} color={theme.secondaryText} />
+        <AppIcon name="external-link" size={16} color={theme.secondaryText} />
       ) : null}
     </Pressable>
   );
@@ -410,7 +411,7 @@ export default function OfficialProfileScreen() {
         style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
       >
         <View style={styles.errorState}>
-          <Feather name="alert-circle" size={48} color={theme.secondaryText} />
+          <AppIcon name="alert-circle" size={48} color={theme.secondaryText} />
           <ThemedText type="body" style={{ marginTop: Spacing.md }}>
             Official not found
           </ThemedText>
@@ -437,7 +438,7 @@ export default function OfficialProfileScreen() {
         >
           <View style={styles.vacantHeader}>
             <View style={[styles.vacantAvatarContainer, { borderColor: theme.warning }]}>
-              <Feather name="user-x" size={40} color={theme.secondaryText} />
+              <AppIcon name="user-x" size={40} color={theme.secondaryText} />
             </View>
             <ThemedText type="h2" style={{ marginTop: Spacing.lg, textAlign: "center" }}>
               Vacant Seat
@@ -448,7 +449,7 @@ export default function OfficialProfileScreen() {
           </View>
           
           <View style={[styles.vacantCard, { backgroundColor: theme.cardBackground, borderColor: theme.warning }]}>
-            <Feather name="info" size={24} color={theme.warning} />
+            <AppIcon name="info" size={24} color={theme.warning} />
             <View style={styles.vacantCardContent}>
               <ThemedText type="h3">This District is Currently Vacant</ThemedText>
               <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.xs }}>
@@ -505,7 +506,7 @@ export default function OfficialProfileScreen() {
               { opacity: pressed ? 0.7 : 1 },
             ]}
           >
-            <Feather
+            <AppIcon
               name={isSaved ? "bookmark" : "bookmark"}
               size={24}
               color={isSaved ? theme.primary : theme.secondaryText}
@@ -590,7 +591,7 @@ export default function OfficialProfileScreen() {
                     { opacity: pressed ? 0.7 : 1 },
                   ]}
                 >
-                  <Feather name="edit-2" size={18} color={theme.primary} />
+                  <AppIcon name="edit-2" size={18} color={theme.primary} />
                   <ThemedText type="caption" style={{ color: theme.primary, marginLeft: 4 }}>
                     Edit
                   </ThemedText>
@@ -798,7 +799,7 @@ export default function OfficialProfileScreen() {
                     { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
                   ]}
                 >
-                  <Feather name={showAddNote ? "x" : "plus"} size={16} color="#FFFFFF" />
+                  <AppIcon name={showAddNote ? "x" : "plus"} size={16} color="#FFFFFF" />
                   <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: 4 }}>
                     {showAddNote ? "Cancel" : "Add Note"}
                   </ThemedText>
@@ -830,7 +831,7 @@ export default function OfficialProfileScreen() {
                       { borderColor: theme.border },
                       newNoteFollowUp && { backgroundColor: theme.primary, borderColor: theme.primary },
                     ]}>
-                      {newNoteFollowUp ? <Feather name="check" size={14} color="#FFFFFF" /> : null}
+                      {newNoteFollowUp ? <AppIcon name="check" size={14} color="#FFFFFF" /> : null}
                     </View>
                     <ThemedText type="body">Follow-up needed</ThemedText>
                   </Pressable>
@@ -855,7 +856,7 @@ export default function OfficialProfileScreen() {
                             </View>
                           ) : null}
                           <Pressable onPress={() => handleDeleteNotePrayer(entry.id)}>
-                            <Feather name="trash-2" size={16} color={theme.secondaryText} />
+                            <AppIcon name="trash-2" size={16} color={theme.secondaryText} />
                           </Pressable>
                         </View>
                       </View>
@@ -875,7 +876,7 @@ export default function OfficialProfileScreen() {
               
               <View style={styles.engagementDateRow}>
                 <View style={styles.engagementDateInfo}>
-                  <Feather name="calendar" size={18} color={theme.secondaryText} />
+                  <AppIcon name="calendar" size={18} color={theme.secondaryText} />
                   <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
                     {engagementLog.length > 0 
                       ? new Date(engagementLog[0].engagedAt).toLocaleDateString()
@@ -902,7 +903,7 @@ export default function OfficialProfileScreen() {
                         { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.xs },
                       ]}
                     >
-                      <Feather name="x" size={14} color={theme.secondaryText} />
+                      <AppIcon name="x" size={14} color={theme.secondaryText} />
                     </Pressable>
                   ) : null}
                 </View>
@@ -959,7 +960,7 @@ export default function OfficialProfileScreen() {
                             { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1 },
                           ]}
                         >
-                          <Feather name="calendar" size={16} color={theme.text} />
+                          <AppIcon name="calendar" size={16} color={theme.text} />
                           <ThemedText type="caption" style={{ color: theme.text, marginLeft: Spacing.xs }}>
                             Today
                           </ThemedText>
@@ -971,7 +972,7 @@ export default function OfficialProfileScreen() {
                             { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.sm },
                           ]}
                         >
-                          <Feather name="check" size={16} color="#FFFFFF" />
+                          <AppIcon name="check" size={16} color="#FFFFFF" />
                           <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: Spacing.xs }}>
                             Confirm
                           </ThemedText>

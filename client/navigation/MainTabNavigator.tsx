@@ -1,6 +1,6 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Feather } from "@expo/vector-icons";
+import AppIcon from "@/components/AppIcon";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet } from "react-native";
 import MapStackNavigator from "@/navigation/MapStackNavigator";
@@ -51,7 +51,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Map",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="map" size={size} color={color} />
+            <AppIcon name="map" size={size} color={color} />
           ),
         }}
       />
@@ -61,7 +61,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Browse",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="list" size={size} color={color} />
+            <AppIcon name="list" size={size} color={color} />
           ),
         }}
       />
@@ -71,7 +71,7 @@ export default function MainTabNavigator() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="user" size={size} color={color} />
+            <AppIcon name="user" size={size} color={color} />
           ),
         }}
       />
