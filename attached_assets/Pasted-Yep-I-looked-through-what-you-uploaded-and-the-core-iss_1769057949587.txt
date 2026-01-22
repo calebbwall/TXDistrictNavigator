@@ -1,0 +1,127 @@
+Yep — I looked through what you uploaded, and the core issue is exactly the thing I was hinting at:
+
+What’s happening (based on your actual code)
+
+Your navigation icons (and lots of other icons) are rendered with:
+	•	Feather from @expo/vector-icons
+
+Example (your file): MainTabNavigator.tsx uses:
+
+import { Feather } from "@expo/vector-icons";
+...
+<Feather name="map" size={size} color={color} />
+
+That Feather component ultimately renders a glyph character inside a <Text> using the Feather icon font. If the Feather font isn’t loaded, Android shows random symbols (because it falls back to a different font and those “private use” glyphs become garbage).
+
+✅ In your upload, you are not loading icon fonts anywhere (App.tsx just mounts navigation immediately).
+That’s why iOS can look fine (it sometimes masks the problem), while Android looks cursed.
+
+So: the problem is not your icon names; it’s font loading.
+
+⸻
+
+Why your last prompt may have “stopped Expo Go from running”
+
+The most common failure mode is:
+	•	the agent added useFonts() but didn’t install expo-font properly, or
+	•	the app returned null forever because fontsLoaded never becomes true (bad import / wrong hook usage), or
+	•	it introduced a non-Expo-safe icon dependency.
+
+We’ll fix it in a boring, safe, Expo-managed way that won’t brick startup.
+
+⸻
+
+Replit Continuous Agent Prompt (safe fix) — Load Feather font once, then render app
+
+Goal
+
+Fix Android “random symbol” icons by loading the Feather icon font before any UI renders, and ensure this applies to all icons/buttons/navigation because the whole app uses Feather everywhere.
+
+Constraints
+	•	Expo-managed only (works in Expo Go)
+	•	No native linking
+	•	Do not replace icon libraries; just load the required font correctly
+	•	Do not introduce splash screen APIs that can hang
+
+⸻
+
+Step 1 — Install the correct dependency (Expo way)
+
+Run in Replit Shell:
+
+npx expo install expo-font
+
+(Do not npm install expo-font manually; use expo install.)
+
+⸻
+
+Step 2 — Add font loading to App.tsx (minimal and safe)
+
+In App.tsx:
+	1.	Import:
+
+	•	useFonts from expo-font
+	•	Feather from @expo/vector-icons
+	•	ActivityIndicator, View from react-native
+
+	2.	Load the Feather font at startup:
+
+	•	useFonts(Feather.font)
+
+	3.	While fonts load, render a simple loading screen (NOT null).
+
+Important: Only mount NavigationContainer once fonts are loaded.
+
+⸻
+
+Step 3 — Confirm every icon is using Feather / @expo/vector-icons
+
+You already use Feather in:
+	•	MainTabNavigator.tsx
+	•	MapScreen.tsx
+	•	ProfileScreen.tsx
+	•	SearchScreen.tsx
+	•	OfficialCard.tsx
+	•	DistrictCard.tsx
+	•	etc.
+
+So loading Feather.font should fix all icons across Android, including navigation.
+
+⸻
+
+Step 4 — Hard refresh the packager cache
+
+After changes:
+	•	restart Expo with cache clear (equivalent of expo start -c)
+	•	reload Android Expo Go
+
+⸻
+
+Acceptance Criteria
+	•	Android Expo Go shows correct icons in:
+	•	bottom navigation
+	•	any header icons
+	•	any icon buttons/cards
+	•	No random glyphs anywhere
+	•	App still boots normally
+
+⸻
+
+Deliverables
+
+In the agent response, list:
+	•	the expo-font install confirmation
+	•	the exact App.tsx changes
+	•	confirmation that Feather.font is loaded
+
+⸻
+
+Extra (only if still broken after Feather.font)
+
+If any icons use other families (MaterialIcons/Ionicons/etc.) in future changes, load them too:
+	•	Ionicons.font, MaterialIcons.font, etc.
+But right now, your codebase is Feather-heavy, so load Feather.font first.
+
+⸻
+
+If you want, paste the error you got when Expo Go “stopped running” (red screen text). That will tell us whether it was a dependency install issue vs a font-loading logic issue.
