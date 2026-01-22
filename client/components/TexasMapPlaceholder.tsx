@@ -6,7 +6,7 @@ import Animated, {
   withSpring,
   WithSpringConfig,
 } from "react-native-reanimated";
-import AppIcon from "@/components/AppIcon";
+import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
@@ -155,7 +155,7 @@ export function TexasMapPlaceholder({
       ]}
     >
       <View style={styles.texasOutline}>
-        <AppIcon name="map-pin" size={24} color={theme.secondaryText} />
+        <Feather name="map-pin" size={24} color={theme.secondaryText} />
         <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: Spacing.xs }}>
           Texas Map View
         </ThemedText>

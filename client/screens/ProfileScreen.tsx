@@ -5,8 +5,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import AppIcon from "@/components/AppIcon";
-import type { IconName } from "@/components/AppIcon";
+import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -17,7 +16,7 @@ import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
 
 interface SettingRowProps {
-  icon: IconName;
+  icon: keyof typeof Feather.glyphMap;
   label: string;
   value?: string;
   onPress?: () => void;
@@ -47,7 +46,7 @@ function SettingRow({
       ]}
     >
       <View style={[styles.settingIcon, { backgroundColor: theme.backgroundDefault }]}>
-        <AppIcon name={icon} size={18} color={theme.primary} />
+        <Feather name={icon} size={18} color={theme.primary} />
       </View>
       <View style={styles.settingContent}>
         <ThemedText type="body">{label}</ThemedText>
@@ -78,7 +77,7 @@ function SettingRow({
           />
         </Pressable>
       ) : onPress ? (
-        <AppIcon name="chevron-right" size={20} color={theme.secondaryText} />
+        <Feather name="chevron-right" size={20} color={theme.secondaryText} />
       ) : null}
     </Pressable>
   );
@@ -143,7 +142,7 @@ export default function ProfileScreen() {
       >
         <View style={styles.profileHeader}>
           <View style={[styles.avatarPlaceholder, { backgroundColor: theme.backgroundDefault }]}>
-            <AppIcon name="user" size={40} color={theme.secondaryText} />
+            <Feather name="user" size={40} color={theme.secondaryText} />
           </View>
           <ThemedText type="h2" style={styles.welcomeText}>
             Texas Districts

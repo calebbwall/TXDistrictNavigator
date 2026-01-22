@@ -1,57 +1,224 @@
 # Texas Districts & Officials Mobile App
 
 ## Overview
-A mobile application for Texas citizens to view legislative districts, search for representatives, and manage private notes about officials. The primary purpose is to provide an accessible platform for citizens to engage with their government, offering tools for finding representatives, understanding their districts, and tracking interactions. The project aims to enhance civic engagement and provide a streamlined experience for citizens to connect with their elected officials.
+A mobile application for Texas citizens to view legislative districts, search for representatives, and manage private notes about officials. Built with Expo + React Native and Express.js backend with PostgreSQL database.
 
-## User Preferences
-I prefer detailed explanations and iterative development. Ask before making major changes. I value clear communication and a collaborative approach.
+## Current State
+**Phase F Complete** - Workflow tools, offline-first polish, and place search.
 
-## System Architecture
-The application is built with Expo + React Native for the frontend and an Express.js backend with a PostgreSQL database.
+### Features:
+- **Map Screen**: Interactive Leaflet map via WebView with tappable GeoJSON polygon overlays for TX Senate (31), TX House (150), and US Congress (38). Color-coded layers with toggle controls. Works in Expo Go on iOS/Android and on web.
+- **Draw-to-Search**: Continuous freehand polygon drawing - drag your finger/mouse to draw a smooth shape. Features real-time polyline preview, Douglas-Peucker simplification for performance, auto-closing polygon on release, and haptic feedback. Finds all officials in overlapping districts via area-hits API with Turf.js spatial intersection.
+- **Locate Me**: GPS location button using browser geolocation (web) or Expo Location (native) - shows user position with blue marker and accuracy circle on map.
+- **Browse Screen**: Complete roster browsing with 4 tabs (TX House, TX Senate, US House, All Officials). Single search bar with multi-criteria matching. Count labels show member count and vacancy count.
+- **Saved Officials**: Bookmark button on Official Profile to save/unsave officials. Saved Officials screen accessible from Profile > Tools.
+- **Recent Tracking**: Automatically tracks viewed and engaged officials (max 20 entries)
+- **Official Profiles**: View public info (offices, contact), manage private notes, quick actions
+- **Quick Actions**: "Quick Note" and "Log Engagement" buttons on Official Profile for rapid workflow
+- **Notes & Prayer**: Multi-entry private notes per official with timestamps and optional follow-up flags. Data keyed by `private:{source}:{districtNumber}` to survive vacancies/refreshes.
+- **Last Engaged**: Track last engagement date per official with optional summary. "Log Engagement Now" button for quick timestamping.
+- **Follow-up Dashboard**: Accessible from Profile screen, shows officials with pending follow-ups
+- **Place Search**: GeoNames-powered search for any Texas city/ZIP, multi-candidate disambiguation with recent searches
+- **Profile Screen**: Tools section with navigation to Saved Officials and Follow-up Dashboard, default overlay preferences, About This App link
+- **About Screen**: App purpose description and link to Capitol Commission Texas website
+- **Offline-First**: NetInfo-based offline detection, cache-first loading with 25% validation threshold, OfflineBanner component
+- **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences (notes, engagement, saved officials, recents)
+- **Weekly Refresh**: Automatic data sync from Texas Legislature Online and Congress.gov
+- **Vacancy Display**: Complete district rosters show vacant seats with distinct styling (dashed borders, user-x icon, "Seat Currently Vacant" label)
 
-### UI/UX Decisions
-- **Color Scheme**: Primary: #0047BB (Texas Blue), Secondary: #BF0A30 (Texas Red).
-- **Party Colors**: Republican: #E94B3C, Democrat: #4A90E2.
-- **Map Overlay Colors**: Senate: #4A90E2, House: #E94B3C, Congress: #50C878.
-- **Offline-First**: Implemented with NetInfo-based detection, cache-first loading (25% validation threshold), and an `OfflineBanner` component.
+### Data Sources:
+- **TX House & Senate**: Scraped from capitol.texas.gov (Texas Legislature Online)
+- **US Congress**: Congress.gov API (requires CONGRESS_API_KEY)
+- **District Boundaries**: Real GeoJSON from TxDOT OpenData
 
-### Technical Implementations
-- **Map Screen**: Interactive Leaflet map via WebView with GeoJSON polygon overlays for Texas Senate (31), Texas House (150), and US Congress (38) districts. Features color-coded layers and toggle controls.
-- **Draw-to-Search**: Allows continuous freehand polygon drawing with real-time polyline preview, Douglas-Peucker simplification, auto-closing polygons, and haptic feedback to find officials in overlapping districts using Turf.js spatial intersection.
-- **Locate Me**: GPS location button using browser geolocation (web) or Expo Location (native) to show user position on the map.
-- **Browse Screen**: Provides a comprehensive roster browsing experience with tabs for TX House, TX Senate, US House, and All Officials. Includes a single search bar for multi-criteria matching and displays member/vacancy counts.
-- **Official Profiles**: Displays public information (offices, contact) and allows management of private notes, quick actions like "Quick Note" and "Log Engagement."
-- **Notes & Prayer**: Multi-entry private notes per official with timestamps and optional follow-up flags, data keyed by `private:{source}:{districtNumber}` for persistence.
-- **Last Engaged**: Tracks last engagement date per official with an optional summary and a "Log Engagement Now" button.
-- **Follow-up Dashboard**: Accessible from the Profile screen, showing officials with pending follow-ups.
-- **Place Search**: Utilizes GeoNames for searching Texas cities/ZIPs, with multi-candidate disambiguation and recent search storage.
-- **Data Persistence**: PostgreSQL for public data, AsyncStorage for local preferences (notes, engagement, saved officials, recents).
-- **Weekly Refresh**: Automatic data synchronization from Texas Legislature Online and Congress.gov.
-- **Vacancy Display**: Vacant seats are distinctly styled with dashed borders, a user-x icon, and a "Seat Currently Vacant" label.
-- **Environment Variables**: `DATABASE_URL` and `CONGRESS_API_KEY` are required. `EXPO_PUBLIC_DOMAIN` is auto-configured.
+## Project Structure
+```
+/client
+  /components     - Reusable UI components
+  /constants      - Theme and design tokens
+  /hooks          - Custom React hooks
+  /lib            - API clients, adapters, storage utilities
+  /navigation     - React Navigation structure
+  /screens        - Screen components
+  App.tsx         - App entry point
+/server
+  /data           - GeoJSON data files
+  /jobs           - Background job scripts (refresh pipeline)
+  db.ts           - Database connection
+  routes.ts       - API endpoints
+  index.ts        - Express server entry
+/shared
+  schema.ts       - Drizzle ORM schema definitions
+/scripts
+  verify-refresh.ts - Verification script for refresh jobs
+/assets/images    - App icons and images
+```
 
-### System Design Choices
-- **Project Structure**: Organized into `client`, `server`, `shared`, `scripts`, and `assets` directories.
-- **Database Schema**: `official_public` for refreshable data (id, source, source_member_id, chamber, district, full_name, party, contact info, active status, last_refreshed_at) and `official_private` for user-entered data (official_public_id, personal info, notes, tags). A `refresh_job_log` table tracks refresh history.
-- **API Endpoints**:
-    - `GET /api/officials`: Retrieves merged public and private official data with various query parameters.
-    - `GET /api/officials/:id`: Fetches a single merged official.
-    - `GET /api/officials/by-district`: Finds officials by district type and number.
-    - `PATCH /api/officials/:id/private`: Updates private data for an official.
-    - `GET /api/geojson/{tx_house, tx_senate, us_congress}`: Provides GeoJSON boundary data.
-    - Admin endpoints for stats and manual refresh (`GET /api/stats`, `GET /api/admin/officials-counts`, `POST /api/refresh`).
-- **Weekly Refresh Pipeline**: Automated on server startup if the last refresh was over 7 days ago. Manual refresh via API or command line. Includes fail-safe validation (e.g., aborts if zero records or >25% count deviation) and never deletes records, only soft-deactivates.
+## Database Schema
 
-## External Dependencies
-- **PostgreSQL**: Primary database for storing public and private official data.
-- **Expo + React Native**: Frontend development framework.
-- **Express.js**: Backend web framework.
-- **Leaflet**: Interactive map library used within a WebView.
-- **Turf.js**: Used for spatial intersection in the draw-to-search feature.
-- **GeoNames API**: Used for place search functionality.
-- **Texas Legislature Online (capitol.texas.gov)**: Data source for Texas House and Senate officials (scraped).
-- **Congress.gov API**: Data source for US Congress officials.
-- **TxDOT OpenData**: Source for real GeoJSON district boundaries.
-- **Drizzle ORM**: Used for database interactions.
-- **NetInfo**: For detecting network connectivity.
-- **AsyncStorage**: For local data persistence of user preferences and private data.
+### official_public (refreshable)
+- `id` - UUID primary key
+- `source` - TX_HOUSE, TX_SENATE, US_HOUSE
+- `source_member_id` - Stable ID from source
+- `chamber`, `district`, `full_name`, `party`
+- `capitol_address`, `capitol_phone`
+- `district_addresses`, `district_phones` (JSON)
+- `website`, `email`, `photo_url`
+- `active` - Soft delete flag
+- `last_refreshed_at` - Timestamp
+
+### official_private (user-entered only)
+- `official_public_id` - FK to official_public
+- `personal_phone`, `personal_address`
+- `spouse_name`, `children_names` (JSON)
+- `birthday`, `anniversary`, `notes`, `tags`
+
+### refresh_job_log
+- Tracks refresh job history for fail-safe validation
+
+## API Endpoints
+
+### Officials
+- `GET /api/officials` - Returns merged officials (public + private overlay)
+  - Query params: `district_type`, `source`, `search`, `q`, `active`
+  - `source` can be: `TX_HOUSE`, `TX_SENATE`, `US_HOUSE`, or `ALL`
+  - `q` or `search`: multi-field search across name, district, party, addresses, email, website
+- `GET /api/officials/:id` - Returns single merged official
+- `GET /api/officials/by-district` - Find by district_type and district_number
+- `PATCH /api/officials/:id/private` - Update private data only
+
+### GeoJSON
+- `GET /api/geojson/tx_house` - TX House district boundaries
+- `GET /api/geojson/tx_senate` - TX Senate district boundaries
+- `GET /api/geojson/us_congress` - US Congress district boundaries
+
+### Admin
+- `GET /api/stats` - Returns official counts by chamber
+- `GET /api/admin/officials-counts` - Returns raw counts by source (TX_HOUSE, TX_SENATE, US_HOUSE)
+- `POST /api/refresh` - Trigger manual refresh
+
+## Weekly Refresh Pipeline
+
+### Automatic Scheduling
+On server startup, checks if last refresh was >7 days ago. If so, runs refresh automatically.
+
+### Manual Refresh
+Run via API: `POST /api/refresh`
+
+Or via command line:
+```bash
+npx tsx server/jobs/refreshOfficials.ts
+```
+
+### Refresh Sources
+1. **TX House**: Scrapes capitol.texas.gov/Members/Members.aspx?Chamber=H
+2. **TX Senate**: Scrapes capitol.texas.gov/Members/Members.aspx?Chamber=S  
+3. **US Congress**: Uses Congress.gov API (requires CONGRESS_API_KEY secret)
+
+### Fail-Safe Validation
+- Zero records = abort (possible source outage)
+- >25% count deviation = abort (suspicious data)
+- All changes logged to refresh_job_log table
+- Never deletes records - only soft-deactivates
+
+### Verification Script
+```bash
+npx tsx scripts/verify-refresh.ts
+```
+Tests that private data survives refresh cycles.
+
+## Environment Variables
+
+### Required Secrets
+- `DATABASE_URL` - PostgreSQL connection string (auto-configured)
+- `CONGRESS_API_KEY` - API key from api.data.gov for Congress.gov API
+
+### Auto-Configured
+- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
+- `EXPO_PUBLIC_DOMAIN` - Set by Expo for API calls
+
+## Design System
+- **Primary Color**: #0047BB (Texas Blue)
+- **Secondary Color**: #BF0A30 (Texas Red)
+- **Party Colors**: R=#E94B3C, D=#4A90E2
+- **Overlay Colors**: Senate=#4A90E2, House=#E94B3C, Congress=#50C878
+
+## Running the App
+- **Development**: Use the Start App workflow
+- **Expo Go**: Scan QR code to test on physical device
+- **Web**: Access at port 8081
+
+## Scheduled Deployment (Recommended)
+For production, set up a Replit Scheduled Deployment:
+1. Create new Scheduled Deployment
+2. Command: `npx tsx server/jobs/refreshOfficials.ts`
+3. Schedule: Weekly (e.g., Sunday 3am Central)
+
+## Recent Changes
+- 2026-01-19: Upgraded draw-to-search to continuous freehand drawing (replaces tap-to-place-points), with Douglas-Peucker simplification, real-time polyline preview, auto-close polygon, haptic feedback
+- 2026-01-19: Phase F - Complete workflow tools: Favorites (gold star), Recent tracking (viewed+engaged), Follow-up Dashboard
+- 2026-01-19: Phase F - Offline-first polish: NetInfo detection, OfflineBanner, cache-first loading with 25% validation threshold
+- 2026-01-19: Phase F - Place search: GeoNames API with multi-candidate disambiguation, recent places storage
+- 2026-01-19: Phase F - Browse screen expanded to 6 tabs (TX House, TX Senate, US House, All, Favorites, Recent)
+- 2026-01-19: Phase F - Quick actions on Official Profile (Quick Note, Log Engagement buttons)
+- 2026-01-19: Phase F - Added About screen with purpose text and Capitol Commission Texas website link
+- 2026-01-19: Phase F - Private Notes & Prayer system with multi-entry support, timestamps, and optional follow-up flags
+- 2026-01-19: Phase F - Last Engaged tracker with "Log Engagement Now" button and optional summary
+- 2026-01-19: Phase F - Private data keyed by `private:{source}:{districtNumber}` to survive vacancies/refreshes
+- 2026-01-19: Phase F - Updated app tagline to "Built for the State Minister of Texas"
+- 2026-01-19: Phase E - Debug overlays hidden by default, accessible via 2-second long-press on Map header
+- 2026-01-19: Phase E - Created useDebugFlags hook with AsyncStorage persistence for global debug toggle
+- 2026-01-19: Phase E - Added ErrorBanner component for user-friendly error display with retry button
+- 2026-01-19: Phase E - GeoJSON caching (5-min TTL) and 15-second fetch timeout for Map performance
+- 2026-01-19: Phase E - Browse screen "Searching..." indicator and FlatList optimizations (initialNumToRender, windowSize, getItemLayout)
+- 2026-01-19: Phase E - Enhanced /api/admin/officials-counts with last refresh status and job history
+- 2026-01-19: Phase E - Smoother animations with overshootClamping in springConfig
+- 2026-01-19: Added MapResultsPanel component - scrollable bottom sheet for map results using FlatList
+- 2026-01-19: Map results panel now supports collapse/expand, shows official count in header
+- 2026-01-19: Phase D.2 - Added searchZips and searchCities normalized columns for faster ZIP/city search
+- 2026-01-19: Phase D.2 - Created backfill script (scripts/backfill-search-fields.ts) for existing data
+- 2026-01-19: Phase D.2 - Updated refresh job to populate normalized fields on future syncs
+- 2026-01-19: Phase D.1 - Added server-side search logging: [Search] q="term" | before=X | after=Y
+- 2026-01-18: Phase D - Replaced Search tab with Browse tab
+- 2026-01-18: Phase D - Added "All Officials" tab showing combined roster (219 members)
+- 2026-01-18: Phase D - Extended /api/officials with source=ALL and multi-field search (name, district, party, addresses, email, website)
+- 2026-01-18: Phase D - Removed Zip/Name/Draw search screens from Browse stack (draw remains on Map only)
+- 2026-01-18: Phase D - Browse screen shows 4 tabs with count labels and vacancy indicators
+- 2026-01-18: Phase C - Added Draw-to-search mode with Leaflet.draw polygon drawing
+- 2026-01-18: Phase C - Added POST /api/map/area-hits endpoint using Turf.js spatial intersection
+- 2026-01-18: Phase C - Added Locate Me button with Expo Location permission flow
+- 2026-01-18: Phase C - User location shown with blue marker and accuracy circle on map
+- 2026-01-18: Phase C - Draw mode prevents normal map taps while active, auto-disables on complete
+- 2026-01-18: Phase B - Multi-overlay tap now returns ALL hits from enabled layers (uses point-in-polygon algorithm)
+- 2026-01-18: Map result cards are now tappable - navigates to Official Profile screen
+- 2026-01-18: Debug panel on map shows hit count and official count for diagnostics
+- 2026-01-18: Stable vacancy IDs (VACANT-<source>-<district>) enable private notes on vacant seats
+- 2026-01-18: Data normalization layer (client/lib/officials.ts) ensures consistent Official DTO
+- 2026-01-17: Fixed map rendering on web platform (iframe instead of WebView for web compatibility)
+- 2026-01-17: Added multi-overlay toggle functionality with independent layer controls
+- 2026-01-17: Positioned layer controls below navigation header using useHeaderHeight
+- 2026-01-17: All three GeoJSON layers load correctly (House: 150, Senate: 31, Congress: 38 districts)
+- 2026-01-16: Added complete vacancy display feature - shows all districts including vacant seats with distinct styling
+- 2026-01-16: Vacancies dynamically filled by API using district range constants (TX_HOUSE: 1-150, TX_SENATE: 1-31, US_HOUSE: 1-38)
+- 2026-01-16: OfficialCard shows vacancies with dashed borders, user-x icon, and "Seat Currently Vacant" label
+- 2026-01-16: OfficialProfileScreen displays dedicated vacancy view with informational message
+- 2026-01-16: Browse Lists shows vacancy counts in label (e.g., "31 members (2 vacancies)")
+- 2026-01-16: Fixed Congress.gov API pagination to fetch all TX members (37 from 38 seats)
+- 2026-01-16: Improved TLO parser to skip Lt. Governor and handle varied page formats
+- 2026-01-16: Added /api/admin/officials-counts endpoint for debugging
+- 2026-01-16: Adjusted fail-safe to allow initial population growth (was blocking updates)
+- 2026-01-16: Added PostgreSQL database with Drizzle ORM
+- 2026-01-16: Implemented weekly refresh pipeline from TLO and Congress.gov
+- 2026-01-16: Added public/private data separation (refresh never touches private)
+- 2026-01-16: Created API endpoints with merged public+private reads
+- 2026-01-16: Updated client to fetch from API with mock data fallback
+- 2026-01-16: Added fail-safe validation for refresh jobs
+- 2026-01-08: Integrated real Texas district GeoJSON boundaries from TxDOT OpenData
+- 2026-01-08: Switched to WebView-based Leaflet map for Expo Go compatibility
+
+## Next Phase Features
+1. PostGIS for spatial queries (ST_Intersects, ST_Contains)
+2. Real ZIP code lookups against district geometry
+3. User authentication (Apple/Google SSO)
+4. Encrypted storage for sensitive private notes
+5. Push notifications for legislative updates

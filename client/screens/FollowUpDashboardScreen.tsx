@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import AppIcon from "@/components/AppIcon";
+import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/hooks/useTheme";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -173,7 +173,7 @@ export default function FollowUpDashboardScreen() {
               </ThemedText>
             </View>
             <View style={[styles.badge, { backgroundColor: showArchived ? theme.success + "20" : theme.warning + "20" }]}>
-              <AppIcon 
+              <Feather 
                 name={showArchived ? "check-circle" : "flag"} 
                 size={12} 
                 color={showArchived ? theme.success : theme.warning} 
@@ -204,7 +204,7 @@ export default function FollowUpDashboardScreen() {
                   },
                 ]}
               >
-                <AppIcon 
+                <Feather 
                   name={showArchived ? "rotate-ccw" : "check"} 
                   size={14} 
                   color={showArchived ? theme.success : theme.secondaryText} 
@@ -213,7 +213,7 @@ export default function FollowUpDashboardScreen() {
                   {showArchived ? "Restore" : "No longer needed"}
                 </ThemedText>
               </Pressable>
-              <AppIcon name="chevron-right" size={20} color={theme.secondaryText} />
+              <Feather name="chevron-right" size={20} color={theme.secondaryText} />
             </View>
           </Card>
       );
@@ -281,7 +281,7 @@ export default function FollowUpDashboardScreen() {
         ListHeaderComponent={ListHeaderComponent}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <AppIcon name={showArchived ? "archive" : "flag"} size={48} color={theme.secondaryText} />
+            <Feather name={showArchived ? "archive" : "flag"} size={48} color={theme.secondaryText} />
             <ThemedText style={[styles.emptyTitle, { marginTop: Spacing.lg }]}>
               {showArchived ? "No Archived Follow-Ups" : "No Follow-Ups"}
             </ThemedText>

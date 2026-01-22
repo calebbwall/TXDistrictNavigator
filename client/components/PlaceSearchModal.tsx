@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Keyboard,
 } from "react-native";
-import AppIcon from "@/components/AppIcon";
+import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
@@ -146,7 +146,7 @@ export function PlaceSearchModal({
               </ThemedText>
             ) : null}
           </View>
-          <AppIcon name="chevron-right" size={20} color={theme.secondaryText} />
+          <Feather name="chevron-right" size={20} color={theme.secondaryText} />
         </Card>
       </Pressable>
     ),
@@ -162,7 +162,7 @@ export function PlaceSearchModal({
         <Card style={styles.placeCard}>
           <View style={styles.placeInfo}>
             <View style={styles.recentRow}>
-              <AppIcon name="clock" size={14} color={theme.secondaryText} />
+              <Feather name="clock" size={14} color={theme.secondaryText} />
               <ThemedText style={styles.placeName}>{item.name}</ThemedText>
             </View>
             {item.county ? (
@@ -171,7 +171,7 @@ export function PlaceSearchModal({
               </ThemedText>
             ) : null}
           </View>
-          <AppIcon name="chevron-right" size={20} color={theme.secondaryText} />
+          <Feather name="chevron-right" size={20} color={theme.secondaryText} />
         </Card>
       </Pressable>
     ),
@@ -193,13 +193,13 @@ export function PlaceSearchModal({
         <View style={styles.header}>
           <ThemedText style={styles.title}>Search Texas Place</ThemedText>
           <Pressable onPress={onClose} hitSlop={8}>
-            <AppIcon name="x" size={24} color={theme.text} />
+            <Feather name="x" size={24} color={theme.text} />
           </Pressable>
         </View>
 
         <View style={styles.searchRow}>
           <View style={[styles.searchInput, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}>
-            <AppIcon name="search" size={18} color={theme.secondaryText} />
+            <Feather name="search" size={18} color={theme.secondaryText} />
             <TextInput
               value={query}
               onChangeText={setQuery}
@@ -212,7 +212,7 @@ export function PlaceSearchModal({
             />
             {query.length > 0 ? (
               <Pressable onPress={() => setQuery("")} hitSlop={8}>
-                <AppIcon name="x-circle" size={18} color={theme.secondaryText} />
+                <Feather name="x-circle" size={18} color={theme.secondaryText} />
               </Pressable>
             ) : null}
           </View>
@@ -224,14 +224,14 @@ export function PlaceSearchModal({
             {loading ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <AppIcon name="search" size={20} color="#FFFFFF" />
+              <Feather name="search" size={20} color="#FFFFFF" />
             )}
           </Pressable>
         </View>
 
         {error ? (
           <View style={styles.errorContainer}>
-            <AppIcon name="alert-circle" size={20} color={theme.secondary} />
+            <Feather name="alert-circle" size={20} color={theme.secondary} />
             <ThemedText style={[styles.errorText, { color: theme.secondary }]}>
               {error}
             </ThemedText>
@@ -270,7 +270,7 @@ export function PlaceSearchModal({
 
         {showEmpty ? (
           <View style={styles.emptyContainer}>
-            <AppIcon name="map-pin" size={40} color={theme.secondaryText} />
+            <Feather name="map-pin" size={40} color={theme.secondaryText} />
             <ThemedText style={[styles.emptyText, { color: theme.secondaryText }]}>
               No places found for "{query}"
             </ThemedText>
@@ -279,7 +279,7 @@ export function PlaceSearchModal({
 
         {!hasSearched && recentPlaces.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <AppIcon name="map" size={40} color={theme.secondaryText} />
+            <Feather name="map" size={40} color={theme.secondaryText} />
             <ThemedText style={[styles.emptyText, { color: theme.secondaryText }]}>
               Enter a Texas city name or ZIP code to search
             </ThemedText>

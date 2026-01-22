@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import AppIcon from "@/components/AppIcon";
+import { Feather } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { ThemedText } from "./ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -28,7 +28,7 @@ export function OfflineBanner({
         { backgroundColor: theme.warning + "E6" },
       ]}
     >
-      <AppIcon name="wifi-off" size={16} color="#000" />
+      <Feather name="wifi-off" size={16} color="#000" />
       <ThemedText style={styles.text}>{message}</ThemedText>
     </Animated.View>
   );

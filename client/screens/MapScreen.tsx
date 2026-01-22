@@ -15,7 +15,7 @@ import Animated, {
   SlideInDown,
   SlideOutDown,
 } from "react-native-reanimated";
-import AppIcon from "@/components/AppIcon";
+import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { OverlayToggle } from "@/components/OverlayToggle";
@@ -1456,7 +1456,7 @@ export default function MapScreen() {
           onPressOut={handleLayerButtonPressOut}
           style={styles.layerButtonInner}
         >
-          <AppIcon
+          <Feather
             name="layers"
             size={20}
             color={showLayerPanel ? theme.primary : theme.text}
@@ -1490,7 +1490,7 @@ export default function MapScreen() {
           {drawLoading ? (
             <ActivityIndicator size="small" color={theme.primary} />
           ) : (
-            <AppIcon
+            <Feather
               name="edit-3"
               size={20}
               color={drawModeActive ? '#FFFFFF' : theme.text}
@@ -1515,7 +1515,7 @@ export default function MapScreen() {
             onPress={handleClearDrawing}
             style={styles.layerButtonInner}
           >
-            <AppIcon name="trash-2" size={20} color={theme.secondaryText} />
+            <Feather name="trash-2" size={20} color={theme.secondaryText} />
           </Pressable>
         </View>
       ) : null}
@@ -1539,7 +1539,7 @@ export default function MapScreen() {
           {locationLoading ? (
             <ActivityIndicator size="small" color={theme.primary} />
           ) : (
-            <AppIcon
+            <Feather
               name="navigation"
               size={20}
               color={hasUserLocation ? '#FFFFFF' : theme.text}

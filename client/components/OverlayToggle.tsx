@@ -7,7 +7,7 @@ import Animated, {
   interpolateColor,
   WithSpringConfig,
 } from "react-native-reanimated";
-import AppIcon from "@/components/AppIcon";
+import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
@@ -75,7 +75,7 @@ export function OverlayToggle({
         </ThemedText>
       </View>
       {isActive ? (
-        <AppIcon name="check" size={16} color={theme.text} />
+        <Feather name="check" size={16} color={theme.text} />
       ) : null}
     </AnimatedPressable>
   );

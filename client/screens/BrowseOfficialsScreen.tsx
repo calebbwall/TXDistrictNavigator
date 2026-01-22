@@ -14,7 +14,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import AppIcon from "@/components/AppIcon";
+import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { OfficialCard } from "@/components/OfficialCard";
 import { ThemedText } from "@/components/ThemedText";
@@ -379,7 +379,7 @@ export default function BrowseOfficialsScreen() {
             { backgroundColor: theme.inputBackground, borderColor: theme.border },
           ]}
         >
-          <AppIcon name="search" size={18} color={theme.secondaryText} />
+          <Feather name="search" size={18} color={theme.secondaryText} />
           <TextInput
             style={[styles.searchInput, { color: theme.text }]}
             placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
@@ -390,7 +390,7 @@ export default function BrowseOfficialsScreen() {
           />
           {searchText.length > 0 ? (
             <Pressable onPress={() => setSearchText("")}>
-              <AppIcon name="x" size={18} color={theme.secondaryText} />
+              <Feather name="x" size={18} color={theme.secondaryText} />
             </Pressable>
           ) : null}
         </View>
@@ -401,14 +401,14 @@ export default function BrowseOfficialsScreen() {
             { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
           ]}
         >
-          <AppIcon name="map-pin" size={20} color="#FFFFFF" />
+          <Feather name="map-pin" size={20} color="#FFFFFF" />
         </Pressable>
       </View>
 
       {/* 4. Place label (if searching by location) */}
       {placeLabel ? (
         <View style={styles.placeLabelContainer}>
-          <AppIcon name="map-pin" size={14} color={theme.primary} />
+          <Feather name="map-pin" size={14} color={theme.primary} />
           <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
             {placeLabel.name}
           </ThemedText>
