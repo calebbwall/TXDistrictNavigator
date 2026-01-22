@@ -1,11 +1,11 @@
-import React from "react";
+import React, { useEffect, useCallback } from "react";
 import { StyleSheet, View, ActivityIndicator } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
 import { Feather } from "@expo/vector-icons";
 
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -14,12 +14,32 @@ import { queryClient } from "@/lib/query-client";
 import RootStackNavigator from "@/navigation/RootStackNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
-export default function App() {
-  const [fontsLoaded] = useFonts({
-    ...Feather.font,
-  });
+SplashScreen.preventAutoHideAsync();
 
-  if (!fontsLoaded) {
+export default function App() {
+  const [appIsReady, setAppIsReady] = React.useState(false);
+
+  useEffect(() => {
+    async function prepare() {
+      try {
+        await Feather.loadFont();
+      } catch (e) {
+        console.warn("Font loading error:", e);
+      } finally {
+        setAppIsReady(true);
+      }
+    }
+
+    prepare();
+  }, []);
+
+  const onLayoutRootView = useCallback(async () => {
+    if (appIsReady) {
+      await SplashScreen.hideAsync();
+    }
+  }, [appIsReady]);
+
+  if (!appIsReady) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#0047BB" />
@@ -31,7 +51,7 @@ export default function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
-          <GestureHandlerRootView style={styles.root}>
+          <GestureHandlerRootView style={styles.root} onLayout={onLayoutRootView}>
             <KeyboardProvider>
               <NavigationContainer>
                 <RootStackNavigator />
