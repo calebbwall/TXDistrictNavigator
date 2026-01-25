@@ -1,0 +1,94 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Improve the OFFICIAL SEARCH UX and matching logic so results appear earlier, are more relevant, and don’t require full exact spelling.
+
+Current behavior (problem):
+- The search works, but it often doesn’t show the person I’m typing until I finish the full spelling of their name.
+- Mid-typing results are not intuitive (irrelevant people appear).
+- I want better partial matching, smarter ranking, and smoother UX while keeping the app fast.
+
+Scope:
+- This prompt is primarily CLIENT-side. Only add server changes if the current search is server-driven and needs better query/ranking.
+- Do NOT touch maps/draw tools/committees/refresh logic.
+- Keep existing UI layout mostly the same; focus on search behavior and result relevance.
+
+Acceptance criteria:
+1) As I type a name, relevant matches appear within the first few characters (e.g., “Dan” should show “Dan Patrick”, etc.).
+2) Partial matching works across:
+   - first name
+   - last name
+   - “Last, First”
+   - suffixes (Jr, Sr, II, III) should not block matches
+   - nicknames are optional, not required
+3) Ranking makes sense:
+   - Prefix matches rank highest (starts-with)
+   - Then substring matches
+   - Then multi-token matches (e.g., “pat dan” finds Dan Patrick)
+4) Typing should not feel laggy:
+   - Debounce search input (e.g., 150–250ms)
+   - Don’t re-run heavy filters on every keystroke without debounce
+5) The search results list should never show “random” matches that don’t share meaningful similarity with the typed query.
+6) If there are no matches, show a clear “No results” state.
+
+Implementation requirements:
+
+A) Normalize searchable fields
+- For each official, create a precomputed “searchKey” (in-memory list or derived field) that includes:
+  - fullName (original)
+  - normalizedFullName (lowercase, remove punctuation)
+  - “first last”
+  - “last first”
+  - district label (optional, if you want “senate 2” to work)
+  - party (optional)
+- Normalization rules:
+  - lowercase
+  - remove punctuation (.,'-)
+  - collapse whitespace
+  - remove common suffix tokens: jr, sr, ii, iii, iv
+
+B) Query parsing
+- Take user query and normalize with same rules.
+- Split into tokens by space.
+- Support multi-token matches:
+  - All tokens must be present somewhere in the candidate’s searchKey
+
+C) Scoring + ranking (important)
+Implement a deterministic scoring function such as:
+- +100 if candidate normalized name starts with query (prefix match)
+- +70 if any token matches start-of-word (e.g., “pat” matches “Patrick”)
+- +40 if candidate contains query substring
+- +25 per matched query token (multi-token)
+- -penalty for very late substring matches (optional)
+Sort by:
+1) score desc
+2) then lastName asc (or stable tie-break)
+
+Ensure candidates with score 0 are excluded.
+
+D) Performance
+- Debounce input 150–250ms
+- Limit results displayed (e.g., top 20)
+- If dataset is large, consider:
+  - building the precomputed search index once when officials list loads
+  - using memoization (useMemo) so filtering doesn’t re-run unnecessarily
+
+E) UI improvements (minimal)
+- Highlight matched portion in results (optional)
+- Show chamber + district in result subtitle (helps disambiguate)
+- If user types quickly, avoid flicker by keeping previous results until new results computed.
+
+Where to implement (search and confirm exact file names):
+- The screen/component that renders the search bar and official list (likely Browse screen)
+- Any existing filtering function currently used for search
+- If search uses server queries, update server endpoint to accept a query string and return ranked results using the same scoring rules.
+
+Testing checklist:
+1) Type partial first name: “dan” should show “Dan Patrick” quickly.
+2) Type partial last name: “pat” should show “Patrick” names quickly.
+3) Type “patrick dan” or “dan pat” should still find Dan Patrick.
+4) Type with punctuation: “O’Rour” should match “O’Rourke” (if present).
+5) Confirm irrelevant names do not appear mid-typing.
+6) Confirm no lag on Android Expo Go.
+
+After changes:
+- List all files changed.
+- Describe the normalization rules and scoring approach used.
+- Explain how debounce/memoization was applied.
