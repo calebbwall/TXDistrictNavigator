@@ -75,7 +75,14 @@ function fillVacancies(
   
   return result;
 }
-import { maybeRunScheduledRefresh } from "./jobs/refreshOfficials";
+import { 
+  maybeRunScheduledRefresh, 
+  checkAndRefreshIfChanged, 
+  getAllRefreshStates,
+  getIsRefreshing,
+  type SmartRefreshResult 
+} from "./jobs/refreshOfficials";
+import { startOfficialsRefreshScheduler, getSchedulerStatus } from "./jobs/scheduler";
 import { lookupPlace, lookupPlaceCandidates, getCacheStats, type PlaceResult } from "./geonames";
 
 type DistrictType = "tx_house" | "tx_senate" | "us_congress";
@@ -110,6 +117,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   maybeRunScheduledRefresh().catch(err => {
     console.error("[Startup] Failed to check scheduled refresh:", err);
   });
+
+  startOfficialsRefreshScheduler();
 
   app.get("/api/geojson/tx_house", (_req, res) => {
     res.json(txHouseGeoJSON);
@@ -472,6 +481,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("[API] Error during manual refresh:", err);
       res.status(500).json({ error: "Refresh failed" });
+    }
+  });
+
+  app.post("/admin/refresh/officials", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(503).json({ 
+          error: "Admin refresh not configured",
+          message: "Set ADMIN_REFRESH_TOKEN environment variable" 
+        });
+      }
+      
+      if (!providedToken || providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid or missing admin token" });
+      }
+      
+      if (getIsRefreshing()) {
+        return res.status(409).json({ 
+          error: "Refresh in progress",
+          message: "A refresh is already running. Try again later." 
+        });
+      }
+      
+      const force = req.query.force === "true";
+      
+      console.log(`[Admin] Manual refresh triggered (force=${force})`);
+      
+      const result = await checkAndRefreshIfChanged(force);
+      
+      res.json({
+        success: true,
+        force,
+        sourcesChecked: result.sourcesChecked,
+        sourcesChanged: result.sourcesChanged,
+        sourcesRefreshed: result.sourcesRefreshed,
+        errors: result.errors,
+        durationMs: result.durationMs,
+      });
+      
+    } catch (err) {
+      console.error("[Admin] Refresh error:", err);
+      res.status(500).json({ error: "Refresh failed", details: String(err) });
+    }
+  });
+
+  app.get("/admin/refresh/status", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+      
+      if (!providedToken || providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid or missing admin token" });
+      }
+      
+      const refreshStates = await getAllRefreshStates();
+      const schedulerStatus = getSchedulerStatus();
+      const isRefreshing = getIsRefreshing();
+      
+      res.json({
+        isRefreshing,
+        scheduler: schedulerStatus,
+        sources: refreshStates,
+      });
+      
+    } catch (err) {
+      console.error("[Admin] Status error:", err);
+      res.status(500).json({ error: "Failed to get status" });
     }
   });
 
