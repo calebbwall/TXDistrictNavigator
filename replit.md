@@ -88,6 +88,9 @@ The refresh system uses SHA256 fingerprints to detect changes in upstream data s
 - Files stored in: `server/data/*.geojson`
 
 ### Recent Changes
+- 2026-01-25: Improved search UX with client-side partial name matching and intelligent ranking
+- 2026-01-25: Added officialSearch.ts utility with normalization, scoring algorithm, and isNameSearch() detection
+- 2026-01-25: Browse screen now detects name vs place searches - names filter client-side, places/ZIPs use GeoNames
 - 2026-01-25: Added Personal Address Dots feature - displays geocoded addresses on map with emphasis for active officials
 - 2026-01-25: Added Committees feature with browsing and official profile integration
 - 2026-01-25: Created committees and committee_memberships tables with Drizzle ORM
