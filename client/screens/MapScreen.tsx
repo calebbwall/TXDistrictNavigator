@@ -1117,6 +1117,9 @@ export default function MapScreen() {
         hits,
         officials,
       });
+      setShowResultsPanel(true);
+      // For tap-to-search, no stored polygon needed
+      setStoredPolygon(null);
     },
     [fetchOfficialsByDistricts]
   );

@@ -1,0 +1,75 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Fix a regression: the MAP “tap to search” feature no longer works.
+
+Problem:
+- The “tap to search” button/tool on the map is enabled.
+- Overlays (district boundaries) are selected/visible.
+- When I tap inside districts, nothing happens (no official card, no results panel, no selection highlight).
+- This used to work, so treat this as a regression likely caused by recent draw-to-search / tool-state changes.
+
+Goal / Acceptance criteria:
+1) With overlays ON and “Tap to search” mode active, tapping inside a district selects that district and shows the correct official card/results (same behavior as before the regression).
+2) The selected district is highlighted (if that existed before).
+3) Draw-to-search still works and does not break tap-to-search.
+4) Pan/zoom still works when no tool is active.
+5) Works on iOS and Android Expo Go.
+
+Likely root causes to investigate (do this):
+- Recent changes to tool state (draw mode auto-off / activeTool) may be preventing the tap handler from running.
+- The map’s `onPress` handler may be:
+  - not attached,
+  - overridden,
+  - gated behind the wrong condition,
+  - or returning early because of stale state.
+- A transparent overlay/view (results panel, polygon layer, etc.) might be intercepting touches.
+- The district hit-testing logic (point-in-polygon) might not be called or might be failing due to coordinate format changes.
+
+Implementation requirements:
+A) Restore tap handler flow
+1) Locate the Map screen (likely `client/screens/MapScreen.tsx`) and find:
+   - the “tap to search” toggle/button logic
+   - the MapView `onPress` / press handler
+2) Ensure that when tap-to-search mode is active:
+   - MapView receives tap events (`onPress` fires)
+   - tap events call the district hit-test function
+   - when a district match is found, the selected district + official is set and the card/results panel opens
+
+B) Ensure touches aren’t blocked
+- Check any overlays/components on top of the map (results panel, floating buttons, polygon rendering, etc.).
+- Ensure they don’t block taps unintentionally:
+  - Use `pointerEvents="box-none"` for wrapper views where appropriate
+  - Ensure panels only intercept touches inside their bounds, not over the map
+
+C) Verify hit-testing still works
+- Find the function that maps a tapped coordinate to a district polygon (point-in-polygon).
+- Confirm coordinate ordering is correct (lat/lng vs lng/lat).
+- Add minimal debug logs (temporarily) to confirm:
+  - tap handler fires
+  - tap-to-search mode is true
+  - tapped coordinate is correct
+  - hit-test returns a district id/number
+  - the selected official is loaded/shown
+
+D) Keep tool interactions consistent
+- Tap-to-search and draw-to-search must be mutually exclusive:
+  - If tap-to-search is active, drawing must be inactive.
+  - If drawing is active, tap-to-search should be inactive.
+- But when neither tool is active, map should pan/zoom normally.
+
+Testing checklist:
+1) Turn overlays ON.
+2) Activate Tap-to-search tool.
+3) Tap inside a known district:
+   - district highlights
+   - official card opens
+4) Deactivate Tap-to-search:
+   - map pans/zooms normally
+5) Activate Draw tool:
+   - can draw polygon
+   - after drawing, draw tool auto-deselects (if previously implemented)
+6) Re-activate Tap-to-search after drawing:
+   - tapping districts works again
+
+After changes:
+- List all files changed.
+- Explain the root cause you found (why taps weren’t selecting districts).
+- Confirm the fix on Android Expo Go and iOS.
