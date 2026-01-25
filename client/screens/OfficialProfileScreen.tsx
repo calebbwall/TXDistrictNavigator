@@ -10,7 +10,18 @@ import {
   Alert,
   ScrollView,
   LayoutChangeEvent,
+  ActionSheetIOS,
 } from "react-native";
+import {
+  isValidUSPhone,
+  formatPhone,
+  getPhoneDigits,
+  isLikelyAddress,
+  formatDateFriendly,
+  toISODateString,
+  parseISODate,
+  getGoogleMapsUrl,
+} from "@/utils/validation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useRoute, useNavigation, RouteProp, useFocusEffect } from "@react-navigation/native";
@@ -123,10 +134,13 @@ interface ContactRowProps {
   label: string;
   value: string;
   onPress?: () => void;
+  validationHint?: string;
+  isPhone?: boolean;
 }
 
-function ContactRow({ icon, label, value, onPress }: ContactRowProps) {
+function ContactRow({ icon, label, value, onPress, validationHint, isPhone }: ContactRowProps) {
   const { theme } = useTheme();
+  const displayValue = isPhone && value ? formatPhone(value) : value;
 
   return (
     <Pressable
@@ -145,8 +159,13 @@ function ContactRow({ icon, label, value, onPress }: ContactRowProps) {
           {label}
         </ThemedText>
         <ThemedText type="body" style={onPress ? { color: theme.link } : undefined}>
-          {value}
+          {displayValue}
         </ThemedText>
+        {validationHint ? (
+          <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+            {validationHint}
+          </ThemedText>
+        ) : null}
       </View>
       {onPress ? (
         <Feather name="external-link" size={16} color={theme.secondaryText} />
@@ -171,7 +190,9 @@ export default function OfficialProfileScreen() {
 
   const district = official ? getDistrictById(official.districtId) : undefined;
 
-  const [activeTab, setActiveTab] = useState<TabType>(initialSection === "privateNotes" ? "private" : "public");
+  const [activeTab, setActiveTab] = useState<TabType>(initialSection === "privateNotes" ? "private" : "private");
+  const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
+  const [showAnniversaryPicker, setShowAnniversaryPicker] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [privateNotes, setPrivateNotes] = useState<PrivateNotes>({});
@@ -305,17 +326,40 @@ export default function OfficialProfileScreen() {
   }, [official, privateNotes]);
 
   const handlePhonePress = useCallback((phone: string) => {
-    const cleaned = phone.replace(/[^0-9]/g, "");
-    Linking.openURL(`tel:${cleaned}`);
+    if (!isValidUSPhone(phone)) return;
+    const digits = getPhoneDigits(phone);
+    
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ["Cancel", "Call", "Send Text"],
+          cancelButtonIndex: 0,
+          title: formatPhone(phone),
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            Linking.openURL(`tel:${digits}`);
+          } else if (buttonIndex === 2) {
+            Linking.openURL(`sms:${digits}`);
+          }
+        }
+      );
+    } else {
+      Alert.alert(
+        formatPhone(phone),
+        "Choose an action",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Call", onPress: () => Linking.openURL(`tel:${digits}`) },
+          { text: "Send Text", onPress: () => Linking.openURL(`sms:${digits}`) },
+        ]
+      );
+    }
   }, []);
 
   const handleAddressPress = useCallback((address: string) => {
-    const encoded = encodeURIComponent(address);
-    const url = Platform.select({
-      ios: `maps:?q=${encoded}`,
-      android: `geo:0,0?q=${encoded}`,
-      default: `https://maps.google.com/?q=${encoded}`,
-    });
+    if (!isLikelyAddress(address)) return;
+    const url = getGoogleMapsUrl(address);
     Linking.openURL(url);
   }, []);
 
@@ -516,15 +560,15 @@ export default function OfficialProfileScreen() {
 
         <View style={styles.tabContainer}>
           <TabButton
-            label="Public Info"
-            isActive={activeTab === "public"}
-            onPress={() => setActiveTab("public")}
-          />
-          <View style={{ width: Spacing.sm }} />
-          <TabButton
             label="Private Notes"
             isActive={activeTab === "private"}
             onPress={() => setActiveTab("private")}
+          />
+          <View style={{ width: Spacing.sm }} />
+          <TabButton
+            label="Public Info"
+            isActive={activeTab === "public"}
+            onPress={() => setActiveTab("public")}
           />
         </View>
 
@@ -538,25 +582,32 @@ export default function OfficialProfileScreen() {
               <ContactRow icon="briefcase" label="Occupation" value={official.occupation} />
             </View>
 
-            {official.offices.map((office) => (
-              <View key={office.id} style={styles.section}>
-                <ThemedText type="h3" style={styles.sectionTitle}>
-                  {office.officeKind === "capitol" ? "Capitol Office" : "District Office"}
-                </ThemedText>
-                <ContactRow
-                  icon="map"
-                  label="Address"
-                  value={office.address}
-                  onPress={() => handleAddressPress(office.address)}
-                />
-                <ContactRow
-                  icon="phone"
-                  label="Phone"
-                  value={office.phone}
-                  onPress={() => handlePhonePress(office.phone)}
-                />
-              </View>
-            ))}
+            {official.offices.map((office) => {
+              const phoneValid = isValidUSPhone(office.phone);
+              const addressValid = isLikelyAddress(office.address);
+              return (
+                <View key={office.id} style={styles.section}>
+                  <ThemedText type="h3" style={styles.sectionTitle}>
+                    {office.officeKind === "capitol" ? "Capitol Office" : "District Office"}
+                  </ThemedText>
+                  <ContactRow
+                    icon="map"
+                    label="Address"
+                    value={office.address}
+                    onPress={addressValid ? () => handleAddressPress(office.address) : undefined}
+                    validationHint={!addressValid && office.address ? "Address format not recognized" : undefined}
+                  />
+                  <ContactRow
+                    icon="phone"
+                    label="Phone"
+                    value={office.phone}
+                    isPhone
+                    onPress={phoneValid ? () => handlePhonePress(office.phone) : undefined}
+                    validationHint={!phoneValid && office.phone ? "Invalid phone number" : undefined}
+                  />
+                </View>
+              );
+            })}
 
             {official.staff.length > 0 ? (
               <View style={styles.section}>
@@ -708,21 +759,74 @@ export default function OfficialProfileScreen() {
                   Birthday
                 </ThemedText>
                 {isEditing ? (
-                  <TextInput
-                    style={[
-                      styles.noteInput,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
-                    ]}
-                    value={privateNotes.birthday || ""}
-                    onChangeText={(text) =>
-                      setPrivateNotes({ ...privateNotes, birthday: text })
-                    }
-                    placeholder="Add birthday..."
-                    placeholderTextColor={theme.secondaryText}
-                  />
+                  <View>
+                    <Pressable
+                      onPress={() => setShowBirthdayPicker(!showBirthdayPicker)}
+                      style={[
+                        styles.noteInput,
+                        styles.datePickerButton,
+                        { backgroundColor: theme.inputBackground },
+                      ]}
+                    >
+                      <ThemedText type="body" style={{ color: privateNotes.birthday ? theme.text : theme.secondaryText }}>
+                        {privateNotes.birthday ? formatDateFriendly(privateNotes.birthday) : "Select birthday..."}
+                      </ThemedText>
+                      <Feather name="calendar" size={18} color={theme.secondaryText} />
+                    </Pressable>
+                    {showBirthdayPicker ? (
+                      <View style={[styles.inlineDatePicker, { backgroundColor: theme.cardBackground }]}>
+                        {Platform.OS === "web" ? (
+                          <input
+                            type="date"
+                            value={privateNotes.birthday || ""}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                              setPrivateNotes({ ...privateNotes, birthday: e.target.value });
+                              setShowBirthdayPicker(false);
+                            }}
+                            style={{
+                              padding: 12,
+                              fontSize: 16,
+                              borderRadius: 8,
+                              border: `1px solid ${theme.border}`,
+                              backgroundColor: theme.inputBackground,
+                              color: theme.text,
+                              width: "100%",
+                            }}
+                          />
+                        ) : (
+                          <View>
+                            <TextInput
+                              style={[styles.noteInput, { backgroundColor: theme.inputBackground, color: theme.text }]}
+                              value={privateNotes.birthday || ""}
+                              onChangeText={(text) => setPrivateNotes({ ...privateNotes, birthday: text })}
+                              placeholder="YYYY-MM-DD"
+                              placeholderTextColor={theme.secondaryText}
+                            />
+                            <Pressable
+                              onPress={() => setShowBirthdayPicker(false)}
+                              style={[styles.dateConfirmButton, { backgroundColor: theme.primary }]}
+                            >
+                              <ThemedText type="caption" style={{ color: "#FFFFFF" }}>Done</ThemedText>
+                            </Pressable>
+                          </View>
+                        )}
+                        {privateNotes.birthday ? (
+                          <Pressable
+                            onPress={() => {
+                              setPrivateNotes({ ...privateNotes, birthday: "" });
+                              setShowBirthdayPicker(false);
+                            }}
+                            style={{ marginTop: Spacing.xs, alignItems: "center" }}
+                          >
+                            <ThemedText type="caption" style={{ color: theme.error }}>Clear</ThemedText>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
                 ) : (
                   <ThemedText type="body">
-                    {privateNotes.birthday || "Not set"}
+                    {privateNotes.birthday ? formatDateFriendly(privateNotes.birthday) : "Not set"}
                   </ThemedText>
                 )}
               </View>
@@ -732,21 +836,74 @@ export default function OfficialProfileScreen() {
                   Anniversary
                 </ThemedText>
                 {isEditing ? (
-                  <TextInput
-                    style={[
-                      styles.noteInput,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
-                    ]}
-                    value={privateNotes.anniversary || ""}
-                    onChangeText={(text) =>
-                      setPrivateNotes({ ...privateNotes, anniversary: text })
-                    }
-                    placeholder="Add anniversary..."
-                    placeholderTextColor={theme.secondaryText}
-                  />
+                  <View>
+                    <Pressable
+                      onPress={() => setShowAnniversaryPicker(!showAnniversaryPicker)}
+                      style={[
+                        styles.noteInput,
+                        styles.datePickerButton,
+                        { backgroundColor: theme.inputBackground },
+                      ]}
+                    >
+                      <ThemedText type="body" style={{ color: privateNotes.anniversary ? theme.text : theme.secondaryText }}>
+                        {privateNotes.anniversary ? formatDateFriendly(privateNotes.anniversary) : "Select anniversary..."}
+                      </ThemedText>
+                      <Feather name="calendar" size={18} color={theme.secondaryText} />
+                    </Pressable>
+                    {showAnniversaryPicker ? (
+                      <View style={[styles.inlineDatePicker, { backgroundColor: theme.cardBackground }]}>
+                        {Platform.OS === "web" ? (
+                          <input
+                            type="date"
+                            value={privateNotes.anniversary || ""}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                              setPrivateNotes({ ...privateNotes, anniversary: e.target.value });
+                              setShowAnniversaryPicker(false);
+                            }}
+                            style={{
+                              padding: 12,
+                              fontSize: 16,
+                              borderRadius: 8,
+                              border: `1px solid ${theme.border}`,
+                              backgroundColor: theme.inputBackground,
+                              color: theme.text,
+                              width: "100%",
+                            }}
+                          />
+                        ) : (
+                          <View>
+                            <TextInput
+                              style={[styles.noteInput, { backgroundColor: theme.inputBackground, color: theme.text }]}
+                              value={privateNotes.anniversary || ""}
+                              onChangeText={(text) => setPrivateNotes({ ...privateNotes, anniversary: text })}
+                              placeholder="YYYY-MM-DD"
+                              placeholderTextColor={theme.secondaryText}
+                            />
+                            <Pressable
+                              onPress={() => setShowAnniversaryPicker(false)}
+                              style={[styles.dateConfirmButton, { backgroundColor: theme.primary }]}
+                            >
+                              <ThemedText type="caption" style={{ color: "#FFFFFF" }}>Done</ThemedText>
+                            </Pressable>
+                          </View>
+                        )}
+                        {privateNotes.anniversary ? (
+                          <Pressable
+                            onPress={() => {
+                              setPrivateNotes({ ...privateNotes, anniversary: "" });
+                              setShowAnniversaryPicker(false);
+                            }}
+                            style={{ marginTop: Spacing.xs, alignItems: "center" }}
+                          >
+                            <ThemedText type="caption" style={{ color: theme.error }}>Clear</ThemedText>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
                 ) : (
                   <ThemedText type="body">
-                    {privateNotes.anniversary || "Not set"}
+                    {privateNotes.anniversary ? formatDateFriendly(privateNotes.anniversary) : "Not set"}
                   </ThemedText>
                 )}
               </View>
@@ -1261,5 +1418,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     marginTop: Spacing.sm,
+  },
+  datePickerButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  inlineDatePicker: {
+    marginTop: Spacing.xs,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+  },
+  dateConfirmButton: {
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    alignItems: "center",
   },
 });

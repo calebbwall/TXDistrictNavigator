@@ -1,0 +1,65 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Implement official card UI + data validation improvements ONLY (client-side), plus the requested tab order change.
+
+Do NOT touch the weekly refresh system, committees, geojson refresh, or any server ingestion logic in this prompt. This prompt is ONLY about the official card UI behavior and validation.
+
+Goals / Acceptance criteria:
+1) On each official’s detail/card screen, the tab order is:
+   - PRIVATE tab first
+   - PUBLIC tab second
+2) Add data validation + “tap to action” UX for key public/private fields:
+   a) Phone number fields:
+      - Validate as US 10-digit phone numbers (digits only after cleaning)
+      - Display formatted phone number (e.g., (817) 555-1234)
+      - If valid, tapping the phone shows actions:
+        - Call (tel:)
+        - Text (sms:)
+      - If invalid/empty, disable tap action and show subtle inline validation message
+   b) Address fields:
+      - Basic address validation (non-empty; contains street number and street name OR contains comma + state)
+      - If valid, tapping opens navigation/maps:
+        - Prefer Google Maps URL: https://www.google.com/maps/search/?api=1&query=<encoded address>
+      - If invalid/empty, disable tap and show subtle inline message
+   c) Birthday and Anniversary fields:
+      - Must be date inputs (use a date picker)
+      - Store in a consistent ISO format (YYYY-MM-DD) in the private notes store
+      - Display in a friendly format (e.g., Jan 25, 2026)
+   d) Other helpful validation:
+      - Email format validation (if email exists)
+      - Website URL normalization (ensure https://)
+      - ZIP code should be 5 digits if present
+3) Android and iOS must both work (no platform-specific crashes).
+
+Where to implement (likely files, verify by searching):
+- `client/components/OfficialCard.tsx` (or whichever component renders the official detail view)
+- `client/screens/*` where the detail view/tab layout is defined
+- Any reusable input components currently used for editing private fields
+
+Implementation details:
+- Use React Native `Linking` for actions:
+  - Call: `Linking.openURL('tel:<digits>')`
+  - Text: `Linking.openURL('sms:<digits>')`
+  - Maps: Google Maps search URL as above
+- Add small helper utilities in a new file if needed, e.g.:
+  - `client/utils/validation.ts` with:
+    - `cleanPhone()`, `isValidUSPhone()`, `formatPhone()`
+    - `isLikelyAddress()`
+    - `isValidEmail()`
+    - `normalizeUrl()`
+- Keep UI changes minimal and consistent with existing styling.
+- Don’t redesign the entire card. Just add validation and tap behavior cleanly.
+
+Steps to follow:
+1) Find where the official detail card tabs are defined and switch the order so Private is first.
+2) Identify where phone/address/birthday/anniversary fields are displayed and/or edited.
+3) Implement validation helpers.
+4) Wire up tap behaviors for phone + address when valid.
+5) Add date picker for birthday/anniversary.
+6) Ensure invalid values do not crash the UI and show a small validation hint.
+
+After changes:
+- List exactly which files you changed.
+- Summarize what validation rules you implemented.
+- Explain how to manually test on Android Expo Go:
+  - tapping a phone number should offer call/text
+  - tapping an address should open maps
+  - birthday/anniversary should open date picker and persist
