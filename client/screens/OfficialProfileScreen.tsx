@@ -818,7 +818,7 @@ export default function OfficialProfileScreen() {
                             }}
                             style={{ marginTop: Spacing.xs, alignItems: "center" }}
                           >
-                            <ThemedText type="caption" style={{ color: theme.error }}>Clear</ThemedText>
+                            <ThemedText type="caption" style={{ color: theme.warning }}>Clear</ThemedText>
                           </Pressable>
                         ) : null}
                       </View>
@@ -895,7 +895,7 @@ export default function OfficialProfileScreen() {
                             }}
                             style={{ marginTop: Spacing.xs, alignItems: "center" }}
                           >
-                            <ThemedText type="caption" style={{ color: theme.error }}>Clear</ThemedText>
+                            <ThemedText type="caption" style={{ color: theme.warning }}>Clear</ThemedText>
                           </Pressable>
                         ) : null}
                       </View>
