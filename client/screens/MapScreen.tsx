@@ -974,6 +974,7 @@ export default function MapScreen() {
             // Check cache first
             const cached = cache[officialId];
             if (cached && cached.address === personalAddress) {
+              console.log('[MapScreen] Using cached coords for:', officialId, cached.lat, cached.lng);
               dots.push({ officialId, lat: cached.lat, lng: cached.lng });
               continue;
             }
@@ -981,14 +982,23 @@ export default function MapScreen() {
             // Rate limit: small delay between geocoding requests
             await new Promise(r => setTimeout(r, 200));
             
+            console.log('[MapScreen] Geocoding address:', personalAddress);
             const coords = await geocodeAddress(personalAddress);
+            console.log('[MapScreen] Geocode result:', coords);
             if (coords) {
               dots.push({ officialId, lat: coords.lat, lng: coords.lng });
               await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
+            } else {
+              // DEBUG: Show geocode failure
+              Alert.alert('Geocode Failed', `Could not geocode: ${personalAddress}`);
             }
           }
 
           console.log('[MapScreen] Loaded', dots.length, 'address dots');
+          // DEBUG: Show geocoding results
+          if (dots.length > 0) {
+            Alert.alert('Geocoding Complete', `Created ${dots.length} dots at: ${dots.map(d => `${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}`).join('\n')}`);
+          }
           setAddressDots(dots);
         } catch (error) {
           console.error('[MapScreen] Error loading address dots:', error);
