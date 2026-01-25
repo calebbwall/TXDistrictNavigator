@@ -20,18 +20,32 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
 // Source enum for officials
-export const sourceEnum = pgEnum("source_type", ["TX_HOUSE", "TX_SENATE", "US_HOUSE"]);
+export const sourceEnum = pgEnum("source_type", ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "OTHER_TX"]);
+
+// Persons table - stable identity for officials across position changes
+export const persons = pgTable("persons", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  fullNameCanonical: varchar("full_name_canonical", { length: 255 }).notNull(), // Normalized name for matching
+  fullNameDisplay: varchar("full_name_display", { length: 255 }).notNull(), // Display name
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 // Official public data - refreshable from authoritative sources
 export const officialPublic = pgTable("official_public", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  personId: varchar("person_id", { length: 255 })
+    .references(() => persons.id), // Links to stable person identity
   source: sourceEnum("source").notNull(),
   sourceMemberId: varchar("source_member_id", { length: 255 }).notNull(),
   chamber: varchar("chamber", { length: 50 }).notNull(),
   district: varchar("district", { length: 20 }).notNull(),
   fullName: varchar("full_name", { length: 255 }).notNull(),
+  roleTitle: varchar("role_title", { length: 255 }), // For OTHER_TX: Governor, Lt Governor, etc.
   party: varchar("party", { length: 10 }),
   photoUrl: text("photo_url"),
   capitolAddress: text("capitol_address"),
@@ -54,14 +68,15 @@ export const officialPublic = pgTable("official_public", {
 }));
 
 // Official private data - user-entered only, never touched by refresh
+// Now keyed by personId for continuity across position changes
 export const officialPrivate = pgTable("official_private", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  personId: varchar("person_id", { length: 255 })
+    .references(() => persons.id), // New: keyed by person for continuity
   officialPublicId: varchar("official_public_id", { length: 255 })
-    .notNull()
-    .unique()
-    .references(() => officialPublic.id),
+    .references(() => officialPublic.id), // Legacy: kept for backwards compatibility
   personalPhone: varchar("personal_phone", { length: 50 }),
   personalAddress: text("personal_address"),
   spouseName: varchar("spouse_name", { length: 255 }),
@@ -105,6 +120,8 @@ export const refreshJobLog = pgTable("refresh_job_log", {
 });
 
 // Types
+export type Person = typeof persons.$inferSelect;
+export type InsertPerson = typeof persons.$inferInsert;
 export type OfficialPublic = typeof officialPublic.$inferSelect;
 export type InsertOfficialPublic = typeof officialPublic.$inferInsert;
 export type OfficialPrivate = typeof officialPrivate.$inferSelect;
@@ -179,9 +196,29 @@ export type CommitteeRefreshState = typeof committeeRefreshState.$inferSelect;
 
 // Merged official type for API responses
 export interface MergedOfficial extends OfficialPublic {
-  private?: Omit<OfficialPrivate, 'id' | 'officialPublicId'> | null;
+  private?: Omit<OfficialPrivate, 'id' | 'officialPublicId' | 'personId'> | null;
   isVacant?: boolean;
+  person?: Person | null;
 }
+
+// Other Texas Officials role titles
+export const OTHER_TX_ROLES = [
+  "Governor",
+  "Lieutenant Governor",
+  "Attorney General",
+  "Comptroller of Public Accounts",
+  "Commissioner of Agriculture",
+  "Commissioner of the General Land Office",
+  "Railroad Commissioner",
+  "Chief Justice of the Texas Supreme Court",
+  "Justice of the Texas Supreme Court",
+  "Presiding Judge of the Texas Court of Criminal Appeals",
+  "Judge of the Texas Court of Criminal Appeals",
+  "Member of the Texas State Board of Education",
+  "Secretary of State",
+] as const;
+
+export type OtherTxRole = typeof OTHER_TX_ROLES[number];
 
 // Insert schemas for validation
 export const insertOfficialPublicSchema = createInsertSchema(officialPublic);

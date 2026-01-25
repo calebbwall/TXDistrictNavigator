@@ -1,0 +1,197 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Implement the “identity + continuity” system and the new “Other Texas Officials” + “Archived Officials” sections.
+
+This prompt covers ONLY items #10, #11, and #12:
+10) Add “Other Texas Officials” section with listed positions, with cards that mimic legislature cards.
+11) When an official moves to a new position, automatically carry forward ALL private notes from the old card to the new card.
+12) Add “Archived Officials” section: when an official is no longer in any public list and did NOT move to a new position, archive them while preserving private notes and allowing re-activation in the future.
+
+Do NOT work on committees, draw-to-search, tap-to-search, map dots, or geojson refresh in this prompt unless absolutely required to support #10–#12.
+
+========================================================
+HIGH-LEVEL APPROACH
+========================================================
+
+Introduce a stable person identity layer:
+- Add a new entity `person` (stable human identity)
+- All public offices/positions (TX House, TX Senate, US House TX, Other TX Officials) link to a personId
+- Private notes attach to personId (NOT to a specific office record)
+This allows private notes to follow the person when their office changes.
+
+========================================================
+ACCEPTANCE CRITERIA
+========================================================
+
+A) Other Texas Officials (Profile → Other Texas Officials)
+1) Add Profile section: “Other Texas Officials”.
+2) Include positions with cards like legislature cards:
+   - Governor
+   - Lieutenant Governor
+   - Attorney General
+   - Comptroller of Public Accounts
+   - Commissioner of Agriculture
+   - Commissioner of the General Land Office
+   - Railroad Commissioner
+   - Chief Justice of the Texas Supreme Court
+   - Justice of the Texas Supreme Court
+   - Presiding Judge of the Texas Court of Criminal Appeals
+   - Judge of the Texas Court of Criminal Appeals
+   - Member of the Texas State Board of Education
+   - Secretary of State
+3) Each entry opens an official card screen consistent with other officials:
+   - public info tab
+   - private notes tab
+   - district label behavior not required here (many won’t have districts)
+
+B) Private notes continuity across position changes
+4) If a person changes positions between refreshes (e.g., TX House → TX Senate, or Legislature → Other TX Officials, etc.), then:
+   - their private notes should automatically appear on the new position card
+   - nothing is lost
+   - no duplicated private note records for the same person
+5) Private notes should remain consistent even if the public record ID changes.
+
+C) Archived officials
+6) Add Profile section: “Archived Officials” below “Other Texas Officials”.
+7) If an official is no longer present in ANY active public lists (TX House, TX Senate, US House TX, Other TX Officials), then:
+   - If they moved into a new active position (same personId), do NOT archive.
+   - If they did NOT move into a new active position, mark their old office record inactive and show in Archived.
+8) Archived officials must retain private notes and be accessible in the UI.
+9) If an archived person later returns in a future refresh (new office record), auto-link to the same personId so private notes reappear.
+
+========================================================
+SERVER + DATABASE CHANGES (Drizzle)
+========================================================
+
+1) Add a new `persons` table:
+- id (PK)
+- fullNameCanonical (text)
+- createdAt
+- updatedAt
+
+2) Add `personId` to existing public officials table (the table holding TX_HOUSE / TX_SENATE / US_HOUSE public officials):
+- personId (FK persons.id, nullable initially)
+- active (boolean, default true)  // if not already present, add it
+
+3) Create a `private_notes` table keyed by personId (if private notes are currently keyed by officialPublicId):
+- id (PK)
+- personId (FK)
+- fields currently used in private notes (including personalPhone, personalAddress, engagement notes, etc.)
+- updatedAt
+
+Migration requirement:
+- If private notes currently key off officialPublicId, migrate them:
+  - Create person records for each existing official
+  - Set official.personId accordingly
+  - Move/convert private notes so they attach to personId
+
+4) Add “Other Texas Officials” into the same public officials system OR a parallel table, but MUST still link to personId:
+Preferred: store them in the same public officials table with a new Source enum/category, e.g. `OTHER_TX`, plus a `roleTitle` field for the position name.
+
+Add fields for “Other TX Officials” (minimal viable):
+- source: OTHER_TX (or more granular)
+- roleTitle: one of the listed roles (e.g., “Governor”)
+- fullName, party (if applicable), photoUrl, phone, address, website, email
+- active boolean
+- personId FK
+
+5) Implement “archiving”:
+- Any official office record that is no longer present in the latest refresh for that source should be set `active=false` UNLESS the same personId exists in any currently-active office record.
+
+========================================================
+IDENTITY MATCHING / LINKING LOGIC
+========================================================
+
+We need deterministic linking from a refreshed office record to a personId.
+
+Implement `resolvePersonId()` with a priority match strategy:
+1) If the refreshed data has a stable unique identifier (member id) and we have a mapping stored, use it.
+2) Otherwise use normalized name matching (deterministic):
+   - normalize full name: lowercase, strip punctuation, collapse spaces, remove common suffixes (jr, sr, iii)
+   - match exact normalized name first
+3) If multiple matches exist (ambiguous), log and choose:
+   - if one match is currently active in a related role, prefer that
+   - else do NOT auto-merge; create a new person and log a warning
+
+IMPORTANT:
+- Do not “guess” merges aggressively.
+- Preserve notes by avoiding incorrect merges.
+- Log any ambiguous cases.
+
+========================================================
+REFRESH / DATA INGESTION CHANGES
+========================================================
+
+1) During officials refresh (existing job):
+- After public officials are upserted, ensure each has a personId via resolvePersonId()
+- Mark officials not in the latest refresh as inactive (active=false)
+- Then apply archive logic:
+  - If an inactive office record’s personId has NO active office records, it is archived (inactive already)
+  - If the personId has any active office record, keep the old inactive office record but do NOT show it in Archived UI (or mark it “historical”)
+
+2) Implement “Other Texas Officials” ingestion:
+- Create `server/jobs/refreshOtherTexasOfficials.ts`
+- Source data can be a manually maintained JSON list for now (stored in repo) if scraping is too complex in this prompt.
+  - The important part is the identity + continuity system, not perfect ingestion.
+- Ensure those records upsert into public officials table with roleTitle and personId.
+- Hook this into the existing weekly refresh scheduler + admin endpoint `POST /admin/refresh/other-tx-officials` (protected).
+(If a single combined endpoint is easier: `POST /admin/refresh/all` is OK, but keep separate endpoints if already patterned.)
+
+========================================================
+API CHANGES
+========================================================
+
+Add/adjust endpoints to support the client:
+- `GET /api/other-tx-officials` -> returns active OTHER_TX officials grouped by roleTitle
+- `GET /api/archived-officials` -> returns inactive office records whose personId has no active office record
+- Update existing official detail endpoint(s) so the client can load:
+  - public official record
+  - private notes by personId
+(You can keep the client calling by officialPublicId, but the server should internally join to personId for private notes.)
+
+========================================================
+CLIENT CHANGES
+========================================================
+
+1) Profile tab:
+- Add “Other Texas Officials” section:
+  - list the roles
+  - selecting a role shows the current active official(s) in that role (some roles have multiple seats, e.g., Railroad Commissioners, Supreme Court Justices, CCA Judges, SBOE members)
+  - selecting an official opens their card
+
+2) Add “Archived Officials” section below:
+- shows archived officials list
+- selecting opens their card (read/write private notes still allowed)
+
+3) Official card screen:
+- No major redesign required
+- Ensure private notes load/save against personId (even if routed by officialPublicId)
+- Confirm that when the same person appears in a new position, private notes show up automatically
+
+========================================================
+TESTING CHECKLIST
+========================================================
+
+A) Migration test:
+- Existing private notes still appear for existing officials after migration
+
+B) Position change continuity (simulate):
+- Take one person and create a temporary “new office record” in dev (or modify refresh input) to mimic TX House -> TX Senate
+- Confirm private notes carry over automatically
+
+C) Archiving:
+- Remove an official from the refresh input/source
+- Confirm they appear in Archived
+- If they reappear later (or appear in Other TX Officials), confirm they are linked to the same personId and notes return
+
+D) UI:
+- Profile shows Other TX Officials and Archived Officials
+- Cards open and private notes editable for both active and archived
+
+========================================================
+AFTER CHANGES
+========================================================
+
+- List all files changed.
+- Describe how personId is resolved and when merges happen.
+- Explain the migration strategy from officialPublicId-keyed notes to personId-keyed notes.
+- Confirm how Archived Officials is determined.
+- Provide a short guide for me to verify continuity across roles.
