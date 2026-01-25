@@ -154,12 +154,14 @@ export async function getPrivateNotes(officialId: string): Promise<PrivateNotes 
 
 export async function savePrivateNotes(officialId: string, notes: PrivateNotes): Promise<void> {
   try {
+    console.log('[Storage] Saving private notes for:', officialId, 'address:', notes.personalAddress);
     const allNotes = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
     const parsed = allNotes ? JSON.parse(allNotes) : {};
     parsed[officialId] = notes;
     await AsyncStorage.setItem(PRIVATE_NOTES_KEY, JSON.stringify(parsed));
-  } catch {
-    // Silently fail
+    console.log('[Storage] Private notes saved successfully');
+  } catch (error) {
+    console.error('[Storage] Failed to save private notes:', error);
   }
 }
 
