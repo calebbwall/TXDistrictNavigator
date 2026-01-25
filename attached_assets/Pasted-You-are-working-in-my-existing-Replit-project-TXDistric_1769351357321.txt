@@ -1,0 +1,83 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Make TWO focused client-side fixes related to the map + official card navigation.
+
+Do NOT change server code, refresh jobs, committees, data schemas, or private notes. Keep all existing draw-to-search behavior the same except for the specific issues below.
+
+========================================================
+TASK 1 — After drawing, automatically exit “draw mode” but keep the polygon
+========================================================
+
+Problem:
+- Draw-to-search works great, but after I finish drawing a polygon/circle, the draw tool remains “armed”.
+- When I try to pan/scroll the map to view another part of the drawn shape, it starts drawing a new polygon instead of letting me move the map.
+
+Goal / Acceptance criteria:
+1) When the user completes a draw (polygon/circle), the app should automatically DESELECT/disable draw mode.
+2) The existing drawn shape remains on the map exactly as it does today (persisted).
+3) The results/cards behavior remains exactly the same as it does today (no regression).
+4) After the draw completes, the default gesture becomes PAN/ZOOM the map.
+5) If the user wants to draw again, they can re-enable draw mode by pressing the same draw button.
+6) Do NOT change how the clear/erase behavior works.
+
+Implementation requirements:
+- Find the state variable(s) controlling whether drawing is enabled/active (e.g., `isDrawing`, `drawMode`, `activeTool`, etc.).
+- After the draw completes (the moment coordinates finalize and results are generated), set draw mode to OFF.
+- Ensure the draw button UI reflects this (visually unselected).
+- Make sure “tapping the existing polygon to re-open results” still works.
+
+Where to look:
+- Map screen and draw-to-search logic (likely `client/screens/MapScreen.tsx` and/or map-related components like results panel).
+
+========================================================
+TASK 2 — Make the district label on the Official Card a button that jumps to that district on the map
+========================================================
+
+Problem:
+- The district label at the top of an official card (example in screenshot: “TX Senate District 2”) is not a button.
+- It MUST be tappable and take me to that district on the map.
+
+Goal / Acceptance criteria:
+1) The district text on the official’s card header (e.g., “TX Senate District 2”) is a Pressable button.
+2) When tapped:
+   - Navigate to the Map tab/screen
+   - Zoom/focus the map on that district polygon
+   - Highlight the district boundary (same highlight behavior you already implemented for “jump to district” if any; otherwise implement a simple highlight state)
+3) Must work on iOS and Android Expo Go.
+
+Implementation requirements:
+- Identify the component rendering the official card header (likely `client/components/OfficialCard.tsx` or `client/screens/OfficialProfileScreen.tsx`).
+- Wrap the district label in a `Pressable` and keep the same styling (looks like a link/button but still fits UI).
+- Pass a “focus district” instruction to the Map screen using the simplest existing mechanism already in the project:
+  - React Navigation params, OR
+  - shared state/context already created for the previous map focus work.
+- The “focus district” instruction must include:
+  - chamber/source (TX_HOUSE / TX_SENATE / US_HOUSE_TX)
+  - districtNumber
+- On Map screen, consume that instruction and:
+  - find the correct district feature from the already-loaded GeoJSON
+  - compute bounds and `fitToCoordinates` / fit-to-bounds
+  - set selected/highlight state
+
+========================================================
+Testing checklist (must pass)
+========================================================
+A) Draw mode auto-off:
+- Enable draw mode → draw polygon → release/finish
+- Immediately try panning map → it pans (does NOT draw a new polygon)
+- Polygon stays visible and results still show as before
+- Tap polygon → results reopen as before
+- Tap draw button again → can draw a new polygon (replaces old one)
+
+B) District label jump:
+- Open any official card
+- Tap the “TX ___ District __” label
+- App navigates to Map
+- Map zooms to that district and highlights it
+
+========================================================
+After changes
+========================================================
+- List exactly which files you changed.
+- Briefly describe the state variables you used for:
+  - draw mode active/inactive
+  - passing focus-to-district instructions
+- Confirm both features tested on Android Expo Go and iOS simulator/device.

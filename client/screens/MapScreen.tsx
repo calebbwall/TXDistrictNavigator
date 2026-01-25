@@ -1419,6 +1419,9 @@ export default function MapScreen() {
       } else if (data.type === "DRAW_COMPLETE" && data.geometry) {
         console.log('[MapScreen] DRAW_COMPLETE received');
         await handleDrawComplete(data.geometry);
+        // Auto-disable draw mode after completing a drawing
+        setDrawModeActive(false);
+        sendToWebView({ type: 'SET_DRAW_MODE', enabled: false });
       } else if (data.type === "DRAW_CLEARED") {
         console.log('[MapScreen] DRAW_CLEARED received');
         setSelectedDistrict(null);
@@ -1462,6 +1465,11 @@ export default function MapScreen() {
           } else if (data.type === "DRAW_COMPLETE" && data.geometry) {
             console.log('[MapScreen] Window DRAW_COMPLETE received');
             handleDrawComplete(data.geometry);
+            // Auto-disable draw mode after completing a drawing
+            setDrawModeActive(false);
+            if (iframeRef.current?.contentWindow) {
+              iframeRef.current.contentWindow.postMessage(JSON.stringify({ type: 'SET_DRAW_MODE', enabled: false }), '*');
+            }
           } else if (data.type === "DRAW_CLEARED") {
             console.log('[MapScreen] Window DRAW_CLEARED received');
             setSelectedDistrict(null);

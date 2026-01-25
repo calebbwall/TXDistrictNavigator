@@ -24,7 +24,8 @@ import {
 } from "@/utils/validation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useRoute, useNavigation, RouteProp, useFocusEffect } from "@react-navigation/native";
+import { useRoute, useNavigation, RouteProp, useFocusEffect, CommonActions } from "@react-navigation/native";
+import type { FocusDistrictParams } from "@/navigation/MapStackNavigator";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -305,6 +306,28 @@ export default function OfficialProfileScreen() {
     }
   }, [official, isSaved]);
 
+  // Handler to jump to district on map
+  const handleJumpToDistrict = useCallback(() => {
+    if (!official || !official.source || !district) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    const focusDistrict: FocusDistrictParams = {
+      source: official.source as 'TX_HOUSE' | 'TX_SENATE' | 'US_HOUSE',
+      districtNumber: district.districtNumber,
+    };
+    
+    // Navigate to Map tab with focus district params
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: 'MapTab',
+        params: {
+          screen: 'Map',
+          params: { focusDistrict },
+        },
+      })
+    );
+  }, [official, district, navigation]);
+
   const handleSaveNotes = useCallback(async () => {
     if (!official) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -486,9 +509,20 @@ export default function OfficialProfileScreen() {
             <ThemedText type="h2" style={{ marginTop: Spacing.lg, textAlign: "center" }}>
               Vacant Seat
             </ThemedText>
-            <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}>
-              {getOfficeTypeLabel(official.officeType)} - {district ? `District ${district.districtNumber}` : ""}
-            </ThemedText>
+            {district ? (
+              <Pressable onPress={handleJumpToDistrict} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, marginTop: Spacing.xs })}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <ThemedText type="body" style={{ color: theme.primary, textAlign: "center" }}>
+                    {getOfficeTypeLabel(official.officeType)} - District {district.districtNumber}
+                  </ThemedText>
+                  <Feather name="map-pin" size={14} color={theme.primary} />
+                </View>
+              </Pressable>
+            ) : (
+              <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}>
+                {getOfficeTypeLabel(official.officeType)}
+              </ThemedText>
+            )}
           </View>
           
           <View style={[styles.vacantCard, { backgroundColor: theme.cardBackground, borderColor: theme.warning }]}>
@@ -536,10 +570,15 @@ export default function OfficialProfileScreen() {
               {getOfficeTypeLabel(official.officeType)}
             </ThemedText>
             {district ? (
-              <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-                {getDistrictTypeLabel(district.districtType)} District{" "}
-                {district.districtNumber}
-              </ThemedText>
+              <Pressable onPress={handleJumpToDistrict} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <ThemedText type="caption" style={{ color: theme.primary }}>
+                    {getDistrictTypeLabel(district.districtType)} District{" "}
+                    {district.districtNumber}
+                  </ThemedText>
+                  <Feather name="map-pin" size={12} color={theme.primary} />
+                </View>
+              </Pressable>
             ) : null}
           </View>
           <Pressable
