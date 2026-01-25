@@ -71,7 +71,7 @@ import {
 } from "@/lib/storage";
 import type { MapStackParamList } from "@/navigation/MapStackNavigator";
 
-type OfficialProfileParams = { officialId: string; initialSection?: "privateNotes" };
+type OfficialProfileParams = { officialId: string; initialSection?: "privateNotes"; initialTab?: "public" | "private" };
 type RouteParams = RouteProp<{ OfficialProfile: OfficialProfileParams }, "OfficialProfile">;
 
 type TabType = "public" | "private";
@@ -184,7 +184,7 @@ export default function OfficialProfileScreen() {
   const navigation = useNavigation();
   const { theme } = useTheme();
 
-  const { officialId, initialSection } = route.params;
+  const { officialId, initialSection, initialTab } = route.params;
   const [official, setOfficial] = useState<Official | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -193,7 +193,9 @@ export default function OfficialProfileScreen() {
 
   const district = official ? getDistrictById(official.districtId) : undefined;
 
-  const [activeTab, setActiveTab] = useState<TabType>(initialSection === "privateNotes" ? "private" : "private");
+  const [activeTab, setActiveTab] = useState<TabType>(
+    initialTab || (initialSection === "privateNotes" ? "private" : "private")
+  );
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [showAnniversaryPicker, setShowAnniversaryPicker] = useState(false);
   const [isSaved, setIsSaved] = useState(false);

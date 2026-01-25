@@ -109,6 +109,40 @@ const MAP_HTML = `
       border: 3px solid white;
       box-shadow: 0 2px 8px rgba(147, 51, 234, 0.6);
     }
+    .address-dot-popup .leaflet-popup-content-wrapper {
+      background: rgba(30, 30, 30, 0.95);
+      border-radius: 12px;
+      padding: 0;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    .address-dot-popup .leaflet-popup-content {
+      margin: 0;
+    }
+    .address-dot-popup .leaflet-popup-tip {
+      background: rgba(30, 30, 30, 0.95);
+    }
+    .address-popup {
+      padding: 12px 16px;
+      cursor: pointer;
+      min-width: 180px;
+    }
+    .popup-name {
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .popup-address {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 12px;
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+    .popup-hint {
+      color: #9333EA;
+      font-size: 11px;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -684,12 +718,29 @@ const MAP_HTML = `
         });
         
         const marker = L.marker([dot.lat, dot.lng], { icon: icon });
+        
+        // Create popup with official info
+        const popupContent = '<div class="address-popup" onclick="window.handleAddressDotClick(\\'' + dot.officialId + '\\')">' +
+          '<div class="popup-name">' + (dot.officialName || 'Unknown Official') + '</div>' +
+          '<div class="popup-address">' + (dot.address || 'No address') + '</div>' +
+          '<div class="popup-hint">Tap to view private notes</div>' +
+          '</div>';
+        marker.bindPopup(popupContent, {
+          className: 'address-dot-popup',
+          closeButton: false,
+          offset: [0, -6]
+        });
+        
         marker.addTo(addressDotsLayer);
         addressMarkers[dot.officialId] = marker;
       });
       
       console.log('[DOTS] Set', dots.length, 'address dots');
     }
+    
+    window.handleAddressDotClick = function(officialId) {
+      postMessage({ type: 'addressDotClicked', officialId: officialId });
+    };
 
     function updateActiveOfficials(officialIds) {
       activeOfficialIds = officialIds || [];
@@ -902,6 +953,8 @@ export default function MapScreen() {
   // Address dots state
   interface AddressDot {
     officialId: string;
+    officialName: string;
+    address: string;
     lat: number;
     lng: number;
   }
@@ -978,14 +1031,6 @@ export default function MapScreen() {
       const loadAddressDots = async () => {
         try {
           const notesWithAddresses = await getAllPrivateNotesWithAddresses();
-          // DEBUG: Show alert with what was found
-          Alert.alert(
-            'Debug: Address Data',
-            notesWithAddresses.length > 0 
-              ? `Found ${notesWithAddresses.length} addresses:\n${notesWithAddresses.map(n => n.personalAddress.substring(0, 30)).join('\n')}`
-              : 'No addresses found in storage',
-            [{ text: 'OK' }]
-          );
           if (notesWithAddresses.length === 0) {
             console.log('[MapScreen] No private addresses found');
             setAddressDots([]);
@@ -998,34 +1043,40 @@ export default function MapScreen() {
           const dots: AddressDot[] = [];
 
           for (const { officialId, personalAddress } of notesWithAddresses) {
+            // Fetch official name
+            let officialName = 'Unknown Official';
+            try {
+              const url = new URL(`/api/officials/${officialId}`, getApiUrl());
+              const response = await fetch(url.toString());
+              if (response.ok) {
+                const data = await response.json();
+                officialName = data.official?.fullName || 'Unknown Official';
+              }
+            } catch (e) {
+              console.log('[MapScreen] Could not fetch official name:', e);
+            }
+
             // Check cache first
             const cached = cache[officialId];
             if (cached && cached.address === personalAddress) {
-              console.log('[MapScreen] Using cached coords for:', officialId, cached.lat, cached.lng);
-              dots.push({ officialId, lat: cached.lat, lng: cached.lng });
+              console.log('[MapScreen] Using cached coords for:', officialId);
+              dots.push({ officialId, officialName, address: personalAddress, lat: cached.lat, lng: cached.lng });
               continue;
             }
 
             // Rate limit: small delay between geocoding requests
             await new Promise(r => setTimeout(r, 200));
             
-            console.log('[MapScreen] Geocoding address:', personalAddress);
             const coords = await geocodeAddress(personalAddress);
-            console.log('[MapScreen] Geocode result:', coords);
             if (coords) {
-              dots.push({ officialId, lat: coords.lat, lng: coords.lng });
+              dots.push({ officialId, officialName, address: personalAddress, lat: coords.lat, lng: coords.lng });
               await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
             } else {
-              // DEBUG: Show geocode failure
-              Alert.alert('Geocode Failed', `Could not geocode: ${personalAddress}`);
+              console.log('[MapScreen] Could not geocode:', personalAddress);
             }
           }
 
           console.log('[MapScreen] Loaded', dots.length, 'address dots');
-          // DEBUG: Show geocoding results
-          if (dots.length > 0) {
-            Alert.alert('Geocoding Complete', `Created ${dots.length} dots at: ${dots.map(d => `${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}`).join('\n')}`);
-          }
           setAddressDots(dots);
         } catch (error) {
           console.error('[MapScreen] Error loading address dots:', error);
@@ -1652,11 +1703,18 @@ export default function MapScreen() {
       } else if (data.type === "DRAW_CLEARED") {
         console.log('[MapScreen] DRAW_CLEARED received');
         setSelectedDistrict(null);
+      } else if (data.type === "addressDotClicked" && data.officialId) {
+        console.log('[MapScreen] Address dot clicked:', data.officialId);
+        // Navigate to the official's profile, PRIVATE tab
+        navigation.navigate("OfficialProfile", { 
+          officialId: data.officialId,
+          initialTab: "private"
+        });
       }
     } catch (error) {
       console.error("[MapScreen] Error parsing WebView message:", error);
     }
-  }, [handleMapTap, handleDrawComplete]);
+  }, [handleMapTap, handleDrawComplete, navigation]);
   
   // Listen for postMessage on web platform (iframe communication)
   useEffect(() => {
@@ -1700,6 +1758,12 @@ export default function MapScreen() {
           } else if (data.type === "DRAW_CLEARED") {
             console.log('[MapScreen] Window DRAW_CLEARED received');
             setSelectedDistrict(null);
+          } else if (data.type === "addressDotClicked" && data.officialId) {
+            console.log('[MapScreen] Window Address dot clicked:', data.officialId);
+            navigation.navigate("OfficialProfile", { 
+              officialId: data.officialId,
+              initialTab: "private"
+            });
           }
         } catch (e) {
           // Not JSON, ignore

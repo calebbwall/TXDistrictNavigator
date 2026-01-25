@@ -12,7 +12,7 @@ export interface FocusDistrictParams {
 
 export type MapStackParamList = {
   Map: { focusDistrict?: FocusDistrictParams } | undefined;
-  OfficialProfile: { officialId: string };
+  OfficialProfile: { officialId: string; initialTab?: "public" | "private" };
 };
 
 const Stack = createNativeStackNavigator<MapStackParamList>();
