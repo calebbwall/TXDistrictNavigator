@@ -578,8 +578,10 @@ export default function OfficialProfileScreen() {
               <ThemedText type="h3" style={styles.sectionTitle}>
                 Details
               </ThemedText>
-              <ContactRow icon="map-pin" label="City" value={official.city} />
-              <ContactRow icon="briefcase" label="Occupation" value={official.occupation} />
+              {official.city ? (
+                <ContactRow icon="map-pin" label="City" value={official.city} />
+              ) : null}
+              <ContactRow icon="users" label="Party" value={official.party} />
             </View>
 
             {official.offices.map((office) => {
@@ -590,6 +592,9 @@ export default function OfficialProfileScreen() {
                   <ThemedText type="h3" style={styles.sectionTitle}>
                     {office.officeKind === "capitol" ? "Capitol Office" : "District Office"}
                   </ThemedText>
+                  {office.officeKind === "capitol" && office.room ? (
+                    <ContactRow icon="home" label="Room" value={office.room} />
+                  ) : null}
                   <ContactRow
                     icon="map"
                     label="Address"

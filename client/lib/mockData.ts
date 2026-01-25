@@ -19,6 +19,7 @@ export interface Office {
   officeKind: "capitol" | "district";
   address: string;
   phone: string;
+  room?: string;
 }
 
 export interface Official {
@@ -28,7 +29,7 @@ export interface Official {
   districtId: string;
   photoUrl: string | null;
   city: string;
-  occupation: string;
+  party: string;
   offices: Office[];
   staff: Staff[];
   isVacant?: boolean;
@@ -115,10 +116,7 @@ export const mockDistricts: District[] = [
   ...generateDistricts("congress", usCongressNames),
 ];
 
-const occupations = [
-  "Attorney", "Business Owner", "Educator", "Engineer", "Retired Military",
-  "Rancher", "Real Estate", "Healthcare", "Finance", "Public Service"
-];
+const parties = ["Republican", "Democrat"];
 
 function generateOfficial(
   index: number,
@@ -133,8 +131,8 @@ function generateOfficial(
     officeType,
     districtId,
     photoUrl: null,
-    city: "Texas",
-    occupation: occupations[index % occupations.length],
+    city: "",
+    party: parties[index % parties.length],
     offices: [
       {
         id: `o-${prefix}-${index}-1`,

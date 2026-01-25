@@ -6,6 +6,29 @@ export function apiOfficialToNormalized(apiOfficial: MergedOfficial): Official {
   return normalizeOfficial(apiOfficial as unknown as Record<string, unknown>);
 }
 
+function parseCityFromAddress(address: string | null | undefined): string {
+  if (!address) return "";
+  const match = address.match(/([A-Za-z\s]+),\s*TX\b/i);
+  if (match) {
+    const city = match[1].trim();
+    if (city.length >= 2 && city.length < 50 && !city.match(/^P\.?O\.?\s*Box$/i)) {
+      return city;
+    }
+  }
+  return "";
+}
+
+function parseRoomFromCapitolAddress(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const roomMatch = address.match(/Room\s*([A-Z0-9]+\.?[A-Z0-9]*)/i);
+  if (roomMatch) return roomMatch[1];
+  const extMatch = address.match(/Extension\s*([A-Z0-9]+\.?[A-Z0-9]*)/i);
+  if (extMatch) return `E${extMatch[1]}`;
+  const genericMatch = address.match(/\b([A-Z]\d+\.\d+)\b/);
+  if (genericMatch) return genericMatch[1];
+  return null;
+}
+
 export function apiOfficialsToNormalized(apiOfficials: MergedOfficial[]): Official[] {
   return apiOfficials.map(apiOfficialToNormalized);
 }
@@ -58,12 +81,15 @@ export function apiOfficialToLegacy(apiOfficial: MergedOfficial): MockOfficial {
 
   const offices = [];
   
+  const capitolRoom = parseRoomFromCapitolAddress(apiOfficial.capitolAddress);
+  
   if (apiOfficial.capitolAddress || apiOfficial.capitolPhone) {
     offices.push({
       id: `o-${apiOfficial.id}-capitol`,
       officeKind: "capitol" as const,
       address: apiOfficial.capitolAddress || "Capitol Office",
       phone: apiOfficial.capitolPhone || "",
+      room: capitolRoom || undefined,
     });
   }
 
@@ -85,14 +111,16 @@ export function apiOfficialToLegacy(apiOfficial: MergedOfficial): MockOfficial {
     });
   }
 
+  const districtCity = parseCityFromAddress(apiOfficial.districtAddresses?.[0]);
+
   return {
     id: apiOfficial.id,
     fullName: apiOfficial.fullName,
     officeType,
     districtId,
     photoUrl: apiOfficial.photoUrl,
-    city: "Texas",
-    occupation: getPartyLabel(apiOfficial.party),
+    city: districtCity,
+    party: getPartyLabel(apiOfficial.party),
     offices,
     staff: [],
     isVacant: apiOfficial.isVacant || false,

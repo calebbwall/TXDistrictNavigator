@@ -1,0 +1,59 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Fix the public details data issues on the official cards (PUBLIC tab) and add Capitol office room number support.
+
+This prompt includes BOTH client + server changes that are necessary for these specific public-detail fixes. Do NOT work on committees, draw-to-search, map dots, archived officials, or any weekly refresh framework changes unless required to support the new “Capitol room” field.
+
+Issues to fix (Acceptance criteria):
+1) PUBLIC tab: “City” currently returns “Texas”. It must return the ACTUAL CITY from the official’s DISTRICT OFFICE address.
+   - Use the district office address that is already present in the official’s public data.
+   - If there are multiple district offices, use the first one by default.
+   - If parsing fails, show blank (not “Texas”).
+2) PUBLIC tab: The field label “Occupation” is wrong. It is returning political party.
+   - Change the UI label from “Occupation” to “Party”.
+   - Ensure the displayed value is the party (R/D/I/etc) and not mis-mapped.
+3) Capitol office info: Add office ROOM NUMBER for every official.
+   - Add a new field in public official data for `capitolRoom` (or similar).
+   - Populate it during officials refresh ingestion.
+   - Display it in the PUBLIC tab under Capitol Office (e.g., “Room: E2.402”).
+
+Implementation requirements:
+
+A) Client-side (official card PUBLIC tab)
+- Find the component rendering Public details (likely `client/components/OfficialCard.tsx` or a related screen).
+- Update the “City” display:
+  - Parse city from the first district office address.
+  - Assume typical address text includes a line like “City, TX 7xxxx”.
+  - Write a robust helper parser that returns city if it can.
+- Change “Occupation” label to “Party”.
+- Add “Capitol Room” display under Capitol office section (only show if present).
+
+B) Server-side / schema
+- Add a new column/field in the public officials table/schema for Capitol room number.
+  - Update `@shared/schema` and server schema accordingly (Drizzle).
+  - Add migration if the project uses migrations.
+- Update `server/jobs/refreshOfficials.ts`:
+  - During ingestion for each source (TX House, TX Senate, US House TX), set the Capitol room number for each official.
+  - If the upstream sources don’t provide a room number consistently, implement best-effort parsing and leave null when unavailable.
+  - Do NOT invent room numbers.
+- Ensure API responses include the new field so the client can render it.
+
+Constraints:
+- Do not change the private notes system.
+- Do not change refresh scheduling rules.
+- Do not change committees or map behavior.
+- Keep changes scoped tightly to fixing City/Party label and adding Capitol room number support.
+
+Steps:
+1) Locate where “City” is currently being derived and why it becomes “Texas”; fix the parsing/mapping.
+2) Update UI label mapping from Occupation -> Party.
+3) Add schema field for Capitol room number end-to-end.
+4) Update refresh ingestion to populate the room number.
+5) Render room number on the public card.
+
+After changes:
+- List all files changed.
+- Explain how City parsing works now (with examples).
+- Explain where Capitol room number is sourced from (which pages/fields), and what happens when it can’t be found.
+- Provide a quick test checklist:
+  - pick one official with district office city known and confirm it displays correctly
+  - confirm “Party” shows correctly
+  - confirm Capitol room appears when available
