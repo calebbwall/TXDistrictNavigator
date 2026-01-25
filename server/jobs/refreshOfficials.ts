@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
+import * as crypto from "crypto";
 import { db } from "../db";
-import { officialPublic, refreshJobLog, type InsertOfficialPublic } from "@shared/schema";
+import { officialPublic, refreshJobLog, refreshState, type InsertOfficialPublic } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 
 const TLO_BASE_URL = "https://capitol.texas.gov";
@@ -81,6 +82,177 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 
     }
   }
   throw new Error("Max retries exceeded");
+}
+
+function computeFingerprint(data: string): string {
+  return crypto.createHash("sha256").update(data).digest("hex");
+}
+
+async function getRefreshState(source: SourceType): Promise<{ fingerprint: string | null; lastCheckedAt: Date | null; lastChangedAt: Date | null } | null> {
+  const [state] = await db.select()
+    .from(refreshState)
+    .where(eq(refreshState.source, source))
+    .limit(1);
+  
+  if (!state) return null;
+  
+  return {
+    fingerprint: state.fingerprint,
+    lastCheckedAt: state.lastCheckedAt,
+    lastChangedAt: state.lastChangedAt,
+  };
+}
+
+async function updateRefreshState(source: SourceType, fingerprint: string, changed: boolean): Promise<void> {
+  const [existing] = await db.select()
+    .from(refreshState)
+    .where(eq(refreshState.source, source))
+    .limit(1);
+  
+  const now = new Date();
+  
+  if (existing) {
+    await db.update(refreshState)
+      .set({
+        fingerprint,
+        lastCheckedAt: now,
+        lastChangedAt: changed ? now : existing.lastChangedAt,
+        lastRefreshedAt: changed ? now : existing.lastRefreshedAt,
+        updatedAt: now,
+      })
+      .where(eq(refreshState.id, existing.id));
+  } else {
+    await db.insert(refreshState).values({
+      source,
+      fingerprint,
+      lastCheckedAt: now,
+      lastChangedAt: changed ? now : null,
+      lastRefreshedAt: changed ? now : null,
+    });
+  }
+}
+
+async function markCheckedOnly(source: SourceType): Promise<void> {
+  const [existing] = await db.select()
+    .from(refreshState)
+    .where(eq(refreshState.source, source))
+    .limit(1);
+  
+  const now = new Date();
+  
+  if (existing) {
+    await db.update(refreshState)
+      .set({ lastCheckedAt: now, updatedAt: now })
+      .where(eq(refreshState.id, existing.id));
+  } else {
+    await db.insert(refreshState).values({
+      source,
+      lastCheckedAt: now,
+    });
+  }
+}
+
+async function fetchTLOListPage(chamber: "house" | "senate"): Promise<string> {
+  const chamberParam = chamber === "house" ? "H" : "S";
+  const listUrl = `${TLO_BASE_URL}/Members/Members.aspx?Chamber=${chamberParam}`;
+  const response = await fetchWithRetry(listUrl);
+  return response.text();
+}
+
+async function fetchUSHouseData(): Promise<string> {
+  const apiKey = process.env.CONGRESS_API_KEY;
+  if (!apiKey) {
+    throw new Error("CONGRESS_API_KEY not configured");
+  }
+  
+  const allMembers: any[] = [];
+  let offset = 0;
+  const limit = 250;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const url = `${CONGRESS_API_BASE}/member?currentMember=true&limit=${limit}&offset=${offset}&api_key=${apiKey}`;
+    const response = await fetchWithRetry(url);
+    const data = await response.json() as { members?: any[]; pagination?: { next?: string } };
+    
+    if (!data.members || data.members.length === 0) {
+      hasMore = false;
+      break;
+    }
+    
+    allMembers.push(...data.members);
+    
+    if (data.members.length < limit || !data.pagination?.next) {
+      hasMore = false;
+    } else {
+      offset += limit;
+    }
+    
+    await new Promise(r => setTimeout(r, 300));
+  }
+  
+  const texasMembers = allMembers.filter(m => {
+    const isTexas = m.state === "Texas" || m.state === "TX";
+    if (!isTexas) return false;
+    const terms = m.terms?.item || [];
+    if (terms.length === 0) return m.district !== undefined && m.district !== null;
+    const lastTerm = terms[terms.length - 1];
+    return lastTerm?.chamber === "House of Representatives" || lastTerm?.chamber?.includes("House") || m.district !== undefined;
+  });
+  
+  return JSON.stringify(texasMembers.map(m => ({
+    bioguideId: m.bioguideId,
+    name: m.name,
+    district: m.district,
+    party: m.party,
+  })));
+}
+
+export interface CheckResult {
+  source: SourceType;
+  changed: boolean;
+  previousFingerprint: string | null;
+  newFingerprint: string;
+  error?: string;
+}
+
+export async function checkSourceForChanges(source: SourceType): Promise<CheckResult> {
+  console.log(`[RefreshOfficials] Checking ${source} for changes...`);
+  
+  try {
+    let rawData: string;
+    
+    if (source === "TX_HOUSE") {
+      rawData = await fetchTLOListPage("house");
+    } else if (source === "TX_SENATE") {
+      rawData = await fetchTLOListPage("senate");
+    } else {
+      rawData = await fetchUSHouseData();
+    }
+    
+    const newFingerprint = computeFingerprint(rawData);
+    const state = await getRefreshState(source);
+    const previousFingerprint = state?.fingerprint || null;
+    const changed = previousFingerprint !== newFingerprint;
+    
+    console.log(`[RefreshOfficials] ${source}: fingerprint=${newFingerprint.slice(0, 12)}... changed=${changed}`);
+    
+    return {
+      source,
+      changed,
+      previousFingerprint,
+      newFingerprint,
+    };
+  } catch (err) {
+    console.error(`[RefreshOfficials] Error checking ${source}:`, err);
+    return {
+      source,
+      changed: false,
+      previousFingerprint: null,
+      newFingerprint: "",
+      error: String(err),
+    };
+  }
 }
 
 function validateTLORecord(record: ParsedOfficial, chamber: "house" | "senate"): string | null {
@@ -695,6 +867,116 @@ export async function shouldRunRefresh(): Promise<boolean> {
 
 let isRefreshing = false;
 
+export function getIsRefreshing(): boolean {
+  return isRefreshing;
+}
+
+export interface SmartRefreshResult {
+  sourcesChecked: SourceType[];
+  sourcesChanged: SourceType[];
+  sourcesRefreshed: SourceType[];
+  errors: { source: SourceType; error: string }[];
+  durationMs: number;
+}
+
+export async function checkAndRefreshIfChanged(force = false): Promise<SmartRefreshResult> {
+  if (isRefreshing) {
+    console.log("[RefreshOfficials] Refresh already in progress, skipping");
+    return {
+      sourcesChecked: [],
+      sourcesChanged: [],
+      sourcesRefreshed: [],
+      errors: [{ source: "TX_HOUSE", error: "Refresh already in progress" }],
+      durationMs: 0,
+    };
+  }
+  
+  isRefreshing = true;
+  const startTime = Date.now();
+  const result: SmartRefreshResult = {
+    sourcesChecked: [],
+    sourcesChanged: [],
+    sourcesRefreshed: [],
+    errors: [],
+    durationMs: 0,
+  };
+  
+  console.log(`[RefreshOfficials] Starting smart check-and-refresh (force=${force})`);
+  
+  try {
+    const sources: SourceType[] = ["TX_HOUSE", "TX_SENATE", "US_HOUSE"];
+    const lastCounts = await getLastSuccessfulRefreshCounts();
+    
+    for (const source of sources) {
+      result.sourcesChecked.push(source);
+      
+      const checkResult = await checkSourceForChanges(source);
+      
+      if (checkResult.error) {
+        result.errors.push({ source, error: checkResult.error });
+        continue;
+      }
+      
+      if (!checkResult.changed && !force) {
+        console.log(`[RefreshOfficials] ${source}: No changes detected, skipping refresh`);
+        await markCheckedOnly(source);
+        continue;
+      }
+      
+      result.sourcesChanged.push(source);
+      console.log(`[RefreshOfficials] ${source}: Changes detected, running refresh...`);
+      
+      const refreshStart = Date.now();
+      let refreshResult: RefreshResult;
+      
+      try {
+        if (source === "TX_HOUSE") {
+          refreshResult = await refreshTLO("house");
+        } else if (source === "TX_SENATE") {
+          refreshResult = await refreshTLO("senate");
+        } else {
+          refreshResult = await refreshUSHouse();
+        }
+        
+        const duration = Date.now() - refreshStart;
+        const sanityCheck = validateRefreshSanity(refreshResult, lastCounts);
+        
+        if (!sanityCheck.valid) {
+          console.error(`[RefreshOfficials] ${source} ABORTED: ${sanityCheck.reason}`);
+          await logRefreshJob(refreshResult, "aborted", duration, sanityCheck.reason);
+          result.errors.push({ source, error: sanityCheck.reason || "Sanity check failed" });
+          continue;
+        }
+        
+        await logRefreshJob(refreshResult, "success", duration);
+        await updateRefreshState(source, checkResult.newFingerprint, true);
+        result.sourcesRefreshed.push(source);
+        
+        console.log(`[RefreshOfficials] ${source} refreshed: ${refreshResult.upsertedCount} upserted in ${duration}ms`);
+        
+      } catch (err) {
+        const duration = Date.now() - refreshStart;
+        console.error(`[RefreshOfficials] ${source} FAILED:`, err);
+        await logRefreshJob(
+          { source, parsedCount: 0, upsertedCount: 0, skippedCount: 0, deactivatedCount: 0, errors: [] },
+          "failed",
+          duration,
+          String(err)
+        );
+        result.errors.push({ source, error: String(err) });
+      }
+    }
+    
+  } finally {
+    isRefreshing = false;
+    result.durationMs = Date.now() - startTime;
+  }
+  
+  console.log(`[RefreshOfficials] Smart refresh completed: checked=${result.sourcesChecked.length}, changed=${result.sourcesChanged.length}, refreshed=${result.sourcesRefreshed.length}, errors=${result.errors.length} in ${result.durationMs}ms`);
+  
+  return result;
+}
+
 export async function maybeRunScheduledRefresh(): Promise<void> {
   if (isRefreshing) {
     console.log("[RefreshOfficials] Refresh already in progress, skipping");
@@ -713,6 +995,56 @@ export async function maybeRunScheduledRefresh(): Promise<void> {
   } finally {
     isRefreshing = false;
   }
+}
+
+export function isInMondayCheckWindow(): boolean {
+  const now = new Date();
+  const centralOptions: Intl.DateTimeFormatOptions = { 
+    timeZone: "America/Chicago",
+    weekday: "long",
+    hour: "numeric",
+    hour12: false,
+  };
+  
+  const formatter = new Intl.DateTimeFormat("en-US", centralOptions);
+  const parts = formatter.formatToParts(now);
+  
+  const weekday = parts.find(p => p.type === "weekday")?.value;
+  const hourPart = parts.find(p => p.type === "hour")?.value;
+  const hour = hourPart ? parseInt(hourPart, 10) : -1;
+  
+  return weekday === "Monday" && hour >= 3 && hour < 4;
+}
+
+export async function wasCheckedThisWeek(): Promise<boolean> {
+  const sources: SourceType[] = ["TX_HOUSE", "TX_SENATE", "US_HOUSE"];
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  
+  for (const source of sources) {
+    const state = await getRefreshState(source);
+    if (!state?.lastCheckedAt || state.lastCheckedAt < oneWeekAgo) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+export async function getAllRefreshStates(): Promise<Array<{
+  source: SourceType;
+  fingerprint: string | null;
+  lastCheckedAt: Date | null;
+  lastChangedAt: Date | null;
+  lastRefreshedAt: Date | null;
+}>> {
+  const states = await db.select().from(refreshState);
+  return states.map(s => ({
+    source: s.source,
+    fingerprint: s.fingerprint,
+    lastCheckedAt: s.lastCheckedAt,
+    lastChangedAt: s.lastChangedAt,
+    lastRefreshedAt: s.lastRefreshedAt,
+  }));
 }
 
 if (require.main === module) {
