@@ -5,6 +5,9 @@ import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
 import AboutScreen from "@/screens/AboutScreen";
 import FollowUpDashboardScreen from "@/screens/FollowUpDashboardScreen";
 import SavedOfficialsScreen from "@/screens/SavedOfficialsScreen";
+import CommitteesScreen from "@/screens/CommitteesScreen";
+import CommitteeListScreen from "@/screens/CommitteeListScreen";
+import CommitteeDetailScreen from "@/screens/CommitteeDetailScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type ProfileStackParamList = {
@@ -13,6 +16,9 @@ export type ProfileStackParamList = {
   About: undefined;
   FollowUpDashboard: undefined;
   SavedOfficials: undefined;
+  Committees: undefined;
+  CommitteeList: { chamber: "TX_HOUSE" | "TX_SENATE" };
+  CommitteeDetail: { committeeId: string; committeeName: string };
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -56,6 +62,27 @@ export default function ProfileStackNavigator() {
         options={{
           headerTitle: "Saved Officials",
         }}
+      />
+      <Stack.Screen
+        name="Committees"
+        component={CommitteesScreen}
+        options={{
+          headerTitle: "Committees",
+        }}
+      />
+      <Stack.Screen
+        name="CommitteeList"
+        component={CommitteeListScreen}
+        options={({ route }) => ({
+          headerTitle: route.params.chamber === "TX_HOUSE" ? "House Committees" : "Senate Committees",
+        })}
+      />
+      <Stack.Screen
+        name="CommitteeDetail"
+        component={CommitteeDetailScreen}
+        options={({ route }) => ({
+          headerTitle: route.params.committeeName,
+        })}
       />
     </Stack.Navigator>
   );
