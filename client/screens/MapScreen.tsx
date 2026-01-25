@@ -27,7 +27,11 @@ import { getApiUrl } from "@/lib/query-client";
 import {
   getOverlayPreferences,
   saveOverlayPreferences,
+  getAllPrivateNotesWithAddresses,
+  getGeocodedAddressCache,
+  saveGeocodedAddress,
   type OverlayPreferences,
+  type GeocodedAddress,
 } from "@/lib/storage";
 import {
   normalizeOfficial,
@@ -831,6 +835,15 @@ export default function MapScreen() {
   const [lastLocationCoords, setLastLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
+  // Address dots state
+  interface AddressDot {
+    officialId: string;
+    lat: number;
+    lng: number;
+  }
+  const [addressDots, setAddressDots] = useState<AddressDot[]>([]);
+  const addressDotsLoadedRef = useRef(false);
+
   const layerButtonScale = useSharedValue(1);
 
   useEffect(() => {
@@ -840,6 +853,82 @@ export default function MapScreen() {
       initialOverlaysRef.current = prefs;
     });
   }, []);
+
+  // Geocode address using Nominatim (OpenStreetMap) - free, no API key needed
+  const geocodeAddress = useCallback(async (address: string): Promise<{ lat: number; lng: number } | null> => {
+    try {
+      // Add Texas to address if not present for better results
+      const fullAddress = address.toLowerCase().includes('texas') || address.toLowerCase().includes(', tx') 
+        ? address 
+        : `${address}, Texas`;
+      
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'TXDistrictNavigator/1.0' }
+      });
+      
+      if (!response.ok) return null;
+      
+      const results = await response.json();
+      if (results.length === 0) return null;
+      
+      return {
+        lat: parseFloat(results[0].lat),
+        lng: parseFloat(results[0].lon)
+      };
+    } catch (error) {
+      console.log('[MapScreen] Geocoding failed for:', address, error);
+      return null;
+    }
+  }, []);
+
+  // Load and geocode addresses for dots
+  useEffect(() => {
+    if (addressDotsLoadedRef.current) return;
+    addressDotsLoadedRef.current = true;
+
+    const loadAddressDots = async () => {
+      try {
+        const notesWithAddresses = await getAllPrivateNotesWithAddresses();
+        if (notesWithAddresses.length === 0) {
+          console.log('[MapScreen] No private addresses found');
+          return;
+        }
+
+        console.log('[MapScreen] Found', notesWithAddresses.length, 'officials with addresses');
+        
+        const cache = await getGeocodedAddressCache();
+        const dots: AddressDot[] = [];
+
+        for (const { officialId, personalAddress } of notesWithAddresses) {
+          // Check cache first
+          const cached = cache[officialId];
+          if (cached && cached.address === personalAddress) {
+            dots.push({ officialId, lat: cached.lat, lng: cached.lng });
+            continue;
+          }
+
+          // Rate limit: small delay between geocoding requests
+          await new Promise(r => setTimeout(r, 200));
+          
+          const coords = await geocodeAddress(personalAddress);
+          if (coords) {
+            dots.push({ officialId, lat: coords.lat, lng: coords.lng });
+            await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
+          }
+        }
+
+        if (dots.length > 0) {
+          console.log('[MapScreen] Geocoded', dots.length, 'addresses');
+          setAddressDots(dots);
+        }
+      } catch (error) {
+        console.error('[MapScreen] Error loading address dots:', error);
+      }
+    };
+
+    loadAddressDots();
+  }, [geocodeAddress]);
   
   const sendToWebView = useCallback((message: object) => {
     if (webViewRef.current) {
