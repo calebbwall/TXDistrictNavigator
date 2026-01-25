@@ -951,6 +951,14 @@ export default function MapScreen() {
       const loadAddressDots = async () => {
         try {
           const notesWithAddresses = await getAllPrivateNotesWithAddresses();
+          // DEBUG: Show alert with what was found
+          Alert.alert(
+            'Debug: Address Data',
+            notesWithAddresses.length > 0 
+              ? `Found ${notesWithAddresses.length} addresses:\n${notesWithAddresses.map(n => n.personalAddress.substring(0, 30)).join('\n')}`
+              : 'No addresses found in storage',
+            [{ text: 'OK' }]
+          );
           if (notesWithAddresses.length === 0) {
             console.log('[MapScreen] No private addresses found');
             setAddressDots([]);
