@@ -1942,7 +1942,7 @@ const styles = StyleSheet.create({
   },
   restoreChipText: {
     color: "#FFFFFF",
-    fontSize: FontSize.xs,
+    fontSize: 12,
     fontWeight: "600",
   },
   locateButton: {
