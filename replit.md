@@ -173,9 +173,46 @@ Texas statewide elected officials (Governor, Lt Governor, Attorney General, etc.
 
 ### Identity Resolution
 The `resolvePersonId()` function in `server/lib/identityResolver.ts` provides:
+- **Explicit link check first** - Checks `person_links` table for admin-defined overrides
 - Name normalization (removes titles, suffixes)
 - Automatic person record creation
 - Stable identity for notes continuity across position changes
+
+## Admin Guardrails
+
+### Explicit Person Identity Override
+The `person_links` table allows admins to explicitly override name-based matching:
+- Stored in `person_links` table with `officialPublicId` and `personId`
+- Always takes precedence over automatic name matching
+- Created via `POST /admin/person/link` endpoint
+- Links persist across data refreshes (never auto-deleted)
+
+### Refresh Cycle Ordering
+The scheduler runs a deterministic refresh cycle:
+1. Legislature + US House officials
+2. Other Texas Officials (statewide offices)
+3. Resolve personIds for all active officials
+4. GeoJSON district boundaries
+5. Committees
+
+Logs use clear boundaries: `BEGIN refresh cycle` and `END refresh cycle`.
+
+### Admin Status Endpoint
+`GET /admin/status` (protected by `x-admin-token`) returns:
+- Scheduler status and next check window
+- Per-source refresh states (fingerprints, timestamps)
+- Identity stats: totalPersons, activeOfficials, archivedPersons, explicitLinks
+- All explicit person links
+
+### Admin Endpoints Summary
+- `POST /admin/person/link` - Create explicit person identity override
+- `GET /admin/status` - Comprehensive system health and status
+- `POST /admin/refresh/officials` - Trigger officials refresh
+- `POST /admin/refresh/geojson` - Trigger GeoJSON refresh
+- `POST /admin/refresh/committees` - Trigger committees refresh
+- `POST /admin/refresh/other-tx-officials` - Trigger Other TX Officials refresh
+
+All admin endpoints require `x-admin-token: <ADMIN_REFRESH_TOKEN>` header.
 
 ## Schema Notes
 
