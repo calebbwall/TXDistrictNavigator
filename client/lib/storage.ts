@@ -554,16 +554,19 @@ export async function getAllPrivateNotesWithAddresses(): Promise<Array<{
 }>> {
   try {
     const allNotes = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
+    console.log('[Storage] Raw private notes:', allNotes ? allNotes.substring(0, 200) : 'null');
     if (!allNotes) return [];
     const parsed = JSON.parse(allNotes) as Record<string, PrivateNotes>;
     const results: Array<{ officialId: string; personalAddress: string }> = [];
     for (const [officialId, notes] of Object.entries(parsed)) {
+      console.log('[Storage] Checking official:', officialId, 'address:', notes.personalAddress);
       if (notes.personalAddress && notes.personalAddress.trim().length > 0) {
         results.push({ officialId, personalAddress: notes.personalAddress.trim() });
       }
     }
     return results;
-  } catch {
+  } catch (error) {
+    console.error('[Storage] Error reading private notes:', error);
     return [];
   }
 }
