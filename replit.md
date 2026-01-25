@@ -103,6 +103,7 @@ If the shared schema is ever regenerated, ensure these custom fields are re-adde
 
 **officialPublic table:**
 - `capitolRoom: varchar("capitol_room", { length: 50 })` - Capitol room/office number scraped from TLO
-  - Format: Building code + room number (e.g., "E2.406")
-  - Parsed from TLO "Capitol Office" field format: "EXT E2.406"
+  - Format: Full building code + room number as provided by TLO
+  - Examples: "EXT E1.304", "CAP 1W.3", "GNB.647"
+  - The full TLO "Capitol Office" field text is preserved (no stripping)
   - Location: Between `capitolPhone` and `districtAddresses` in the column order

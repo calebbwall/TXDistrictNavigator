@@ -349,12 +349,8 @@ async function fetchMemberDetails(memberUrl: string, chamber: "house" | "senate"
     const capitolOfficeText = $("#lblCapitolOffice").text().trim();
     let capitolRoom: string | undefined;
     if (capitolOfficeText) {
-      const roomMatch = capitolOfficeText.match(/^(?:EXT\s+)?([A-Z]\d+\.\d+)$/i);
-      if (roomMatch) {
-        capitolRoom = roomMatch[1];
-      } else {
-        capitolRoom = capitolOfficeText;
-      }
+      // Keep the full building code (e.g., "EXT E1.304", "CAP 1W.3", "GNB.647")
+      capitolRoom = capitolOfficeText;
     }
     
     const capitolPhone = $("#lblCapitolPhone").text().trim() || undefined;
