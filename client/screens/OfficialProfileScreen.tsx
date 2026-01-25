@@ -51,6 +51,7 @@ import {
 } from "@/lib/mockData";
 import { fetchOfficialById, updateOfficialPrivate } from "@/lib/officialsApi";
 import { apiOfficialToLegacy } from "@/lib/officialsAdapter";
+import { getApiUrl } from "@/lib/query-client";
 import {
   getPrivateNotes,
   savePrivateNotes,
@@ -296,7 +297,8 @@ export default function OfficialProfileScreen() {
       if (!officialId) return;
       setCommitteesLoading(true);
       try {
-        const response = await fetch(`${process.env.EXPO_PUBLIC_DOMAIN}/api/officials/${officialId}/committees`);
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}api/officials/${officialId}/committees`);
         if (response.ok) {
           const data = await response.json();
           setCommittees(data);

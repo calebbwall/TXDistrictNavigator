@@ -10,6 +10,7 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
+import { getApiUrl } from "@/lib/query-client";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
@@ -77,7 +78,8 @@ export default function CommitteeListScreen() {
   const { data: committees, isLoading, error } = useQuery<Committee[]>({
     queryKey: ["/api/committees", chamber],
     queryFn: async () => {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_DOMAIN}/api/committees?chamber=${chamber}`);
+      const baseUrl = getApiUrl();
+      const response = await fetch(`${baseUrl}api/committees?chamber=${chamber}`);
       if (!response.ok) throw new Error("Failed to fetch committees");
       return response.json();
     },
