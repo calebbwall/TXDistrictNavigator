@@ -69,6 +69,20 @@ export const officialPrivate = pgTable("official_private", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Refresh state tracking - fingerprints and timestamps per source
+export const refreshState = pgTable("refresh_state", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  source: sourceEnum("source").notNull().unique(),
+  fingerprint: text("fingerprint"), // Hash of upstream data to detect changes
+  lastCheckedAt: timestamp("last_checked_at"), // Last time we checked upstream
+  lastChangedAt: timestamp("last_changed_at"), // Last time data actually changed
+  lastRefreshedAt: timestamp("last_refreshed_at"), // Last time we ran a refresh
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Refresh job tracking for fail-safe validation
 export const refreshJobLog = pgTable("refresh_job_log", {
   id: varchar("id")
@@ -92,6 +106,8 @@ export type InsertOfficialPublic = typeof officialPublic.$inferInsert;
 export type OfficialPrivate = typeof officialPrivate.$inferSelect;
 export type InsertOfficialPrivate = typeof officialPrivate.$inferInsert;
 export type RefreshJobLog = typeof refreshJobLog.$inferSelect;
+export type RefreshState = typeof refreshState.$inferSelect;
+export type InsertRefreshState = typeof refreshState.$inferInsert;
 
 // District ranges for each chamber
 export const DISTRICT_RANGES = {

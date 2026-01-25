@@ -1,0 +1,52 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Implement a reliable WEEKLY “check-and-refresh-only-if-changed” system for the Officials public JSON/data.
+
+Current state (important context):
+- There is already a refresh job at `server/jobs/refreshOfficials.ts` with `maybeRunScheduledRefresh()` and an `isRefreshing` guard.
+- It is currently triggered on server startup from `server/routes.ts`.
+- Right now it refreshes based on “last refresh < 7 days” and does NOT check whether upstream data actually changed. It also does not run specifically “early Monday morning”.
+
+Goal / Acceptance criteria:
+1) Every week, early Monday morning (Central Time), the server checks each upstream source (TX House, TX Senate, US House TX) to see if data changed.
+2) If data has NOT changed since last week, do nothing (no DB writes, no JSON regen).
+3) If data HAS changed, refresh the stored public data and update timestamps/fingerprints.
+4) The job must be safe to run repeatedly and must not run concurrently (keep/extend `isRefreshing`).
+5) The schedule must be persistent: not just “on startup”. It should run automatically while the server is running.
+6) It should also be possible to manually trigger refresh via an admin endpoint (protected by a simple shared secret in env vars) for debugging.
+
+Implementation plan (do this):
+A) Add change detection (“fingerprint”) per source:
+- For each source (TX_HOUSE, TX_SENATE, US_HOUSE_TX), compute a fingerprint/hash of the upstream raw response(s) used to build the dataset.
+- Store the latest fingerprint + lastCheckedAt + lastChangedAt in the database (preferred) OR a server-side file if DB migrations are too heavy. Prefer DB since we already use Drizzle.
+
+B) Scheduling:
+- Implement a lightweight scheduler loop in the server process that wakes up periodically (e.g., every 10–15 minutes) and runs the “Monday 3:00–4:00 AM America/Chicago” check window.
+- Ensure it runs at most once per week per source (use lastCheckedAt in DB).
+- Keep an immediate “maybeRunOnStartup” as a fallback, but primary behavior is the scheduler.
+
+C) Refresh behavior:
+- “Check phase”: fetch upstream data, compute fingerprint(s), compare to stored fingerprint.
+- If unchanged: update lastCheckedAt only.
+- If changed: run existing refresh logic to update official public records, then store new fingerprint and update lastChangedAt + lastRefreshedAt.
+
+D) Manual trigger endpoint:
+- Add a server route like `POST /admin/refresh/officials` that triggers a check+refresh.
+- Protect it with an env var secret, e.g. `ADMIN_REFRESH_TOKEN`, checked via header `x-admin-token`.
+- Return JSON response describing what happened (checked sources, changed sources, refreshed yes/no).
+
+Files to modify / create:
+- Update `server/jobs/refreshOfficials.ts` to support: check fingerprints, check window scheduling helpers, and “run once” semantics.
+- Update `server/routes.ts` to start the scheduler on server boot (e.g. `startOfficialsRefreshScheduler()`).
+- Add DB schema/table (Drizzle) for storing refresh metadata (fingerprints + timestamps), e.g. `refresh_state` keyed by dataset name + source.
+  - If you add a new table, also add the migration needed (follow the project’s existing Drizzle pattern).
+- If needed, create `server/jobs/scheduler.ts` or similar to keep scheduling logic clean.
+
+Constraints:
+- Do NOT change the client app in this prompt.
+- Do NOT implement committees or GeoJSON refresh here (that will be a later prompt). This prompt is ONLY the officials dataset refresh system.
+- Keep logs concise but useful (console.log is fine).
+
+After changes:
+- Tell me exactly which files you changed and summarize the new behavior.
+- Include a brief note on how to test:
+  1) how to force a refresh (admin endpoint)
+  2) how to simulate “unchanged” vs “changed” fingerprints
