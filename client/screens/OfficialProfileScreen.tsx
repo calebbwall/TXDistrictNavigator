@@ -356,7 +356,9 @@ export default function OfficialProfileScreen() {
   }, [official, district, navigation]);
 
   const handleSaveNotes = useCallback(async () => {
+    console.log('[OfficialProfile] handleSaveNotes called');
     if (!official) return;
+    console.log('[OfficialProfile] Saving notes for:', official.id, 'address:', privateNotes.personalAddress);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await savePrivateNotes(official.id, privateNotes);
     try {
