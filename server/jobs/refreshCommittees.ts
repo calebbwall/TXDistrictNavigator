@@ -128,6 +128,7 @@ function isValidPersonName(name: string): boolean {
     /^fax:/i,
     /^email:/i,
     /^address:/i,
+    /^room:/i,
     /^member$/i,
     /^position$/i,
     /mapcontact/i,
