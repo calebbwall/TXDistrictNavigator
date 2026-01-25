@@ -1235,6 +1235,35 @@ export default function MapScreen() {
     }
   }, [route.params?.focusDistrict, mapReady, dataLoaded, overlays, sendToWebView, navigation]);
 
+  // Send address dots to WebView when ready
+  useEffect(() => {
+    if (!mapReady || addressDots.length === 0) return;
+    
+    const dotsMsg = { type: 'SET_ADDRESS_DOTS', dots: addressDots };
+    if (Platform.OS === 'web') {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(dotsMsg), '*');
+      }
+    } else {
+      sendToWebView(dotsMsg);
+    }
+    console.log('[MapScreen] Sent', addressDots.length, 'address dots to WebView');
+  }, [mapReady, addressDots, sendToWebView]);
+
+  // Update active officials when selectedDistrict changes
+  useEffect(() => {
+    const activeIds = selectedDistrict?.officials?.map(o => o.id) || [];
+    
+    const activeMsg = { type: 'SET_ACTIVE_OFFICIALS', officialIds: activeIds };
+    if (Platform.OS === 'web') {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(activeMsg), '*');
+      }
+    } else {
+      sendToWebView(activeMsg);
+    }
+  }, [selectedDistrict?.officials, sendToWebView]);
+
   const handleToggleOverlay = useCallback(
     async (type: keyof OverlayPreferences) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
