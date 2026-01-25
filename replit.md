@@ -141,14 +141,55 @@ Texas House and Senate committees are scraped from Texas Legislature Online and 
 - **CommitteeDetailScreen** - Committee with member list and roles
 - **OfficialProfileScreen** - Committees section in PUBLIC tab
 
+## Other Texas Officials Feature
+
+### Overview
+Texas statewide elected officials (Governor, Lt Governor, Attorney General, etc.) are now tracked in the system alongside legislative officials. These officials use the OTHER_TX source type and are displayed in a dedicated screen.
+
+### Database Tables
+**persons** - Stable identity tracking across position changes
+- `id` - UUID primary key
+- `fullNameCanonical` - Normalized name for matching
+- `fullNameDisplay` - Display name
+- `createdAt`, `updatedAt` - Timestamps
+
+**officialPublic additions**
+- `personId` - FK to persons table for identity continuity
+- `roleTitle` - For OTHER_TX: Governor, Lt Governor, etc.
+- `source` enum now includes: TX_HOUSE, TX_SENATE, US_HOUSE, OTHER_TX
+
+### Data Source
+- Static data file: `server/data/otherTexasOfficials.ts`
+- Manually maintained since statewide officials change infrequently
+- Identity resolution via `server/lib/identityResolver.ts`
+
+### API Endpoints
+- `GET /api/other-tx-officials` - List all active statewide officials
+- `POST /admin/refresh/other-tx-officials` - Admin refresh (token protected)
+
+### Client Screens
+- **OtherTexasOfficialsScreen** - List of statewide officials grouped by category (Profile → Tools → Other Texas Officials)
+- Categories: Executive Branch, Railroad Commission, Judiciary
+
+### Identity Resolution
+The `resolvePersonId()` function in `server/lib/identityResolver.ts` provides:
+- Name normalization (removes titles, suffixes)
+- Automatic person record creation
+- Stable identity for notes continuity across position changes
+
 ## Schema Notes
 
 ### Custom Fields (Must Be Preserved)
 If the shared schema is ever regenerated, ensure these custom fields are re-added:
 
 **officialPublic table:**
+- `personId: varchar("person_id", { length: 255 }).references(() => persons.id)` - Links to stable person identity
+- `roleTitle: varchar("role_title", { length: 255 })` - For OTHER_TX officials
 - `capitolRoom: varchar("capitol_room", { length: 50 })` - Capitol room/office number scraped from TLO
   - Format: Full building code + room number as provided by TLO
   - Examples: "EXT E1.304", "CAP 1W.3", "GNB.647"
   - The full TLO "Capitol Office" field text is preserved (no stripping)
   - Location: Between `capitolPhone` and `districtAddresses` in the column order
+
+**officialPrivate table:**
+- `personId: varchar("person_id", { length: 255 }).references(() => persons.id)` - For continuity across position changes
