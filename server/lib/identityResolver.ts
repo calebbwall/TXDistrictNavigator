@@ -1,7 +1,69 @@
 import { db } from '../db';
-import { persons, officialPublic } from '../../shared/schema';
-import { eq } from 'drizzle-orm';
+import { persons, officialPublic, personLinks } from '../../shared/schema';
+import { eq, and, isNull, isNotNull, sql } from 'drizzle-orm';
 import { createHash } from 'crypto';
+
+/**
+ * Check if an official has an explicit person link override.
+ * Returns the personId if a link exists, null otherwise.
+ */
+export async function getExplicitPersonLink(officialPublicId: string): Promise<string | null> {
+  const link = await db
+    .select({ personId: personLinks.personId })
+    .from(personLinks)
+    .where(eq(personLinks.officialPublicId, officialPublicId))
+    .limit(1);
+  
+  return link.length > 0 ? link[0].personId : null;
+}
+
+/**
+ * Create or update an explicit person link.
+ * This admin override takes precedence over name-based matching.
+ */
+export async function setExplicitPersonLink(
+  officialPublicId: string,
+  personId: string
+): Promise<{ officialPublicId: string; personId: string }> {
+  const now = new Date();
+  
+  await db
+    .insert(personLinks)
+    .values({
+      officialPublicId,
+      personId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: personLinks.officialPublicId,
+      set: {
+        personId,
+        updatedAt: now,
+      },
+    });
+  
+  await db
+    .update(officialPublic)
+    .set({ personId })
+    .where(eq(officialPublic.id, officialPublicId));
+  
+  console.log(`[Identity] Set explicit person link: official ${officialPublicId} -> person ${personId}`);
+  
+  return { officialPublicId, personId };
+}
+
+/**
+ * Get all explicit person links (for admin visibility).
+ */
+export async function getAllExplicitPersonLinks(): Promise<Array<{ officialPublicId: string; personId: string }>> {
+  return await db
+    .select({
+      officialPublicId: personLinks.officialPublicId,
+      personId: personLinks.personId,
+    })
+    .from(personLinks);
+}
 
 /**
  * Normalize a name for matching purposes.
@@ -51,14 +113,26 @@ export function generatePersonFingerprint(canonicalName: string): string {
  * Returns the personId for linking to officialPublic.
  * 
  * Strategy:
- * 1. Look for existing person by canonical name match
- * 2. If found, return existing personId
- * 3. If not found, create new person record
+ * 1. FIRST check explicit person_links (admin override)
+ * 2. Then look for existing person by canonical name match
+ * 3. If found, return existing personId
+ * 4. If not found, create new person record
  */
 export async function resolvePersonId(
   fullName: string,
-  displayName?: string
+  displayName?: string,
+  officialPublicId?: string
 ): Promise<string> {
+  // FIRST: Check for explicit person link override (admin-set)
+  if (officialPublicId) {
+    const explicitLink = await getExplicitPersonLink(officialPublicId);
+    if (explicitLink) {
+      console.log(`[Identity] Using explicit link for official ${officialPublicId} -> person ${explicitLink}`);
+      return explicitLink;
+    }
+  }
+  
+  // FALLBACK: Name-based matching
   const canonicalName = normalizeName(fullName);
   const display = displayName || fullName;
   
@@ -173,4 +247,110 @@ export async function getOfficialsByPersonId(
     .select()
     .from(officialPublic)
     .where(eq(officialPublic.personId, personId));
+}
+
+/**
+ * Get identity statistics for admin dashboard.
+ */
+export async function getIdentityStats(): Promise<{
+  totalPersons: number;
+  activeOfficials: number;
+  archivedPersons: number;
+  explicitLinks: number;
+}> {
+  const [totalPersonsResult] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(persons);
+  
+  const [activeOfficialsResult] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(officialPublic)
+    .where(eq(officialPublic.active, true));
+  
+  const [explicitLinksResult] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(personLinks);
+  
+  const archivedPersonsResult = await db.execute(sql`
+    SELECT COUNT(*)::int as count FROM persons p
+    WHERE NOT EXISTS (
+      SELECT 1 FROM official_public op
+      WHERE op.person_id = p.id AND op.active = true
+    )
+  `);
+  
+  return {
+    totalPersons: totalPersonsResult.count,
+    activeOfficials: activeOfficialsResult.count,
+    archivedPersons: Number((archivedPersonsResult.rows[0] as any)?.count || 0),
+    explicitLinks: explicitLinksResult.count,
+  };
+}
+
+/**
+ * Get all archived persons (persons with no active official records).
+ */
+export async function getArchivedPersons(): Promise<Array<{ id: string; fullNameDisplay: string }>> {
+  const result = await db.execute(sql`
+    SELECT p.id, p.full_name_display as "fullNameDisplay"
+    FROM persons p
+    WHERE NOT EXISTS (
+      SELECT 1 FROM official_public op
+      WHERE op.person_id = p.id AND op.active = true
+    )
+    ORDER BY p.full_name_display
+  `);
+  
+  return result.rows as Array<{ id: string; fullNameDisplay: string }>;
+}
+
+/**
+ * Resolve personIds for all active officials that don't have one.
+ * Used during refresh cycle to ensure all officials are linked.
+ */
+export async function resolveAllMissingPersonIds(): Promise<{ resolved: number; created: number }> {
+  console.log('[Identity] Resolving missing personIds for active officials...');
+  
+  const officialsWithoutPerson = await db
+    .select()
+    .from(officialPublic)
+    .where(and(
+      eq(officialPublic.active, true),
+      isNull(officialPublic.personId)
+    ));
+  
+  if (officialsWithoutPerson.length === 0) {
+    console.log('[Identity] All active officials have personIds');
+    return { resolved: 0, created: 0 };
+  }
+  
+  console.log(`[Identity] Found ${officialsWithoutPerson.length} officials without personId`);
+  
+  let resolved = 0;
+  let created = 0;
+  
+  for (const official of officialsWithoutPerson) {
+    const personId = await resolvePersonId(
+      official.fullName,
+      official.fullName,
+      official.id
+    );
+    
+    await db
+      .update(officialPublic)
+      .set({ personId })
+      .where(eq(officialPublic.id, official.id));
+    
+    resolved++;
+    const isNew = await db
+      .select()
+      .from(persons)
+      .where(eq(persons.id, personId));
+    if (isNew.length > 0) {
+      created++;
+    }
+  }
+  
+  console.log(`[Identity] Resolved ${resolved} personIds, created ${created} new person records`);
+  return { resolved, created };
 }

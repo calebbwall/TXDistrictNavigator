@@ -119,7 +119,25 @@ export const refreshJobLog = pgTable("refresh_job_log", {
   durationMs: varchar("duration_ms", { length: 20 }),
 });
 
+// Person links table - explicit admin overrides for identity resolution
+export const personLinks = pgTable("person_links", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  officialPublicId: varchar("official_public_id", { length: 255 })
+    .notNull()
+    .unique()
+    .references(() => officialPublic.id, { onDelete: "cascade" }),
+  personId: varchar("person_id", { length: 255 })
+    .notNull()
+    .references(() => persons.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Types
+export type PersonLink = typeof personLinks.$inferSelect;
+export type InsertPersonLink = typeof personLinks.$inferInsert;
 export type Person = typeof persons.$inferSelect;
 export type InsertPerson = typeof persons.$inferInsert;
 export type OfficialPublic = typeof officialPublic.$inferSelect;

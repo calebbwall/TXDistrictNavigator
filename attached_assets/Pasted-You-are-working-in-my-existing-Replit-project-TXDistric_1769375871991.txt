@@ -1,0 +1,131 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Add ADMIN GUARDRAILS for identity management and refresh observability.
+
+This prompt is an extension of the identity/continuity system (persons, archived officials, other Texas officials). Do NOT redesign any UI or touch map behavior, committees, or refresh scheduling logic beyond what is specified here.
+
+========================================================
+FEATURES TO ADD
+========================================================
+
+A) Explicit person identity override (admin-only)
+Purpose:
+- Name-based matching is imperfect.
+- We need a deterministic override so a specific office record is ALWAYS linked to the correct person.
+
+Requirements:
+1) Create a new table `person_links` (or similar):
+   - id (PK)
+   - officialPublicId (or source + sourceMemberId if preferred)
+   - personId (FK to persons)
+   - createdAt
+   - updatedAt
+   - UNIQUE constraint on officialPublicId
+2) Update identity resolution logic (`resolvePersonId()`):
+   - FIRST check `person_links`
+   - If a mapping exists, always use that personId
+   - Only fall back to name-based matching if no explicit link exists
+3) Do NOT auto-delete or auto-change these mappings.
+
+Admin endpoint:
+- Add `POST /admin/person/link`
+- Protected by `x-admin-token` header (same ADMIN_REFRESH_TOKEN)
+- Request body:
+  {
+    "officialPublicId": "<id>",
+    "personId": "<id>"
+  }
+- Behavior:
+  - Create or update the link
+  - Return the resolved person + official record
+
+========================================================
+B) Explicit refresh order & safety
+========================================================
+
+Purpose:
+- Prevent transient archiving or identity mismatches during weekly refresh.
+
+Requirements:
+1) Make refresh order explicit and deterministic:
+   - Refresh legislature + US House
+   - Refresh Other Texas Officials
+   - Resolve personIds for all active office records
+   - Mark inactive office records
+   - Compute archived persons (person has no active office records)
+2) Ensure this sequence runs atomically within a refresh cycle.
+3) Add clear logging boundaries:
+   - "BEGIN refresh cycle"
+   - "END refresh cycle"
+
+========================================================
+C) Admin refresh status / health endpoint
+========================================================
+
+Purpose:
+- Provide visibility into what the system thinks is current.
+
+Endpoint:
+- `GET /admin/status`
+- Protected by `x-admin-token`
+
+Response must include:
+- For each dataset:
+  - officials
+  - geojson
+  - committees
+  - other_tx_officials
+- Return:
+  - lastCheckedAt
+  - lastChangedAt
+  - lastRefreshedAt (if applicable)
+- Counts:
+  - active office records
+  - archived persons
+  - total persons
+
+Use the existing refresh_state table where possible.
+
+========================================================
+CONSTRAINTS
+========================================================
+
+- No client UI changes.
+- No changes to map behavior.
+- No changes to committees UI.
+- No breaking changes to existing APIs.
+- Keep admin endpoints minimal and clearly logged.
+
+========================================================
+FILES TO MODIFY / CREATE (verify names)
+========================================================
+
+- Server identity resolution logic (resolvePersonId)
+- Drizzle schema:
+  - add `person_links`
+- Admin routes:
+  - POST /admin/person/link
+  - GET /admin/status
+- Any refresh orchestration logic that needs explicit ordering
+
+========================================================
+TESTING CHECKLIST
+========================================================
+
+1) Create two officials with similar names.
+2) Link one official explicitly to a person using POST /admin/person/link.
+3) Run a refresh.
+4) Confirm:
+   - Explicitly linked official always resolves to the chosen personId
+   - No duplicate persons created
+5) Call GET /admin/status and confirm:
+   - Timestamps make sense
+   - Counts reflect DB state
+6) Confirm unauthorized requests return 401.
+
+========================================================
+AFTER CHANGES
+========================================================
+
+- List all files changed.
+- Explain how explicit person_links overrides name-based matching.
+- Explain how archived persons are computed.
+- Confirm admin endpoints are protected and working.
