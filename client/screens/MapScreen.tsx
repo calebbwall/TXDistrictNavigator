@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { WebView } from "react-native-webview";
@@ -906,7 +906,6 @@ export default function MapScreen() {
     lng: number;
   }
   const [addressDots, setAddressDots] = useState<AddressDot[]>([]);
-  const addressDotsLoadedRef = useRef(false);
 
   const layerButtonScale = useSharedValue(1);
 
@@ -946,53 +945,51 @@ export default function MapScreen() {
     }
   }, []);
 
-  // Load and geocode addresses for dots
-  useEffect(() => {
-    if (addressDotsLoadedRef.current) return;
-    addressDotsLoadedRef.current = true;
-
-    const loadAddressDots = async () => {
-      try {
-        const notesWithAddresses = await getAllPrivateNotesWithAddresses();
-        if (notesWithAddresses.length === 0) {
-          console.log('[MapScreen] No private addresses found');
-          return;
-        }
-
-        console.log('[MapScreen] Found', notesWithAddresses.length, 'officials with addresses');
-        
-        const cache = await getGeocodedAddressCache();
-        const dots: AddressDot[] = [];
-
-        for (const { officialId, personalAddress } of notesWithAddresses) {
-          // Check cache first
-          const cached = cache[officialId];
-          if (cached && cached.address === personalAddress) {
-            dots.push({ officialId, lat: cached.lat, lng: cached.lng });
-            continue;
+  // Load and geocode addresses for dots - reload when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadAddressDots = async () => {
+        try {
+          const notesWithAddresses = await getAllPrivateNotesWithAddresses();
+          if (notesWithAddresses.length === 0) {
+            console.log('[MapScreen] No private addresses found');
+            setAddressDots([]);
+            return;
           }
 
-          // Rate limit: small delay between geocoding requests
-          await new Promise(r => setTimeout(r, 200));
+          console.log('[MapScreen] Found', notesWithAddresses.length, 'officials with addresses');
           
-          const coords = await geocodeAddress(personalAddress);
-          if (coords) {
-            dots.push({ officialId, lat: coords.lat, lng: coords.lng });
-            await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
+          const cache = await getGeocodedAddressCache();
+          const dots: AddressDot[] = [];
+
+          for (const { officialId, personalAddress } of notesWithAddresses) {
+            // Check cache first
+            const cached = cache[officialId];
+            if (cached && cached.address === personalAddress) {
+              dots.push({ officialId, lat: cached.lat, lng: cached.lng });
+              continue;
+            }
+
+            // Rate limit: small delay between geocoding requests
+            await new Promise(r => setTimeout(r, 200));
+            
+            const coords = await geocodeAddress(personalAddress);
+            if (coords) {
+              dots.push({ officialId, lat: coords.lat, lng: coords.lng });
+              await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
+            }
           }
-        }
 
-        if (dots.length > 0) {
-          console.log('[MapScreen] Geocoded', dots.length, 'addresses');
+          console.log('[MapScreen] Loaded', dots.length, 'address dots');
           setAddressDots(dots);
+        } catch (error) {
+          console.error('[MapScreen] Error loading address dots:', error);
         }
-      } catch (error) {
-        console.error('[MapScreen] Error loading address dots:', error);
-      }
-    };
+      };
 
-    loadAddressDots();
-  }, [geocodeAddress]);
+      loadAddressDots();
+    }, [geocodeAddress])
+  );
   
   const sendToWebView = useCallback((message: object) => {
     if (webViewRef.current) {
