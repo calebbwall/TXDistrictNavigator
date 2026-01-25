@@ -11,6 +11,7 @@ import {
   ScrollView,
   LayoutChangeEvent,
   ActionSheetIOS,
+  ActivityIndicator,
 } from "react-native";
 import {
   isValidUSPhone,
@@ -205,6 +206,13 @@ export default function OfficialProfileScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [engagementNote, setEngagementNote] = useState("");
+  const [committees, setCommittees] = useState<Array<{
+    id: string;
+    committeeId: string;
+    committeeName: string;
+    roleTitle: string | null;
+  }>>([]);
+  const [committeesLoading, setCommitteesLoading] = useState(false);
 
   const loadOfficial = useCallback(async () => {
     setIsLoading(true);
@@ -282,6 +290,24 @@ export default function OfficialProfileScreen() {
       }, 100);
     }
   }, [initialSection, notesSectionY, hasScrolledToNotes, isLoading]);
+
+  useEffect(() => {
+    const fetchCommittees = async () => {
+      if (!officialId) return;
+      setCommitteesLoading(true);
+      try {
+        const response = await fetch(`${process.env.EXPO_PUBLIC_DOMAIN}/api/officials/${officialId}/committees`);
+        if (response.ok) {
+          const data = await response.json();
+          setCommittees(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch committees:", error);
+      }
+      setCommitteesLoading(false);
+    };
+    fetchCommittees();
+  }, [officialId]);
 
   const handleNotesSectionLayout = useCallback((event: LayoutChangeEvent) => {
     const { y } = event.nativeEvent.layout;
@@ -668,6 +694,50 @@ export default function OfficialProfileScreen() {
                 ))}
               </View>
             ) : null}
+
+            <View style={styles.section}>
+              <ThemedText type="h3" style={styles.sectionTitle}>
+                Committees
+              </ThemedText>
+              {committeesLoading ? (
+                <View style={styles.committeesLoading}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                </View>
+              ) : committees.length > 0 ? (
+                committees.map((committee) => (
+                  <Pressable
+                    key={committee.id}
+                    style={({ pressed }) => [
+                      styles.committeeRow,
+                      { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                  >
+                    <View style={[styles.committeeIcon, { backgroundColor: theme.primary + "20" }]}>
+                      <Feather name="briefcase" size={14} color={theme.primary} />
+                    </View>
+                    <View style={styles.committeeContent}>
+                      <ThemedText type="body" numberOfLines={2}>
+                        {committee.committeeName}
+                      </ThemedText>
+                      {committee.roleTitle ? (
+                        <View style={[styles.roleBadge, { backgroundColor: committee.roleTitle === "Chair" ? "#FFD70020" : "#C0C0C020" }]}>
+                          <ThemedText type="caption" style={{ color: committee.roleTitle === "Chair" ? "#FFD700" : "#C0C0C0", fontWeight: "600" }}>
+                            {committee.roleTitle}
+                          </ThemedText>
+                        </View>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                ))
+              ) : (
+                <ThemedText type="body" style={{ color: theme.secondaryText }}>
+                  No committee assignments found
+                </ThemedText>
+              )}
+            </View>
           </Animated.View>
         ) : (
           <Animated.View entering={FadeIn.duration(200)} style={styles.tabContent}>
@@ -1539,5 +1609,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.sm,
     alignItems: "center",
+  },
+  committeesLoading: {
+    paddingVertical: Spacing.md,
+    alignItems: "center",
+  },
+  committeeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    marginBottom: Spacing.xs,
+    gap: Spacing.sm,
+  },
+  committeeIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.xs,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  committeeContent: {
+    flex: 1,
+    gap: 2,
+  },
+  roleBadge: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+    alignSelf: "flex-start",
   },
 });

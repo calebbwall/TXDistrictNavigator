@@ -88,6 +88,11 @@ The refresh system uses SHA256 fingerprints to detect changes in upstream data s
 - Files stored in: `server/data/*.geojson`
 
 ### Recent Changes
+- 2026-01-25: Added Committees feature with browsing and official profile integration
+- 2026-01-25: Created committees and committee_memberships tables with Drizzle ORM
+- 2026-01-25: Added server-side scraping from Texas Legislature Online for committee data
+- 2026-01-25: Added admin endpoint POST /admin/refresh/committees with token protection
+- 2026-01-25: Integrated committees into scheduler (Monday 3-4 AM Central Time)
 - 2026-01-25: Added capitolRoom field to shared/schema.ts officialPublic table for TLO room numbers
 - 2026-01-25: Extended smart refresh to include GeoJSON district boundary files
 - 2026-01-25: Added admin endpoint POST /admin/refresh/geojson with token protection
@@ -95,6 +100,45 @@ The refresh system uses SHA256 fingerprints to detect changes in upstream data s
 - 2026-01-25: Added smart refresh with fingerprint-based change detection
 - 2026-01-25: Created scheduler for Monday 3-4 AM Central Time auto-refresh
 - 2026-01-25: Added admin endpoints with token protection for manual refresh triggers
+
+## Committees Feature
+
+### Overview
+Texas House and Senate committees are scraped from Texas Legislature Online and stored in PostgreSQL. Committee memberships are linked to officials via name normalization.
+
+### Database Tables
+**committees**
+- `id` - UUID primary key
+- `chamber` - TX_HOUSE or TX_SENATE
+- `name` - Committee name
+- `slug` - URL-friendly slug
+- `sourceUrl` - Link to TLO committee page
+- `isActive` - Active status (default true)
+
+**committee_memberships**
+- `id` - UUID primary key
+- `committeeId` - FK to committees
+- `officialPublicId` - FK to officials (nullable for unmatched members)
+- `memberName` - Name from TLO
+- `roleTitle` - Chair, Vice Chair, or null for Member
+- `sortOrder` - Member order on committee
+
+**committee_refresh_state**
+- `source` - TX_HOUSE_COMMITTEES, TX_SENATE_COMMITTEES
+- `fingerprint` - SHA256 hash of upstream data
+- `last_checked_at`, `last_changed_at`, `last_refreshed_at` - Timestamps
+
+### API Endpoints
+- `GET /api/committees?chamber=TX_HOUSE|TX_SENATE` - List all active committees
+- `GET /api/committees/:id` - Get committee details with members
+- `GET /api/officials/:officialId/committees` - Get official's committee assignments
+- `POST /admin/refresh/committees` - Admin refresh (token protected)
+
+### Client Screens
+- **CommitteesScreen** - Chamber selection (Profile → Tools → Committees)
+- **CommitteeListScreen** - List of committees for selected chamber
+- **CommitteeDetailScreen** - Committee with member list and roles
+- **OfficialProfileScreen** - Committees section in PUBLIC tab
 
 ## Schema Notes
 
