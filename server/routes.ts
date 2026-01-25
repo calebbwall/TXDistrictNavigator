@@ -1154,8 +1154,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           TX_HOUSE: officialsStates.find(s => s.source === "TX_HOUSE") || null,
           TX_SENATE: officialsStates.find(s => s.source === "TX_SENATE") || null,
           US_HOUSE: officialsStates.find(s => s.source === "US_HOUSE") || null,
-          OTHER_TX: officialsStates.find(s => s.source === "OTHER_TX") || null,
           isRefreshing: getIsRefreshing(),
+        },
+        other_tx_officials: {
+          note: "Static data source - no refresh state tracking",
         },
         geojson: {
           states: geojsonStates,
