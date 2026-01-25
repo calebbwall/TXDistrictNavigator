@@ -56,7 +56,7 @@ function MemberRow({ member, chamber }: MemberRowProps) {
 
   const isChair = member.roleTitle === "Chair";
   const isViceChair = member.roleTitle === "Vice Chair";
-  const roleColor = isChair ? "#FFD700" : isViceChair ? "#C0C0C0" : theme.secondaryText;
+  const roleColor = isChair ? "#FFD700" : isViceChair ? "#A8D8EA" : theme.secondaryText;
 
   const partyColor = member.officialParty === "R" ? "#E94B3C" : member.officialParty === "D" ? "#4A90E2" : theme.secondaryText;
 
@@ -88,8 +88,13 @@ function MemberRow({ member, chamber }: MemberRowProps) {
         </ThemedText>
         <View style={styles.memberMeta}>
           {member.roleTitle ? (
-            <View style={[styles.roleBadge, { backgroundColor: roleColor + "20" }]}>
-              <ThemedText type="caption" style={{ color: roleColor, fontWeight: "600" }}>
+            <View style={[
+              styles.roleBadge, 
+              { backgroundColor: roleColor + "20" },
+              isChair && { borderWidth: 1.5, borderColor: "#FFD700" },
+              isViceChair && { borderWidth: 1, borderColor: "#A8D8EA" },
+            ]}>
+              <ThemedText type="caption" style={{ color: isChair ? "#DAA520" : isViceChair ? "#5B9BD5" : roleColor, fontWeight: "600" }}>
                 {member.roleTitle}
               </ThemedText>
             </View>

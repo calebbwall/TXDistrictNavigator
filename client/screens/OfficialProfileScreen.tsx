@@ -725,8 +725,13 @@ export default function OfficialProfileScreen() {
                         {committee.committeeName}
                       </ThemedText>
                       {committee.roleTitle ? (
-                        <View style={[styles.roleBadge, { backgroundColor: committee.roleTitle === "Chair" ? "#FFD70020" : "#C0C0C020" }]}>
-                          <ThemedText type="caption" style={{ color: committee.roleTitle === "Chair" ? "#FFD700" : "#C0C0C0", fontWeight: "600" }}>
+                        <View style={[
+                          styles.roleBadge, 
+                          { backgroundColor: committee.roleTitle === "Chair" ? "#FFD70020" : committee.roleTitle === "Vice Chair" ? "#A8D8EA20" : "#C0C0C020" },
+                          committee.roleTitle === "Chair" && { borderWidth: 1.5, borderColor: "#FFD700" },
+                          committee.roleTitle === "Vice Chair" && { borderWidth: 1, borderColor: "#A8D8EA" },
+                        ]}>
+                          <ThemedText type="caption" style={{ color: committee.roleTitle === "Chair" ? "#DAA520" : committee.roleTitle === "Vice Chair" ? "#5B9BD5" : "#C0C0C0", fontWeight: "600" }}>
                             {committee.roleTitle}
                           </ThemedText>
                         </View>

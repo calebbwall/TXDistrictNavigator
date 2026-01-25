@@ -111,6 +111,42 @@ async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]
   return committees;
 }
 
+function isValidPersonName(name: string): boolean {
+  if (!name || name.length < 3) return false;
+  if (name.endsWith(":")) return false;
+  if (/^\d/.test(name)) return false;
+  if (/\d{5,}/.test(name)) return false;
+  
+  const invalidPatterns = [
+    /^texas legislature/i,
+    /^help.*faq/i,
+    /^site.*map/i,
+    /^contact.*login/i,
+    /^bill:/i,
+    /^clerk:/i,
+    /^phone:/i,
+    /^fax:/i,
+    /^email:/i,
+    /^address:/i,
+    /^member$/i,
+    /^position$/i,
+    /mapcontact/i,
+    /login$/i,
+    /online$/i,
+    /website/i,
+    /capitol\.texas/i,
+  ];
+  
+  for (const pattern of invalidPatterns) {
+    if (pattern.test(name)) return false;
+  }
+  
+  const nameParts = name.split(/\s+/).filter(p => p.length > 0);
+  if (nameParts.length < 2) return false;
+  
+  return true;
+}
+
 async function fetchCommitteeMembers(committee: ParsedCommittee): Promise<ParsedMember[]> {
   const url = committee.sourceUrl;
   
@@ -134,6 +170,10 @@ async function fetchCommitteeMembers(committee: ParsedCommittee): Promise<Parsed
       
       if (!memberName || memberName === "Member") return;
       if (positionCell === "Position") return;
+      
+      if (!isValidPersonName(memberName)) {
+        return;
+      }
       
       const legCodeMatch = memberHref.match(/LegCode=([A-Z0-9]+)/i);
       const legCode = legCodeMatch ? legCodeMatch[1] : "";
