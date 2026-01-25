@@ -208,7 +208,6 @@ export default function OfficialProfileScreen() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [engagementNote, setEngagementNote] = useState("");
   const [committees, setCommittees] = useState<Array<{
-    id: string;
     committeeId: string;
     committeeName: string;
     roleTitle: string | null;
@@ -708,7 +707,7 @@ export default function OfficialProfileScreen() {
               ) : committees.length > 0 ? (
                 committees.map((committee) => (
                   <Pressable
-                    key={committee.id}
+                    key={committee.committeeId}
                     style={({ pressed }) => [
                       styles.committeeRow,
                       { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
