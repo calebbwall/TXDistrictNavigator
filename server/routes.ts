@@ -172,12 +172,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(officialPublic)
         .where(conditions.length > 0 ? and(...conditions) : undefined);
       
+      const capitolRoomsResult = await db.execute(sql`SELECT id, capitol_room FROM official_public WHERE capitol_room IS NOT NULL`);
+      const capitolRoomMap = new Map<string, string>();
+      for (const row of capitolRoomsResult.rows as Array<{ id: string; capitol_room: string }>) {
+        if (row.capitol_room) {
+          capitolRoomMap.set(row.id, row.capitol_room);
+        }
+      }
+      
       const privateData = await db.select().from(officialPrivate);
       const privateMap = new Map(privateData.map(p => [p.officialPublicId, p]));
       
-      let officials: MergedOfficial[] = publicOfficials.map(pub => 
-        mergeOfficial(pub, privateMap.get(pub.id) || null)
-      );
+      let officials: MergedOfficial[] = publicOfficials.map(pub => {
+        const merged = mergeOfficial(pub, privateMap.get(pub.id) || null);
+        const capitolRoom = capitolRoomMap.get(pub.id);
+        if (capitolRoom) {
+          (merged as any).capitolRoom = capitolRoom;
+        }
+        return merged;
+      });
       
       // For source=ALL or no source filter, fill vacancies for all sources
       if (isAllSources || !sourceFilter) {
@@ -315,6 +328,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const official = mergeOfficial(pub, priv || null);
         official.isVacant = false;
+        
+        const capitolRoomResult = await db.execute(sql`SELECT capitol_room FROM official_public WHERE id = ${pub.id}`);
+        if (capitolRoomResult.rows.length > 0 && (capitolRoomResult.rows[0] as any).capitol_room) {
+          (official as any).capitolRoom = (capitolRoomResult.rows[0] as any).capitol_room;
+        }
+        
         return res.json({ official });
       }
       
@@ -334,6 +353,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const official = mergeOfficial(pub, priv || null);
       official.isVacant = false;
+      
+      const capitolRoomResult = await db.execute(sql`SELECT capitol_room FROM official_public WHERE id = ${id}`);
+      if (capitolRoomResult.rows.length > 0 && (capitolRoomResult.rows[0] as any).capitol_room) {
+        (official as any).capitolRoom = (capitolRoomResult.rows[0] as any).capitol_room;
+      }
+      
       res.json({ official });
     } catch (err) {
       console.error("[API] Error fetching official:", err);
@@ -376,6 +401,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(1);
       
       const official = mergeOfficial(pub, priv || null);
+      
+      const capitolRoomResult = await db.execute(sql`SELECT capitol_room FROM official_public WHERE id = ${pub.id}`);
+      if (capitolRoomResult.rows.length > 0 && (capitolRoomResult.rows[0] as any).capitol_room) {
+        (official as any).capitolRoom = (capitolRoomResult.rows[0] as any).capitol_room;
+      }
+      
       res.json({ official });
     } catch (err) {
       console.error("[API] Error fetching official by district:", err);
@@ -412,7 +443,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .where(eq(officialPrivate.officialPublicId, pub.id))
             .limit(1);
           
-          results.push(mergeOfficial(pub, priv || null));
+          const merged = mergeOfficial(pub, priv || null);
+          
+          const capitolRoomResult = await db.execute(sql`SELECT capitol_room FROM official_public WHERE id = ${pub.id}`);
+          if (capitolRoomResult.rows.length > 0 && (capitolRoomResult.rows[0] as any).capitol_room) {
+            (merged as any).capitolRoom = (capitolRoomResult.rows[0] as any).capitol_room;
+          }
+          
+          results.push(merged);
         } else {
           results.push(createVacantOfficial(source, districtNumber));
         }

@@ -45,6 +45,7 @@ interface ParsedOfficial {
   photoUrl?: string;
   capitolAddress?: string;
   capitolPhone?: string;
+  capitolRoom?: string;
   districtAddresses?: string[];
   districtPhones?: string[];
   website?: string;
@@ -345,6 +346,17 @@ async function fetchMemberDetails(memberUrl: string, chamber: "house" | "senate"
     const capitolAddr2 = $("#lblCapitolAddress2").text().trim();
     const capitolAddress = [capitolAddr1, capitolAddr2].filter(Boolean).join(", ");
     
+    const capitolOfficeText = $("#lblCapitolOffice").text().trim();
+    let capitolRoom: string | undefined;
+    if (capitolOfficeText) {
+      const roomMatch = capitolOfficeText.match(/^(?:EXT\s+)?([A-Z]\d+\.\d+)$/i);
+      if (roomMatch) {
+        capitolRoom = roomMatch[1];
+      } else {
+        capitolRoom = capitolOfficeText;
+      }
+    }
+    
     const capitolPhone = $("#lblCapitolPhone").text().trim() || undefined;
     
     const districtAddr1 = $("#lblDistrictAddress1").text().trim();
@@ -374,6 +386,7 @@ async function fetchMemberDetails(memberUrl: string, chamber: "house" | "senate"
       party,
       capitolAddress: capitolAddress || undefined,
       capitolPhone,
+      capitolRoom,
       districtAddresses,
       districtPhones,
       website,
@@ -525,8 +538,16 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
               id: undefined,
             })
             .where(eq(officialPublic.id, existing[0].id));
+          
+          if (record.capitolRoom) {
+            await db.execute(sql`UPDATE official_public SET capitol_room = ${record.capitolRoom} WHERE id = ${existing[0].id}`);
+          }
         } else {
-          await db.insert(officialPublic).values(insertData);
+          const [inserted] = await db.insert(officialPublic).values(insertData).returning({ id: officialPublic.id });
+          
+          if (record.capitolRoom && inserted) {
+            await db.execute(sql`UPDATE official_public SET capitol_room = ${record.capitolRoom} WHERE id = ${inserted.id}`);
+          }
         }
         
         processedMemberIds.push(record.sourceMemberId);
