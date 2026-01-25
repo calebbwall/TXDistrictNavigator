@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { WebView } from "react-native-webview";
@@ -41,8 +41,15 @@ import type { MapStackParamList } from "@/navigation/MapStackNavigator";
 import { useDebugFlags, BUILD_MARKER } from "@/hooks/useDebugFlags";
 
 type NavigationProp = NativeStackNavigationProp<MapStackParamList>;
+type MapRouteProp = RouteProp<MapStackParamList, "Map">;
 
 interface SelectedDistrict {
+  hits: DistrictHit[];
+  officials: Official[];
+}
+
+interface StoredPolygonResults {
+  geometry: { type: string; coordinates: number[][][] };
   hits: DistrictHit[];
   officials: Official[];
 }
@@ -680,11 +687,75 @@ const MAP_HTML = `
           setUserLocation(data.lat, data.lng, data.accuracy);
         } else if (data.type === 'CENTER_MAP') {
           centerMap(data.lat, data.lng, data.zoom);
+        } else if (data.type === 'FOCUS_DISTRICT') {
+          focusOnDistrict(data.source, data.districtNumber);
         }
       } catch (e) {
         console.error('[Leaflet] Error processing message:', e);
       }
     };
+    
+    function focusOnDistrict(source, districtNumber) {
+      const layerType = source === 'TX_HOUSE' ? 'tx_house' : 
+                        source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
+      const data = geoJSONData[layerType];
+      if (!data || !data.features) {
+        console.log('[FOCUS] No GeoJSON data for', layerType);
+        return;
+      }
+      
+      const feature = data.features.find(f => {
+        const districtNum = f.properties.district || 
+                           f.properties.SLDUST || 
+                           f.properties.SLDLST ||
+                           f.properties.CD;
+        return parseInt(districtNum) === districtNumber;
+      });
+      
+      if (!feature) {
+        console.log('[FOCUS] District not found:', districtNumber);
+        return;
+      }
+      
+      // Calculate bounds from feature geometry
+      const coords = feature.geometry.type === 'Polygon' 
+        ? feature.geometry.coordinates[0] 
+        : feature.geometry.coordinates[0][0];
+      
+      let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+      coords.forEach(([lng, lat]) => {
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      });
+      
+      // Fit map to bounds
+      const bounds = L.latLngBounds([[minLat, minLng], [maxLat, maxLng]]);
+      map.fitBounds(bounds, { padding: [50, 50] });
+      
+      // Highlight the district
+      const layerKey = layerType === 'tx_senate' ? 'senate' : 
+                       layerType === 'tx_house' ? 'house' : 'congress';
+      const colors = layerColors[layerType];
+      
+      const highlightLayer = L.geoJSON(feature, {
+        style: {
+          fillColor: colors.stroke,
+          color: colors.stroke,
+          weight: 5,
+          opacity: 1,
+          fillOpacity: 0.4
+        }
+      }).addTo(map);
+      
+      // Remove highlight after 3 seconds
+      setTimeout(() => {
+        map.removeLayer(highlightLayer);
+      }, 3000);
+      
+      console.log('[FOCUS] Focused on district', districtNumber, 'in', layerType);
+    }
 
     document.addEventListener('message', function(e) {
       window.receiveMessage(e.data);
@@ -722,6 +793,7 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<MapRouteProp>();
   const { theme } = useTheme();
   const webViewRef = useRef<WebView>(null);
 
@@ -745,6 +817,13 @@ export default function MapScreen() {
   const [drawModeActive, setDrawModeActive] = useState(false);
   const [drawLoading, setDrawLoading] = useState(false);
   
+  // Polygon persistence state - stores drawn polygon and results even when panel is hidden
+  const [storedPolygon, setStoredPolygon] = useState<StoredPolygonResults | null>(null);
+  const [showResultsPanel, setShowResultsPanel] = useState(false);
+  
+  // Focus district state (for jump-to-district from official cards)
+  const [highlightedDistrict, setHighlightedDistrict] = useState<{ source: string; district: number } | null>(null);
+  
   // Location state
   const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -761,7 +840,7 @@ export default function MapScreen() {
       initialOverlaysRef.current = prefs;
     });
   }, []);
-
+  
   const sendToWebView = useCallback((message: object) => {
     if (webViewRef.current) {
       // Use proper JSON escaping for injection - encode to base64 to avoid any string escaping issues
@@ -937,6 +1016,71 @@ export default function MapScreen() {
     
     loadGeoJSON();
   }, [mapReady, fetchGeoJSON, sendToWebView]);
+  
+  // Handle focus district from navigation params (jump-to-district feature)
+  useEffect(() => {
+    const focusDistrict = route.params?.focusDistrict;
+    if (focusDistrict && mapReady && dataLoaded) {
+      console.log('[MapScreen] Focusing on district:', focusDistrict);
+      
+      // Clear any existing polygon/results
+      setStoredPolygon(null);
+      setSelectedDistrict(null);
+      setShowResultsPanel(false);
+      
+      // Clear drawing in WebView
+      const clearMsg = { type: 'CLEAR_DRAWING' };
+      if (Platform.OS === 'web') {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+        }
+      } else {
+        sendToWebView(clearMsg);
+      }
+      
+      // Enable the appropriate overlay if not already enabled
+      const layerType = focusDistrict.source === 'TX_HOUSE' ? 'house' : 
+                        focusDistrict.source === 'TX_SENATE' ? 'senate' : 'congress';
+      if (!overlays[layerType]) {
+        const newOverlays = { ...overlays, [layerType]: true };
+        setOverlays(newOverlays);
+        saveOverlayPreferences(newOverlays);
+        
+        const toggleMsg = { type: 'toggleLayer', layer: layerType, visible: true };
+        if (Platform.OS === 'web') {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(toggleMsg), '*');
+          }
+        } else {
+          sendToWebView(toggleMsg);
+        }
+      }
+      
+      // Send focus district message to WebView
+      const focusMsg = { 
+        type: 'FOCUS_DISTRICT', 
+        source: focusDistrict.source, 
+        districtNumber: focusDistrict.districtNumber 
+      };
+      if (Platform.OS === 'web') {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(focusMsg), '*');
+        }
+      } else {
+        sendToWebView(focusMsg);
+      }
+      
+      setHighlightedDistrict({ source: focusDistrict.source, district: focusDistrict.districtNumber });
+      
+      // Clear highlight after 3 seconds
+      setTimeout(() => {
+        setHighlightedDistrict(null);
+      }, 3000);
+      
+      // Clear the navigation params to avoid re-triggering
+      navigation.setParams({ focusDistrict: undefined });
+    }
+  }, [route.params?.focusDistrict, mapReady, dataLoaded, overlays, sendToWebView, navigation]);
 
   const handleToggleOverlay = useCallback(
     async (type: keyof OverlayPreferences) => {
@@ -1005,6 +1149,8 @@ export default function MapScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedDistrict(null);
     setDrawModeActive(false);
+    setStoredPolygon(null);
+    setShowResultsPanel(false);
     
     const msg = { type: 'CLEAR_DRAWING' };
     if (Platform.OS === 'web') {
@@ -1053,6 +1199,8 @@ export default function MapScreen() {
       
       if (hits.length === 0) {
         setSelectedDistrict({ hits: [], officials: [] });
+        setStoredPolygon({ geometry, hits: [], officials: [] });
+        setShowResultsPanel(true);
         setDrawLoading(false);
         return;
       }
@@ -1061,7 +1209,10 @@ export default function MapScreen() {
       const officials = await fetchOfficialsByDistricts(hits);
       console.log('[MapScreen] Draw search officials:', officials.length);
       
+      // Store polygon and results for persistence
+      setStoredPolygon({ geometry, hits, officials });
       setSelectedDistrict({ hits, officials });
+      setShowResultsPanel(true);
     } catch (error) {
       console.error('[MapScreen] Draw search error:', error);
     } finally {
@@ -1209,8 +1360,21 @@ export default function MapScreen() {
   }, [sendToWebView]);
 
   const handleCloseDistrictCard = useCallback(() => {
-    setSelectedDistrict(null);
+    // Only hide the results panel, keep data for restore
+    setShowResultsPanel(false);
   }, []);
+  
+  // Restore stored polygon results when tapping the chip
+  const handleRestorePolygonResults = useCallback(() => {
+    if (storedPolygon) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setSelectedDistrict({
+        hits: storedPolygon.hits,
+        officials: storedPolygon.officials,
+      });
+      setShowResultsPanel(true);
+    }
+  }, [storedPolygon]);
 
   const handleLayerButtonPressIn = () => {
     layerButtonScale.value = withSpring(0.9, springConfig);
@@ -1499,8 +1663,8 @@ export default function MapScreen() {
         </Pressable>
       </View>
 
-      {/* Clear drawing button - only show when there's a selection from draw */}
-      {selectedDistrict && selectedDistrict.hits.length > 0 ? (
+      {/* Clear drawing button - only show when there's a stored polygon */}
+      {storedPolygon ? (
         <View
           style={[
             styles.clearButton,
@@ -1518,6 +1682,24 @@ export default function MapScreen() {
             <Feather name="trash-2" size={20} color={theme.secondaryText} />
           </Pressable>
         </View>
+      ) : null}
+      
+      {/* Restore results chip - show when polygon exists but panel is hidden */}
+      {storedPolygon && !showResultsPanel && selectedDistrict ? (
+        <Pressable
+          onPress={() => setShowResultsPanel(true)}
+          style={[
+            styles.restoreChip,
+            {
+              top: headerHeight + Spacing.sm + 156,
+              backgroundColor: theme.primary,
+            },
+            Shadows.md,
+          ]}
+        >
+          <Feather name="refresh-cw" size={14} color="#FFFFFF" />
+          <ThemedText style={styles.restoreChipText}>Restore</ThemedText>
+        </Pressable>
       ) : null}
 
       {/* Locate me button */}
@@ -1623,7 +1805,7 @@ export default function MapScreen() {
         </Animated.View>
       ) : null}
 
-      {selectedDistrict ? (
+      {showResultsPanel && selectedDistrict ? (
         <MapResultsPanel
           officials={selectedDistrict.officials}
           hits={selectedDistrict.hits}
@@ -1745,6 +1927,23 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
     zIndex: 1000,
     elevation: 100,
+  },
+  restoreChip: {
+    position: "absolute",
+    right: Spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    gap: 4,
+    zIndex: 1000,
+    elevation: 100,
+  },
+  restoreChipText: {
+    color: "#FFFFFF",
+    fontSize: FontSize.xs,
+    fontWeight: "600",
   },
   locateButton: {
     position: "absolute",

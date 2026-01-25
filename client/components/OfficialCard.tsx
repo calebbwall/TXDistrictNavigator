@@ -7,14 +7,16 @@ import Animated, {
   WithSpringConfig,
 } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { type Official, getOfficeTypeLabel } from "@/lib/officials";
+import { type Official, getOfficeTypeLabel, type SourceType } from "@/lib/officials";
 
 interface OfficialCardProps {
   official: Official;
   onPress: () => void;
+  onDistrictPress?: (source: SourceType, districtNumber: number) => void;
 }
 
 const springConfig: WithSpringConfig = {
@@ -25,7 +27,7 @@ const springConfig: WithSpringConfig = {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-export function OfficialCard({ official, onPress }: OfficialCardProps) {
+export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCardProps) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
   const isVacant = official.isVacant === true;
@@ -41,6 +43,15 @@ export function OfficialCard({ official, onPress }: OfficialCardProps) {
   const handlePressOut = () => {
     scale.value = withSpring(1, springConfig);
   };
+
+  const handleDistrictPress = () => {
+    if (onDistrictPress && official.districtNumber) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onDistrictPress(official.source, official.districtNumber);
+    }
+  };
+
+  const districtLabel = `${getOfficeTypeLabel(official.officeType)}${official.districtNumber ? ` - District ${official.districtNumber}` : ""}`;
 
   return (
     <AnimatedPressable
@@ -75,10 +86,20 @@ export function OfficialCard({ official, onPress }: OfficialCardProps) {
         <ThemedText type="body" style={{ fontWeight: "600", fontStyle: isVacant ? "italic" : "normal" }}>
           {official.fullName || "Unknown"}
         </ThemedText>
-        <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-          {getOfficeTypeLabel(official.officeType)}
-          {official.districtNumber ? ` - District ${official.districtNumber}` : ""}
-        </ThemedText>
+        {onDistrictPress && official.districtNumber ? (
+          <Pressable onPress={handleDistrictPress} hitSlop={8}>
+            <View style={styles.districtLink}>
+              <ThemedText type="caption" style={{ color: theme.primary }}>
+                {districtLabel}
+              </ThemedText>
+              <Feather name="map-pin" size={12} color={theme.primary} style={{ marginLeft: 4 }} />
+            </View>
+          </Pressable>
+        ) : (
+          <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+            {districtLabel}
+          </ThemedText>
+        )}
         {isVacant ? (
           <ThemedText type="small" style={{ color: theme.warning }}>
             Seat Currently Vacant
@@ -128,5 +149,9 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
     gap: 2,
+  },
+  districtLink: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 });

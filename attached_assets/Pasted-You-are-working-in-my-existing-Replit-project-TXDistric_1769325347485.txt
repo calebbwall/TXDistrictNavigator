@@ -1,0 +1,65 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Improve MAP UX in two ways:
+
+(1) Draw-to-search polygon persistence:
+- After I draw a polygon and results/cards appear, if I tap outside the polygon or otherwise dismiss the cards/results panel, the polygon should STILL remain on the map.
+- I must be able to tap back into (reselect) the existing polygon to bring the results/cards back, until I explicitly erase it or draw a new polygon.
+- The polygon should only be cleared when:
+  a) I tap an explicit “Clear / Erase” control, OR
+  b) I draw a new polygon (which replaces the old one)
+
+(2) District label on an official card becomes a “jump to district on map” button:
+- On an official’s card, the text showing their district (e.g., “TX House District 12” / “TX Senate District 5” / “US House TX-24”) must be tappable.
+- Tapping it navigates to the Map tab and zooms/focuses the map on that district and highlights it.
+
+Scope constraints:
+- This prompt is CLIENT-ONLY unless a tiny server change is absolutely required for “zoom to district” (it probably shouldn’t be).
+- Do NOT work on committees, refresh jobs, geojson updates, archived officials, or personal address dots.
+- Keep changes minimal and consistent with current styling and navigation patterns.
+
+Implementation details (do this):
+
+A) Polygon persistence and reselect
+1) Locate the map screen and draw-to-search implementation (likely `client/screens/MapScreen.tsx` or similar).
+2) Ensure the drawn polygon geometry is stored in stable state (e.g., `useState`) and not lost when UI panels close.
+3) Store the last polygon’s:
+   - coordinates
+   - computed bounds (for zooming)
+   - query result set (or the parameters needed to re-run the query)
+4) Add a clear/erase UI control (small button) visible only when a polygon exists.
+5) Implement “reselect” behavior:
+   - When the user taps the polygon (or a small “Polygon results” chip), reopen the results/cards panel with the same results.
+   - If the polygon exists but results are not currently displayed, tapping should bring them back.
+6) Drawing a new polygon replaces the old polygon and refreshes results.
+
+B) District jump button from card
+1) Find where the official card header shows district text.
+2) Make that district text a Pressable.
+3) On press:
+   - Navigate to the Map tab/screen.
+   - Focus the map on that district polygon using existing geojson (do NOT refetch).
+   - Highlight the district boundary visually (e.g., thicker outline or higher opacity) for a short period or while selected.
+4) You will need a shared way to send “focus district” instructions to the Map screen:
+   - Use React Navigation params, or
+   - A small global state/store (if already present), or
+   - Context/event emitter pattern (prefer simplest existing approach)
+5) The focus instruction must include enough info to identify the district:
+   - source/chamber (TX_HOUSE / TX_SENATE / US_HOUSE_TX)
+   - districtNumber (or district id used in geojson properties)
+
+C) GeoJSON integration for focus
+- Use the already-loaded geojson in the client.
+- Implement a helper to find the matching district feature by chamber + district number.
+- Compute bounds from the feature polygon and call map “fit to bounds”.
+
+Testing checklist (must work on Android Expo Go + iOS):
+1) Draw polygon → results appear.
+2) Tap away to dismiss results → polygon remains visible.
+3) Tap polygon → results reappear with same polygon.
+4) Tap “Clear” → polygon disappears and results cleared.
+5) Draw a new polygon → old polygon replaced.
+6) Open an official card → tap district label → navigates to map and zooms to district and highlights it.
+
+After changes:
+- List all files changed.
+- Summarize the new state shape for polygon persistence.
+- Explain how the “jump to district” instruction is passed to the map screen.

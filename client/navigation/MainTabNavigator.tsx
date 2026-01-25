@@ -8,8 +8,11 @@ import BrowseStackNavigator from "@/navigation/BrowseStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
 
+import type { FocusDistrictParams } from "@/navigation/MapStackNavigator";
+import type { NavigatorScreenParams } from "@react-navigation/native";
+
 export type MainTabParamList = {
-  MapTab: undefined;
+  MapTab: NavigatorScreenParams<{ Map: { focusDistrict?: FocusDistrictParams } | undefined }> | undefined;
   BrowseTab: undefined;
   ProfileTab: undefined;
 };

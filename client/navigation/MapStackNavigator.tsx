@@ -5,8 +5,13 @@ import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { HeaderTitle } from "@/components/HeaderTitle";
 
+export interface FocusDistrictParams {
+  source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+  districtNumber: number;
+}
+
 export type MapStackParamList = {
-  Map: undefined;
+  Map: { focusDistrict?: FocusDistrictParams } | undefined;
   OfficialProfile: { officialId: string };
 };
 
