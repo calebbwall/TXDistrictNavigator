@@ -926,14 +926,24 @@ export default function MapScreen() {
         : `${address}, Texas`;
       
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
+      console.log('[Geocode] Fetching:', url);
+      
       const response = await fetch(url, {
         headers: { 'User-Agent': 'TXDistrictNavigator/1.0' }
       });
       
-      if (!response.ok) return null;
+      console.log('[Geocode] Response status:', response.status);
+      if (!response.ok) {
+        console.log('[Geocode] Response not OK:', response.statusText);
+        return null;
+      }
       
       const results = await response.json();
-      if (results.length === 0) return null;
+      console.log('[Geocode] Results:', JSON.stringify(results).substring(0, 200));
+      if (results.length === 0) {
+        console.log('[Geocode] No results found');
+        return null;
+      }
       
       return {
         lat: parseFloat(results[0].lat),
@@ -941,6 +951,7 @@ export default function MapScreen() {
       };
     } catch (error) {
       console.log('[MapScreen] Geocoding failed for:', address, error);
+      Alert.alert('Geocode Error', `Error: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
   }, []);
