@@ -88,6 +88,7 @@ The refresh system uses SHA256 fingerprints to detect changes in upstream data s
 - Files stored in: `server/data/*.geojson`
 
 ### Recent Changes
+- 2026-01-25: Added Personal Address Dots feature - displays geocoded addresses on map with emphasis for active officials
 - 2026-01-25: Added Committees feature with browsing and official profile integration
 - 2026-01-25: Created committees and committee_memberships tables with Drizzle ORM
 - 2026-01-25: Added server-side scraping from Texas Legislature Online for committee data
