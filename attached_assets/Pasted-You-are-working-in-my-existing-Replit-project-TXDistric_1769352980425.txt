@@ -1,0 +1,150 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Implement the “Committees” feature under Profile → Tools, with weekly refresh + change detection, and integrate committees onto each official’s PUBLIC card.
+
+This is a full end-to-end feature: server ingestion + DB schema + API + client UI. Reuse the existing weekly refresh framework (fingerprints + scheduler + admin token endpoints) already used for Officials and GeoJSON. Do NOT create a separate scheduler system.
+
+========================================================
+FEATURE OVERVIEW (Acceptance criteria)
+========================================================
+
+A) Profile → Tools → Committees
+1) In the Profile tab under “Tools”, add a new tool item: “Committees”.
+2) Inside Committees:
+   - Let the user choose either:
+     - “Texas House Committees”
+     - “Texas Senate Committees”
+3) In each chamber section:
+   - Show a list of all committees for that chamber
+   - Selecting a committee shows:
+     - Committee name
+     - A list of committee members with their role/title (Chair, Vice Chair, Member, etc.)
+4) Selecting a committee member navigates to that official’s card (same as normal official navigation).
+
+B) Official card PUBLIC tab: Committees section
+5) On each official’s PUBLIC tab, add a “Committees” section listing:
+   - Committee Name — Role
+   (one line per committee membership)
+6) The committees displayed must match the committee membership data ingested from the sources.
+
+C) Weekly refresh with change detection
+7) Committees data should be checked weekly early Monday morning (Central Time), using the SAME schedule and fingerprint patterns used for Officials/GeoJSON:
+   - If unchanged, do nothing
+   - If changed, refresh and store updated committee + membership data
+8) Add an admin endpoint to force refresh:
+   - `POST /admin/refresh/committees`
+   - Protected by `x-admin-token` = `ADMIN_REFRESH_TOKEN`
+   - Response indicates checked datasets, changed vs unchanged, refreshed yes/no
+
+========================================================
+DATA SOURCES
+========================================================
+
+Use these sources (or better official sources if needed, but keep it robust):
+- Texas House committees: https://house.texas.gov/committees
+- Texas Senate committees: https://senate.texas.gov/committees.php
+
+Requirements:
+- Scrape/parse committee lists and membership lists.
+- Capture member ROLE/TITLE (Chair, Vice Chair, etc.) where available.
+- If a source page requires following links to committee detail pages to get members/roles, do that.
+- Be resilient to small HTML changes (don’t rely on brittle selectors if avoidable).
+
+========================================================
+DATABASE SCHEMA (Drizzle)
+========================================================
+
+Create new tables (or equivalent) for:
+1) `committees`
+   - committeeId (PK)
+   - chamber (TX_HOUSE or TX_SENATE)
+   - name
+   - slug or externalId (unique per chamber)
+   - sourceUrl
+   - updatedAt
+2) `committee_memberships`
+   - membershipId (PK)
+   - committeeId (FK)
+   - officialPublicId (FK to existing officials table) OR (source + sourceMemberId) mapping fields
+   - roleTitle (text)
+   - sortOrder (optional)
+   - updatedAt
+
+Mapping requirement:
+- Committee members must be linkable to the existing official records.
+- Prefer matching by:
+  - chamber/source + district number or member id if available
+  - or by normalized name matching as fallback (but keep it deterministic and logged)
+- Do NOT create duplicate officials. Just link to existing officials.
+
+========================================================
+SERVER IMPLEMENTATION
+========================================================
+
+1) Create `server/jobs/refreshCommittees.ts`:
+   - Fetch House committees data
+   - Fetch Senate committees data
+   - Compute fingerprints for House and Senate committee datasets (raw HTML or normalized JSON)
+   - Compare to stored fingerprint state (reuse `refresh_state`)
+   - If changed, upsert committees + memberships into DB
+
+2) Scheduler integration:
+   - Hook committees check into the existing Monday scheduler (same time window).
+   - Ensure it can’t overlap with other refreshes (use per-job locks or one shared lock).
+
+3) API routes:
+   - `GET /api/committees?chamber=TX_HOUSE|TX_SENATE`
+     Returns list of committees for chamber
+   - `GET /api/committees/:committeeId`
+     Returns committee details + members with role + official id for navigation
+   - `GET /api/officials/:officialPublicId/committees`
+     Returns committees for that official (name + role)
+   - `POST /admin/refresh/committees` (protected)
+
+========================================================
+CLIENT IMPLEMENTATION
+========================================================
+
+1) Profile → Tools:
+- Add “Committees” entry.
+- Implement navigation screens:
+  - Choose chamber (House or Senate)
+  - Committee list
+  - Committee detail with member list
+- Tapping a member opens that member’s official card screen.
+
+2) Official PUBLIC tab:
+- Add “Committees” section that calls the new endpoint for that official and renders:
+  - Committee Name — Role
+
+UI constraints:
+- Keep styling consistent with current app.
+- Handle loading/error states cleanly (simple spinner + “Try again”).
+
+========================================================
+TESTING CHECKLIST
+========================================================
+
+Server:
+- Run refresh once manually via admin endpoint and confirm DB populated.
+- Call:
+  - `/api/committees?chamber=TX_HOUSE`
+  - `/api/committees?chamber=TX_SENATE`
+  - `/api/committees/:committeeId`
+  - `/api/officials/:officialPublicId/committees`
+- Confirm fingerprints prevent re-writing when unchanged.
+
+Client:
+- Profile → Tools → Committees:
+  - House list shows
+  - Senate list shows
+  - Committee shows members + roles
+  - Tapping member opens correct card
+- Official card PUBLIC tab shows Committees section.
+
+========================================================
+AFTER CHANGES
+========================================================
+
+- List every file changed.
+- Summarize how you parse House and Senate committees and where you get roles.
+- Explain how committee members are linked to existing officials (matching logic).
+- Confirm the admin endpoint works and is protected by the token.

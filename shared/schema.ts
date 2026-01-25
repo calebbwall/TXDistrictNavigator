@@ -120,6 +120,63 @@ export const DISTRICT_RANGES = {
   US_HOUSE: { min: 1, max: 38 },
 } as const;
 
+// Chamber enum for committees
+export const chamberEnum = pgEnum("chamber_type", ["TX_HOUSE", "TX_SENATE"]);
+
+// Committees table
+export const committees = pgTable("committees", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  chamber: chamberEnum("chamber").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull(),
+  sourceUrl: text("source_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  chamberSlugUnique: uniqueIndex("committee_chamber_slug_idx").on(table.chamber, table.slug),
+}));
+
+// Committee memberships table - links officials to committees with roles
+export const committeeMemberships = pgTable("committee_memberships", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  committeeId: varchar("committee_id", { length: 255 })
+    .notNull()
+    .references(() => committees.id, { onDelete: "cascade" }),
+  officialPublicId: varchar("official_public_id", { length: 255 })
+    .references(() => officialPublic.id, { onDelete: "set null" }),
+  // Fallback matching fields when official isn't directly linkable
+  memberName: varchar("member_name", { length: 255 }).notNull(),
+  roleTitle: varchar("role_title", { length: 100 }),
+  sortOrder: varchar("sort_order", { length: 10 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Committee refresh state tracking (separate from officials refresh_state due to different source enum)
+export const committeeRefreshState = pgTable("committee_refresh_state", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  source: varchar("source", { length: 50 }).notNull().unique(), // TX_HOUSE_COMMITTEES, TX_SENATE_COMMITTEES
+  fingerprint: text("fingerprint"),
+  lastCheckedAt: timestamp("last_checked_at"),
+  lastChangedAt: timestamp("last_changed_at"),
+  lastRefreshedAt: timestamp("last_refreshed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Types
+export type Committee = typeof committees.$inferSelect;
+export type InsertCommittee = typeof committees.$inferInsert;
+export type CommitteeMembership = typeof committeeMemberships.$inferSelect;
+export type InsertCommitteeMembership = typeof committeeMemberships.$inferInsert;
+export type CommitteeRefreshState = typeof committeeRefreshState.$inferSelect;
+
 // Merged official type for API responses
 export interface MergedOfficial extends OfficialPublic {
   private?: Omit<OfficialPrivate, 'id' | 'officialPublicId'> | null;
