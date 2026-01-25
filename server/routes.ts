@@ -18,9 +18,10 @@ import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 
-type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
+type DistrictSourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
 
-function createVacantOfficial(source: SourceType, district: number): MergedOfficial {
+function createVacantOfficial(source: DistrictSourceType, district: number): MergedOfficial {
   const chamber = source === "TX_HOUSE" ? "TX House" 
     : source === "TX_SENATE" ? "TX Senate" 
     : "US House";
@@ -29,11 +30,13 @@ function createVacantOfficial(source: SourceType, district: number): MergedOffic
   
   return {
     id: vacantId,
+    personId: null,
     source,
     sourceMemberId: vacantId,
     chamber,
     district: String(district),
     fullName: "Vacant District",
+    roleTitle: null,
     party: null,
     photoUrl: null,
     capitolAddress: null,
@@ -54,7 +57,7 @@ function createVacantOfficial(source: SourceType, district: number): MergedOffic
 
 function fillVacancies(
   officials: MergedOfficial[], 
-  source: SourceType
+  source: DistrictSourceType
 ): MergedOfficial[] {
   const range = DISTRICT_RANGES[source];
   const districtMap = new Map<string, MergedOfficial>();
@@ -167,7 +170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (source && typeof source === "string" && source !== "ALL") {
-        const validSources = ["TX_HOUSE", "TX_SENATE", "US_HOUSE"];
+        const validSources = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "OTHER_TX"];
         if (!validSources.includes(source)) {
           return res.status(400).json({ error: "Invalid source" });
         }
@@ -202,7 +205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           "US_HOUSE"
         );
         officials = [...houseOfficials, ...senateOfficials, ...congressOfficials];
-      } else if (sourceFilter) {
+      } else if (sourceFilter && sourceFilter !== "OTHER_TX") {
         officials = fillVacancies(officials, sourceFilter);
       }
       
@@ -288,7 +291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const vacantMatch = id.match(/^VACANT-(TX_HOUSE|TX_SENATE|US_HOUSE)-(\d+)$/);
       if (vacantMatch) {
-        const source = vacantMatch[1] as SourceType;
+        const source = vacantMatch[1] as DistrictSourceType;
         const district = parseInt(vacantMatch[2], 10);
         const vacant = createVacantOfficial(source, district);
         return res.json({ official: vacant });
@@ -297,7 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Handle SOURCE:DISTRICT format (e.g., TX_HOUSE:1)
       const sourceDistrictMatch = id.match(/^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/);
       if (sourceDistrictMatch) {
-        const source = sourceDistrictMatch[1] as SourceType;
+        const source = sourceDistrictMatch[1] as DistrictSourceType;
         const district = sourceDistrictMatch[2];
         
         const [pub] = await db.select()
@@ -992,6 +995,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("[Admin] Committees refresh error:", err);
       res.status(500).json({ error: "Committees refresh failed" });
+    }
+  });
+
+  // Other Texas Officials endpoints
+  app.get("/api/other-tx-officials", async (req, res) => {
+    try {
+      const { active } = req.query;
+      
+      const conditions = [eq(officialPublic.source, "OTHER_TX")];
+      
+      if (active !== "false") {
+        conditions.push(eq(officialPublic.active, true));
+      }
+      
+      const officials = await db.select()
+        .from(officialPublic)
+        .where(and(...conditions));
+      
+      const privateData = await db.select().from(officialPrivate);
+      const privateMap = new Map(privateData.map(p => [p.officialPublicId, p]));
+      
+      const merged: MergedOfficial[] = officials.map(pub => 
+        mergeOfficial(pub, privateMap.get(pub.id) || null)
+      );
+      
+      res.json(merged);
+    } catch (err) {
+      console.error("[API] Error fetching other TX officials:", err);
+      res.status(500).json({ error: "Failed to fetch other TX officials" });
+    }
+  });
+
+  app.post("/admin/refresh/other-tx-officials", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
+      }
+      
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      
+      const force = req.query.force === "true";
+      
+      console.log(`[Admin] Other TX Officials refresh triggered (force=${force})`);
+      
+      const { refreshOtherTexasOfficials } = await import("./jobs/refreshOtherTexasOfficials");
+      const result = await refreshOtherTexasOfficials({ force });
+      
+      res.json({
+        success: result.success,
+        fingerprint: result.fingerprint,
+        changed: result.changed,
+        upsertedCount: result.upsertedCount,
+        deactivatedCount: result.deactivatedCount,
+        error: result.error,
+      });
+    } catch (err) {
+      console.error("[Admin] Other TX Officials refresh error:", err);
+      res.status(500).json({ error: "Other TX Officials refresh failed" });
     }
   });
 
