@@ -1,0 +1,57 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Extend the existing validation + “tap to action” behavior to the PRIVATE NOTES fields for **Personal Phone** and **Personal Address**.
+
+Context:
+- We previously implemented validation + tap actions for phone/address in other parts of the official card UI.
+- However, the PRIVATE NOTES fields “Personal Phone” and “Personal Address” still lack validation and tap actions.
+
+Goal / Acceptance criteria:
+1) In the PRIVATE tab (private notes UI) for an official:
+   - “Personal Phone” must be validated as a US 10-digit phone number (after cleaning).
+   - “Personal Address” must be validated as a likely address (non-empty + reasonable heuristic).
+2) When displayed (not editing):
+   - If Personal Phone is valid, tapping it must allow:
+     - Call (tel:)
+     - Text (sms:)
+   - If Personal Address is valid, tapping it must open navigation/maps:
+     - Use https://www.google.com/maps/search/?api=1&query=<encoded address>
+3) When editing:
+   - Show a subtle inline validation message if invalid (no modal alerts).
+   - Disable tap actions if invalid or empty.
+4) Data must be stored consistently:
+   - Personal Phone should be stored cleaned (digits only) OR stored as entered but consistently cleaned for actions/display (choose one, but be consistent).
+   - Personal Address stored as text, trimmed.
+5) Works on both iOS and Android Expo Go, no crashes.
+
+Implementation details:
+- Reuse the same validation utilities already created (or create them if missing) in something like `client/utils/validation.ts`:
+  - `cleanPhone(d: string) -> string`
+  - `isValidUSPhone(d: string) -> boolean`
+  - `formatPhone(digits: string) -> string`
+  - `isLikelyAddress(s: string) -> boolean`
+- Use React Native `Linking`:
+  - Call: `Linking.openURL('tel:<digits>')`
+  - Text: `Linking.openURL('sms:<digits>')`
+  - Maps: Google Maps search URL
+- For the “Call/Text” choice:
+  - If the UI already has an action sheet / menu pattern, use it.
+  - If not, implement a minimal cross-platform chooser:
+    - iOS: `ActionSheetIOS`
+    - Android: simple `Alert.alert` with two buttons (Call, Text)
+
+Where to change (search and confirm exact files):
+- The component that renders Private Notes inputs (likely under `client/components/` or `client/screens/`).
+- The private notes data model/editors for:
+  - `personalPhone`
+  - `personalAddress`
+
+Steps:
+1) Locate the Private Notes UI for Personal Phone and Personal Address.
+2) Add validation state and inline helper text below each field when invalid.
+3) When field is valid and user taps the displayed value, trigger the appropriate action chooser (Call/Text) or open maps.
+4) Ensure editing mode vs display mode behavior is consistent and does not conflict with text input focus.
+5) Run through and confirm this does not break saving/loading of private notes.
+
+After changes:
+- List all files changed.
+- Describe exactly how Personal Phone and Personal Address are validated and stored.
+- Provide a quick manual test checklist for Android Expo Go and iOS.

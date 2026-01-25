@@ -662,23 +662,51 @@ export default function OfficialProfileScreen() {
                   Personal Phone
                 </ThemedText>
                 {isEditing ? (
-                  <TextInput
-                    style={[
-                      styles.noteInput,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
-                    ]}
-                    value={privateNotes.personalPhone || ""}
-                    onChangeText={(text) =>
-                      setPrivateNotes({ ...privateNotes, personalPhone: text })
-                    }
-                    placeholder="Add phone number..."
-                    placeholderTextColor={theme.secondaryText}
-                    keyboardType="phone-pad"
-                  />
+                  <View>
+                    <TextInput
+                      style={[
+                        styles.noteInput,
+                        { backgroundColor: theme.inputBackground, color: theme.text },
+                      ]}
+                      value={privateNotes.personalPhone || ""}
+                      onChangeText={(text) =>
+                        setPrivateNotes({ ...privateNotes, personalPhone: text })
+                      }
+                      placeholder="Add phone number..."
+                      placeholderTextColor={theme.secondaryText}
+                      keyboardType="phone-pad"
+                    />
+                    {privateNotes.personalPhone && !isValidUSPhone(privateNotes.personalPhone) ? (
+                      <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+                        Enter a valid 10-digit phone number
+                      </ThemedText>
+                    ) : null}
+                  </View>
+                ) : privateNotes.personalPhone ? (
+                  <Pressable
+                    onPress={isValidUSPhone(privateNotes.personalPhone) ? () => handlePhonePress(privateNotes.personalPhone!) : undefined}
+                    disabled={!isValidUSPhone(privateNotes.personalPhone)}
+                    style={({ pressed }) => [{ opacity: pressed && isValidUSPhone(privateNotes.personalPhone!) ? 0.7 : 1 }]}
+                  >
+                    <View style={styles.tappableFieldRow}>
+                      <ThemedText 
+                        type="body" 
+                        style={isValidUSPhone(privateNotes.personalPhone) ? { color: theme.link } : undefined}
+                      >
+                        {formatPhone(privateNotes.personalPhone)}
+                      </ThemedText>
+                      {isValidUSPhone(privateNotes.personalPhone) ? (
+                        <Feather name="phone" size={16} color={theme.secondaryText} style={{ marginLeft: Spacing.xs }} />
+                      ) : null}
+                    </View>
+                    {!isValidUSPhone(privateNotes.personalPhone) ? (
+                      <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+                        Invalid phone number
+                      </ThemedText>
+                    ) : null}
+                  </Pressable>
                 ) : (
-                  <ThemedText type="body">
-                    {privateNotes.personalPhone || "Not set"}
-                  </ThemedText>
+                  <ThemedText type="body">Not set</ThemedText>
                 )}
               </View>
 
@@ -687,22 +715,50 @@ export default function OfficialProfileScreen() {
                   Personal Address
                 </ThemedText>
                 {isEditing ? (
-                  <TextInput
-                    style={[
-                      styles.noteInput,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
-                    ]}
-                    value={privateNotes.personalAddress || ""}
-                    onChangeText={(text) =>
-                      setPrivateNotes({ ...privateNotes, personalAddress: text })
-                    }
-                    placeholder="Add address..."
-                    placeholderTextColor={theme.secondaryText}
-                  />
+                  <View>
+                    <TextInput
+                      style={[
+                        styles.noteInput,
+                        { backgroundColor: theme.inputBackground, color: theme.text },
+                      ]}
+                      value={privateNotes.personalAddress || ""}
+                      onChangeText={(text) =>
+                        setPrivateNotes({ ...privateNotes, personalAddress: text })
+                      }
+                      placeholder="Add address..."
+                      placeholderTextColor={theme.secondaryText}
+                    />
+                    {privateNotes.personalAddress && !isLikelyAddress(privateNotes.personalAddress) ? (
+                      <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+                        Include street number, city and state
+                      </ThemedText>
+                    ) : null}
+                  </View>
+                ) : privateNotes.personalAddress ? (
+                  <Pressable
+                    onPress={isLikelyAddress(privateNotes.personalAddress) ? () => handleAddressPress(privateNotes.personalAddress!) : undefined}
+                    disabled={!isLikelyAddress(privateNotes.personalAddress)}
+                    style={({ pressed }) => [{ opacity: pressed && isLikelyAddress(privateNotes.personalAddress!) ? 0.7 : 1 }]}
+                  >
+                    <View style={styles.tappableFieldRow}>
+                      <ThemedText 
+                        type="body" 
+                        style={isLikelyAddress(privateNotes.personalAddress) ? { color: theme.link } : undefined}
+                      >
+                        {privateNotes.personalAddress}
+                      </ThemedText>
+                      {isLikelyAddress(privateNotes.personalAddress) ? (
+                        <Feather name="map-pin" size={16} color={theme.secondaryText} style={{ marginLeft: Spacing.xs }} />
+                      ) : null}
+                    </View>
+                    {!isLikelyAddress(privateNotes.personalAddress) ? (
+                      <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+                        Address format not recognized
+                      </ThemedText>
+                    ) : null}
+                  </Pressable>
                 ) : (
-                  <ThemedText type="body">
-                    {privateNotes.personalAddress || "Not set"}
-                  </ThemedText>
+                  <ThemedText type="body">Not set</ThemedText>
                 )}
               </View>
 
@@ -1296,6 +1352,10 @@ const styles = StyleSheet.create({
   },
   noteField: {
     gap: Spacing.xs,
+  },
+  tappableFieldRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   noteInput: {
     borderRadius: BorderRadius.sm,
