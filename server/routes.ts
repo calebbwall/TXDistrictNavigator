@@ -1061,6 +1061,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin endpoint: Create explicit person link (identity override)
+  app.post("/admin/person/link", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+      
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      
+      const { officialPublicId, personId } = req.body;
+      
+      if (!officialPublicId || !personId) {
+        return res.status(400).json({ error: "officialPublicId and personId are required" });
+      }
+      
+      // Verify official exists
+      const official = await db
+        .select()
+        .from(officialPublic)
+        .where(eq(officialPublic.id, officialPublicId))
+        .limit(1);
+      
+      if (official.length === 0) {
+        return res.status(404).json({ error: "Official not found" });
+      }
+      
+      // Verify person exists
+      const { persons } = await import("@shared/schema");
+      const person = await db
+        .select()
+        .from(persons)
+        .where(eq(persons.id, personId))
+        .limit(1);
+      
+      if (person.length === 0) {
+        return res.status(404).json({ error: "Person not found" });
+      }
+      
+      const { setExplicitPersonLink } = await import("./lib/identityResolver");
+      const result = await setExplicitPersonLink(officialPublicId, personId);
+      
+      console.log(`[Admin] Created explicit person link: official ${officialPublicId} -> person ${personId}`);
+      
+      res.json({
+        success: true,
+        link: result,
+        official: official[0],
+        person: person[0],
+      });
+    } catch (err) {
+      console.error("[Admin] Person link error:", err);
+      res.status(500).json({ error: "Failed to create person link" });
+    }
+  });
+
+  // Admin endpoint: Get comprehensive system status
+  app.get("/admin/status", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+      
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      
+      // Get identity stats
+      const { getIdentityStats, getAllExplicitPersonLinks } = await import("./lib/identityResolver");
+      const identityStats = await getIdentityStats();
+      const explicitLinks = await getAllExplicitPersonLinks();
+      
+      // Get refresh states for all data sources
+      const officialsStates = await getAllRefreshStates();
+      const geojsonStates = await getGeoJSONRefreshStates();
+      const committeesStates = await getAllCommitteeRefreshStates();
+      
+      // Get scheduler status
+      const schedulerStatus = getSchedulerStatus();
+      
+      // Format response
+      const datasets = {
+        officials: {
+          TX_HOUSE: officialsStates.find(s => s.source === "TX_HOUSE") || null,
+          TX_SENATE: officialsStates.find(s => s.source === "TX_SENATE") || null,
+          US_HOUSE: officialsStates.find(s => s.source === "US_HOUSE") || null,
+          OTHER_TX: officialsStates.find(s => s.source === "OTHER_TX") || null,
+          isRefreshing: getIsRefreshing(),
+        },
+        geojson: {
+          states: geojsonStates,
+          isRefreshing: getIsRefreshingGeoJSON(),
+        },
+        committees: {
+          states: committeesStates,
+          isRefreshing: getIsRefreshingCommittees(),
+        },
+      };
+      
+      res.json({
+        timestamp: new Date().toISOString(),
+        scheduler: schedulerStatus,
+        datasets,
+        identity: {
+          ...identityStats,
+          explicitLinksDetails: explicitLinks,
+        },
+      });
+    } catch (err) {
+      console.error("[Admin] Status error:", err);
+      res.status(500).json({ error: "Failed to get system status" });
+    }
+  });
+
   app.post("/api/map/area-hits", (req, res) => {
     try {
       const { geometry, overlays } = req.body;
