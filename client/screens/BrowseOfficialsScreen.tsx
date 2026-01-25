@@ -34,6 +34,12 @@ import {
 } from "@/lib/storage";
 import type { Official } from "@/lib/officials";
 import type { BrowseStackParamList } from "@/navigation/BrowseStackNavigator";
+import {
+  buildSearchIndex,
+  searchOfficials,
+  isNameSearch,
+  type SearchableOfficial,
+} from "@/lib/officialSearch";
 
 type NavigationProp = NativeStackNavigationProp<BrowseStackParamList>;
 
@@ -161,6 +167,15 @@ export default function BrowseOfficialsScreen() {
       const query = debouncedSearch.trim();
       console.log(`[Browse] Searching for: "${query}"`);
 
+      if (isNameSearch(query)) {
+        console.log(`[Browse] Name search detected: "${query}" - fetching all for client-side filter`);
+        const url = new URL("/api/officials", getApiUrl());
+        url.searchParams.set("source", selectedSource);
+        const response = await fetch(url.toString());
+        if (!response.ok) throw new Error("Failed to fetch officials");
+        return response.json();
+      }
+
       try {
         const placeUrl = new URL("/api/lookup/place", getApiUrl());
         placeUrl.searchParams.set("q", query);
@@ -231,10 +246,33 @@ export default function BrowseOfficialsScreen() {
     placeholderData: (prev) => prev,
   });
 
-  const officials: Official[] = useMemo(() => {
+  const allOfficials: Official[] = useMemo(() => {
     if (!data?.officials) return [];
     return data.officials.map(apiOfficialToNormalized);
   }, [data]);
+
+  const searchIndex: SearchableOfficial[] = useMemo(() => {
+    return buildSearchIndex(allOfficials);
+  }, [allOfficials]);
+
+  const officials: Official[] = useMemo(() => {
+    if (!debouncedSearch.trim()) {
+      return allOfficials;
+    }
+    
+    if (placeInfo) {
+      return allOfficials;
+    }
+    
+    if (isNameSearch(debouncedSearch)) {
+      const results = searchOfficials(searchIndex, debouncedSearch, 50);
+      if (results.length > 0) {
+        return results.map(r => r.official);
+      }
+    }
+    
+    return allOfficials;
+  }, [allOfficials, searchIndex, debouncedSearch, placeInfo]);
 
   const handleSourceChange = useCallback((source: SourceType) => {
     setSelectedSource(source);
