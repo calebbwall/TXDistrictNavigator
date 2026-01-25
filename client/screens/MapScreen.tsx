@@ -919,39 +919,55 @@ export default function MapScreen() {
 
   // Geocode address using Nominatim (OpenStreetMap) - free, no API key needed
   const geocodeAddress = useCallback(async (address: string): Promise<{ lat: number; lng: number } | null> => {
-    try {
-      // Add Texas to address if not present for better results
-      const fullAddress = address.toLowerCase().includes('texas') || address.toLowerCase().includes(', tx') 
-        ? address 
-        : `${address}, Texas`;
-      
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
+    const tryGeocode = async (query: string): Promise<{ lat: number; lng: number } | null> => {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
       console.log('[Geocode] Fetching:', url);
       
       const response = await fetch(url, {
         headers: { 'User-Agent': 'TXDistrictNavigator/1.0' }
       });
       
-      console.log('[Geocode] Response status:', response.status);
-      if (!response.ok) {
-        console.log('[Geocode] Response not OK:', response.statusText);
-        return null;
-      }
+      if (!response.ok) return null;
       
       const results = await response.json();
-      console.log('[Geocode] Results:', JSON.stringify(results).substring(0, 200));
-      if (results.length === 0) {
-        console.log('[Geocode] No results found');
-        return null;
-      }
+      if (results.length === 0) return null;
       
       return {
         lat: parseFloat(results[0].lat),
         lng: parseFloat(results[0].lon)
       };
+    };
+
+    try {
+      // Add Texas to address if not present for better results
+      const fullAddress = address.toLowerCase().includes('texas') || address.toLowerCase().includes(', tx') 
+        ? address 
+        : `${address}, Texas`;
+      
+      // Try full address first
+      let result = await tryGeocode(fullAddress);
+      if (result) return result;
+      
+      // Fallback: Try to extract city/state/zip and geocode that
+      // Common patterns: "Street, City, ST ZIP" or "Street, City, State ZIP"
+      const cityZipMatch = address.match(/,\s*([^,]+),\s*(?:TX|Texas)\s*(\d{5})?/i);
+      if (cityZipMatch) {
+        const city = cityZipMatch[1].trim();
+        const zip = cityZipMatch[2];
+        const fallbackQuery = zip ? `${city}, TX ${zip}` : `${city}, Texas`;
+        console.log('[Geocode] Trying fallback:', fallbackQuery);
+        await new Promise(r => setTimeout(r, 200)); // Rate limit
+        result = await tryGeocode(fallbackQuery);
+        if (result) {
+          console.log('[Geocode] Fallback succeeded for city:', city);
+          return result;
+        }
+      }
+      
+      console.log('[Geocode] No results found for:', address);
+      return null;
     } catch (error) {
       console.log('[MapScreen] Geocoding failed for:', address, error);
-      Alert.alert('Geocode Error', `Error: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
   }, []);
