@@ -6,7 +6,20 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
-import { Feather } from "@expo/vector-icons";
+import {
+  Feather,
+  Ionicons,
+  MaterialIcons,
+  MaterialCommunityIcons,
+  FontAwesome,
+  FontAwesome5,
+  Entypo,
+  AntDesign,
+  Octicons,
+  SimpleLineIcons,
+  Foundation,
+  EvilIcons,
+} from "@expo/vector-icons";
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
@@ -17,6 +30,17 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 export default function App() {
   const [fontsLoaded] = useFonts({
     ...Feather.font,
+    ...Ionicons.font,
+    ...MaterialIcons.font,
+    ...MaterialCommunityIcons.font,
+    ...FontAwesome.font,
+    ...FontAwesome5.font,
+    ...Entypo.font,
+    ...AntDesign.font,
+    ...Octicons.font,
+    ...SimpleLineIcons.font,
+    ...Foundation.font,
+    ...EvilIcons.font,
   });
 
   if (!fontsLoaded) {
