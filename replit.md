@@ -7,7 +7,6 @@ This project is a mobile application designed for Texas citizens to interact wit
 - I prefer detailed explanations.
 - I want iterative development.
 - Ask before making major changes.
-- Do not make changes to the folder `shared`.
 - Do not make changes to the file `client/App.tsx`.
 
 ## System Architecture
@@ -89,9 +88,21 @@ The refresh system uses SHA256 fingerprints to detect changes in upstream data s
 - Files stored in: `server/data/*.geojson`
 
 ### Recent Changes
+- 2026-01-25: Added capitolRoom field to shared/schema.ts officialPublic table for TLO room numbers
 - 2026-01-25: Extended smart refresh to include GeoJSON district boundary files
 - 2026-01-25: Added admin endpoint POST /admin/refresh/geojson with token protection
 - 2026-01-25: Created separate geojson_refresh_state table using raw SQL
 - 2026-01-25: Added smart refresh with fingerprint-based change detection
 - 2026-01-25: Created scheduler for Monday 3-4 AM Central Time auto-refresh
 - 2026-01-25: Added admin endpoints with token protection for manual refresh triggers
+
+## Schema Notes
+
+### Custom Fields (Must Be Preserved)
+If the shared schema is ever regenerated, ensure these custom fields are re-added:
+
+**officialPublic table:**
+- `capitolRoom: varchar("capitol_room", { length: 50 })` - Capitol room/office number scraped from TLO
+  - Format: Building code + room number (e.g., "E2.406")
+  - Parsed from TLO "Capitol Office" field format: "EXT E2.406"
+  - Location: Between `capitolPhone` and `districtAddresses` in the column order

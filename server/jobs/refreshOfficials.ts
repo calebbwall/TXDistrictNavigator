@@ -521,6 +521,7 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
           photoUrl: record.photoUrl,
           capitolAddress: record.capitolAddress,
           capitolPhone: record.capitolPhone,
+          capitolRoom: record.capitolRoom,
           districtAddresses: record.districtAddresses,
           districtPhones: record.districtPhones,
           website: record.website,
@@ -538,16 +539,8 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
               id: undefined,
             })
             .where(eq(officialPublic.id, existing[0].id));
-          
-          if (record.capitolRoom) {
-            await db.execute(sql`UPDATE official_public SET capitol_room = ${record.capitolRoom} WHERE id = ${existing[0].id}`);
-          }
         } else {
-          const [inserted] = await db.insert(officialPublic).values(insertData).returning({ id: officialPublic.id });
-          
-          if (record.capitolRoom && inserted) {
-            await db.execute(sql`UPDATE official_public SET capitol_room = ${record.capitolRoom} WHERE id = ${inserted.id}`);
-          }
+          await db.insert(officialPublic).values(insertData);
         }
         
         processedMemberIds.push(record.sourceMemberId);

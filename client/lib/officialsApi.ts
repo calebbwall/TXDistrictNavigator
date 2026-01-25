@@ -13,6 +13,9 @@ export interface OfficialPublic {
   photoUrl: string | null;
   capitolAddress: string | null;
   capitolPhone: string | null;
+  // Capitol room/office number scraped from TLO (e.g., "E2.406")
+  // Format: Building code + room number, parsed from "EXT E2.406" format
+  capitolRoom: string | null;
   districtAddresses: string[] | null;
   districtPhones: string[] | null;
   website: string | null;

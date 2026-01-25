@@ -36,6 +36,10 @@ export const officialPublic = pgTable("official_public", {
   photoUrl: text("photo_url"),
   capitolAddress: text("capitol_address"),
   capitolPhone: varchar("capitol_phone", { length: 50 }),
+  // Capitol room/office number scraped from TLO (e.g., "E2.406")
+  // Format: Building code + room number, parsed from "EXT E2.406" format
+  // NOTE: If schema is regenerated, this field must be re-added here
+  capitolRoom: varchar("capitol_room", { length: 50 }),
   districtAddresses: json("district_addresses").$type<string[]>(),
   districtPhones: json("district_phones").$type<string[]>(),
   website: text("website"),

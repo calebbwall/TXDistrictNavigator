@@ -81,7 +81,7 @@ export function apiOfficialToLegacy(apiOfficial: MergedOfficial): MockOfficial {
 
   const offices = [];
   
-  const capitolRoom = (apiOfficial as any).capitolRoom || parseRoomFromCapitolAddress(apiOfficial.capitolAddress);
+  const capitolRoom = apiOfficial.capitolRoom || parseRoomFromCapitolAddress(apiOfficial.capitolAddress);
   
   if (apiOfficial.capitolAddress || apiOfficial.capitolPhone) {
     offices.push({
