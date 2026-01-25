@@ -94,6 +94,21 @@ const MAP_HTML = `
       border-radius: 50%;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
+    .address-dot {
+      width: 12px;
+      height: 12px;
+      background: rgba(147, 51, 234, 0.3);
+      border: 2px solid rgba(147, 51, 234, 0.5);
+      border-radius: 50%;
+      transition: all 0.3s ease;
+    }
+    .address-dot.emphasized {
+      width: 18px;
+      height: 18px;
+      background: rgba(147, 51, 234, 0.9);
+      border: 3px solid white;
+      box-shadow: 0 2px 8px rgba(147, 51, 234, 0.6);
+    }
   </style>
 </head>
 <body>
@@ -126,6 +141,13 @@ const MAP_HTML = `
       tx_house: null,
       us_congress: null
     };
+
+    // Address dots layer and data
+    const addressDotsLayer = new L.FeatureGroup();
+    map.addLayer(addressDotsLayer);
+    let addressDotsData = [];
+    let activeOfficialIds = [];
+    let addressMarkers = {};
 
     const layerColors = {
       tx_senate: { fill: 'rgba(74, 144, 226, 0.3)', stroke: '#4A90E2' },
@@ -648,6 +670,44 @@ const MAP_HTML = `
       console.log('[LOCATION] Map centered to:', lat.toFixed(4), lng.toFixed(4));
     }
 
+    function setAddressDots(dots) {
+      addressDotsLayer.clearLayers();
+      addressMarkers = {};
+      addressDotsData = dots;
+      
+      dots.forEach(function(dot) {
+        const isEmphasized = activeOfficialIds.includes(dot.officialId);
+        const icon = L.divIcon({
+          className: 'address-dot' + (isEmphasized ? ' emphasized' : ''),
+          iconSize: isEmphasized ? [18, 18] : [12, 12],
+          iconAnchor: isEmphasized ? [9, 9] : [6, 6]
+        });
+        
+        const marker = L.marker([dot.lat, dot.lng], { icon: icon });
+        marker.addTo(addressDotsLayer);
+        addressMarkers[dot.officialId] = marker;
+      });
+      
+      console.log('[DOTS] Set', dots.length, 'address dots');
+    }
+
+    function updateActiveOfficials(officialIds) {
+      activeOfficialIds = officialIds || [];
+      
+      Object.keys(addressMarkers).forEach(function(officialId) {
+        const marker = addressMarkers[officialId];
+        const isEmphasized = activeOfficialIds.includes(officialId);
+        const icon = L.divIcon({
+          className: 'address-dot' + (isEmphasized ? ' emphasized' : ''),
+          iconSize: isEmphasized ? [18, 18] : [12, 12],
+          iconAnchor: isEmphasized ? [9, 9] : [6, 6]
+        });
+        marker.setIcon(icon);
+      });
+      
+      console.log('[DOTS] Updated active officials:', activeOfficialIds.length);
+    }
+
     window.receiveMessage = function(message) {
       try {
         const data = JSON.parse(message);
@@ -693,6 +753,10 @@ const MAP_HTML = `
           centerMap(data.lat, data.lng, data.zoom);
         } else if (data.type === 'FOCUS_DISTRICT') {
           focusOnDistrict(data.source, data.districtNumber);
+        } else if (data.type === 'SET_ADDRESS_DOTS') {
+          setAddressDots(data.dots);
+        } else if (data.type === 'SET_ACTIVE_OFFICIALS') {
+          updateActiveOfficials(data.officialIds);
         }
       } catch (e) {
         console.error('[Leaflet] Error processing message:', e);
