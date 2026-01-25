@@ -1,0 +1,101 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Implement MAP DOTS for Private Notes → Personal Address, with dynamic emphasis when official cards are shown.
+
+This prompt is CLIENT-ONLY. Do NOT change server code, refresh jobs, committees, or schemas. All data already exists locally in private notes.
+
+========================================================
+FEATURE OVERVIEW (Acceptance criteria)
+========================================================
+
+A) Show faint dots for Personal Addresses
+1) On the Map screen, show faint dots for every official that has a valid **Personal Address** stored in Private Notes.
+2) Dots should:
+   - Be subtle / low opacity by default
+   - Not clutter the map (small radius, muted color)
+3) Only render dots when:
+   - The map screen is visible
+   - A Personal Address exists AND can be geocoded to coordinates
+
+B) Emphasize dots when official cards are shown
+4) When ANY official cards are presented on the map (via):
+   - tapping a district
+   - tap-to-search
+   - draw-to-search
+5) The dots for ONLY those officials should be emphasized:
+   - larger size
+   - higher opacity
+   - or brighter color
+6) When the cards/results are dismissed, dots return to faint/default state.
+
+========================================================
+IMPLEMENTATION DETAILS
+========================================================
+
+A) Address → coordinates (client-side)
+- Use client-side geocoding ONLY.
+- Use the simplest available approach already in the project:
+  - If a geocoding utility already exists, reuse it.
+  - Otherwise:
+    - Use a lightweight free geocoding approach (e.g. Google Maps URL fetch or Expo Location if already installed).
+- Cache geocoded results locally so the same address is not repeatedly geocoded:
+  - Key by officialId + address string
+  - Store in local state or AsyncStorage
+- If geocoding fails:
+  - Do not render a dot
+  - Do not crash
+
+B) Dot rendering
+- Use the same MapView used for districts.
+- Render dots as:
+  - MapView.Marker OR
+  - MapView.Circle (preferred for subtle dots)
+- Maintain a data structure like:
+  - `{ officialPublicId, latitude, longitude }`
+
+C) Emphasis logic
+- Track which officials are currently “active” (i.e., whose cards are visible).
+- When results/cards are shown:
+  - Compare active official IDs against dot list
+  - Apply emphasized style to matching dots
+- When results/cards are cleared:
+  - Reset dots to faint style
+
+D) Performance & UX constraints
+- Do NOT re-geocode on every render.
+- Do NOT block map interactions.
+- Dots should not intercept taps meant for districts or polygons:
+  - Use `pointerEvents="none"` or equivalent where needed.
+
+========================================================
+FILES TO LOOK AT (verify exact names)
+========================================================
+
+- `client/screens/MapScreen.tsx`
+- Private notes storage / selectors
+- Any existing map overlay rendering logic
+
+========================================================
+TESTING CHECKLIST
+========================================================
+
+1) Add a Personal Address to at least two officials.
+2) Open Map:
+   - faint dots appear for both
+3) Tap a district that returns one of those officials:
+   - that official’s dot becomes emphasized
+   - other dots remain faint
+4) Draw-to-search returning multiple officials:
+   - only those officials’ dots are emphasized
+5) Dismiss cards:
+   - all dots return to faint state
+6) Pan/zoom map:
+   - dots remain stable
+   - no lag or crashes on Android Expo Go or iOS
+
+========================================================
+AFTER CHANGES
+========================================================
+
+- List all files changed.
+- Explain how you cached geocoded addresses.
+- Explain how “active officials” are tracked to control dot emphasis.
+- Confirm tested on Android Expo Go and iOS.

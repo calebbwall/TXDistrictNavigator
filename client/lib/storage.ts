@@ -511,3 +511,59 @@ export async function unarchiveFollowUp(source: string, districtNumber: number, 
     // Silently fail
   }
 }
+
+const GEOCODE_CACHE_KEY = "@texas_districts:geocode_cache";
+
+export interface GeocodedAddress {
+  address: string;
+  lat: number;
+  lng: number;
+  timestamp: string;
+}
+
+export interface AddressDotData {
+  officialId: string;
+  source: string;
+  districtNumber: number;
+  lat: number;
+  lng: number;
+}
+
+export async function getGeocodedAddressCache(): Promise<Record<string, GeocodedAddress>> {
+  try {
+    const data = await AsyncStorage.getItem(GEOCODE_CACHE_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function saveGeocodedAddress(officialId: string, address: string, lat: number, lng: number): Promise<void> {
+  try {
+    const cache = await getGeocodedAddressCache();
+    cache[officialId] = { address, lat, lng, timestamp: new Date().toISOString() };
+    await AsyncStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Silently fail
+  }
+}
+
+export async function getAllPrivateNotesWithAddresses(): Promise<Array<{
+  officialId: string;
+  personalAddress: string;
+}>> {
+  try {
+    const allNotes = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
+    if (!allNotes) return [];
+    const parsed = JSON.parse(allNotes) as Record<string, PrivateNotes>;
+    const results: Array<{ officialId: string; personalAddress: string }> = [];
+    for (const [officialId, notes] of Object.entries(parsed)) {
+      if (notes.personalAddress && notes.personalAddress.trim().length > 0) {
+        results.push({ officialId, personalAddress: notes.personalAddress.trim() });
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
