@@ -89,7 +89,13 @@ import {
   getGeoJSONRefreshStates,
   getIsRefreshingGeoJSON,
 } from "./jobs/refreshGeoJSON";
+import {
+  checkAndRefreshCommitteesIfChanged,
+  getAllCommitteeRefreshStates,
+  getIsRefreshingCommittees,
+} from "./jobs/refreshCommittees";
 import { lookupPlace, lookupPlaceCandidates, getCacheStats, type PlaceResult } from "./geonames";
+import { committees, committeeMemberships } from "@shared/schema";
 
 type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
@@ -550,16 +556,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const refreshStates = await getAllRefreshStates();
       const geoJSONStates = await getGeoJSONRefreshStates();
+      const committeeStates = await getAllCommitteeRefreshStates();
       const schedulerStatus = getSchedulerStatus();
       const isRefreshing = getIsRefreshing();
       const isRefreshingGeoJSON = getIsRefreshingGeoJSON();
+      const isRefreshingCommittees = getIsRefreshingCommittees();
       
       res.json({
         isRefreshing,
         isRefreshingGeoJSON,
+        isRefreshingCommittees,
         scheduler: schedulerStatus,
         officialsSources: refreshStates,
         geoJSONSources: geoJSONStates,
+        committeeSources: committeeStates,
       });
       
     } catch (err) {
@@ -867,6 +877,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/lookup/cache-stats", (req, res) => {
     res.json(getCacheStats());
+  });
+
+  // Committee API endpoints
+  app.get("/api/committees", async (req, res) => {
+    try {
+      const chamber = req.query.chamber as string | undefined;
+      
+      let query = db.select().from(committees);
+      
+      if (chamber === "TX_HOUSE" || chamber === "TX_SENATE") {
+        query = query.where(eq(committees.chamber, chamber)) as typeof query;
+      }
+      
+      const result = await query.orderBy(committees.name);
+      res.json(result);
+    } catch (err) {
+      console.error("[API] Error fetching committees:", err);
+      res.status(500).json({ error: "Failed to fetch committees" });
+    }
+  });
+
+  app.get("/api/committees/:committeeId", async (req, res) => {
+    try {
+      const { committeeId } = req.params;
+      
+      const committee = await db
+        .select()
+        .from(committees)
+        .where(eq(committees.id, committeeId))
+        .limit(1);
+      
+      if (committee.length === 0) {
+        return res.status(404).json({ error: "Committee not found" });
+      }
+      
+      const members = await db
+        .select({
+          id: committeeMemberships.id,
+          memberName: committeeMemberships.memberName,
+          roleTitle: committeeMemberships.roleTitle,
+          sortOrder: committeeMemberships.sortOrder,
+          officialPublicId: committeeMemberships.officialPublicId,
+          officialName: officialPublic.fullName,
+          officialDistrict: officialPublic.district,
+          officialParty: officialPublic.party,
+          officialPhotoUrl: officialPublic.photoUrl,
+        })
+        .from(committeeMemberships)
+        .leftJoin(officialPublic, eq(committeeMemberships.officialPublicId, officialPublic.id))
+        .where(eq(committeeMemberships.committeeId, committeeId))
+        .orderBy(committeeMemberships.sortOrder);
+      
+      res.json({
+        committee: committee[0],
+        members,
+      });
+    } catch (err) {
+      console.error("[API] Error fetching committee details:", err);
+      res.status(500).json({ error: "Failed to fetch committee details" });
+    }
+  });
+
+  app.get("/api/officials/:officialId/committees", async (req, res) => {
+    try {
+      const { officialId } = req.params;
+      
+      const memberships = await db
+        .select({
+          committeeId: committees.id,
+          committeeName: committees.name,
+          chamber: committees.chamber,
+          roleTitle: committeeMemberships.roleTitle,
+        })
+        .from(committeeMemberships)
+        .innerJoin(committees, eq(committeeMemberships.committeeId, committees.id))
+        .where(eq(committeeMemberships.officialPublicId, officialId))
+        .orderBy(committees.name);
+      
+      res.json(memberships);
+    } catch (err) {
+      console.error("[API] Error fetching official committees:", err);
+      res.status(500).json({ error: "Failed to fetch official committees" });
+    }
+  });
+
+  app.post("/admin/refresh/committees", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
+      }
+      
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      
+      const force = req.query.force === "true";
+      
+      if (getIsRefreshingCommittees()) {
+        return res.status(409).json({ error: "Committees refresh already in progress" });
+      }
+      
+      console.log(`[Admin] Committees refresh triggered (force=${force})`);
+      const result = await checkAndRefreshCommitteesIfChanged(force);
+      
+      res.json({
+        success: true,
+        results: result.results,
+        durationMs: result.durationMs,
+      });
+    } catch (err) {
+      console.error("[Admin] Committees refresh error:", err);
+      res.status(500).json({ error: "Committees refresh failed" });
+    }
   });
 
   app.post("/api/map/area-hits", (req, res) => {

@@ -9,6 +9,11 @@ import {
   wasGeoJSONCheckedThisWeek,
   getIsRefreshingGeoJSON,
 } from "./refreshGeoJSON";
+import {
+  checkAndRefreshCommitteesIfChanged,
+  wasCommitteesCheckedThisWeek,
+  getIsRefreshingCommittees,
+} from "./refreshCommittees";
 
 let schedulerInterval: NodeJS.Timeout | null = null;
 let lastCheckWindowRun: Date | null = null;
@@ -19,8 +24,9 @@ async function schedulerTick(): Promise<void> {
   try {
     const officialsRefreshing = getIsRefreshing();
     const geoJSONRefreshing = getIsRefreshingGeoJSON();
+    const committeesRefreshing = getIsRefreshingCommittees();
     
-    if (officialsRefreshing || geoJSONRefreshing) {
+    if (officialsRefreshing || geoJSONRefreshing || committeesRefreshing) {
       console.log("[Scheduler] Refresh in progress, skipping tick");
       return;
     }
@@ -40,8 +46,9 @@ async function schedulerTick(): Promise<void> {
 
     const officialsChecked = await wasCheckedThisWeek();
     const geoJSONChecked = await wasGeoJSONCheckedThisWeek();
+    const committeesChecked = await wasCommitteesCheckedThisWeek();
     
-    if (officialsChecked && geoJSONChecked) {
+    if (officialsChecked && geoJSONChecked && committeesChecked) {
       console.log("[Scheduler] All sources already checked this week, skipping");
       return;
     }
@@ -57,6 +64,11 @@ async function schedulerTick(): Promise<void> {
     if (!geoJSONChecked) {
       console.log("[Scheduler] Running GeoJSON refresh...");
       await checkAndRefreshGeoJSONIfChanged(false);
+    }
+    
+    if (!committeesChecked) {
+      console.log("[Scheduler] Running Committees refresh...");
+      await checkAndRefreshCommitteesIfChanged(false);
     }
     
   } catch (err) {
