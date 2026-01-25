@@ -1,0 +1,83 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Implement a WEEKLY “check-and-refresh-only-if-changed” system for the Texas district GeoJSON files, using the SAME refresh framework and patterns created for the Officials weekly refresh.
+
+Current state (important context):
+- GeoJSON district files are currently loaded from local files in `server/data/geojson/*`.
+- There is no automatic update mechanism.
+- We already have (or just implemented) a weekly scheduler + fingerprint system for Officials public data.
+- That framework must be reused, not duplicated.
+
+Goal / Acceptance criteria:
+1) Every week, early Monday morning (Central Time), the server checks upstream GeoJSON sources for changes.
+2) If GeoJSON data has NOT changed, do nothing.
+3) If GeoJSON data HAS changed:
+   - Update the stored GeoJSON files/data
+   - Ensure the server serves the new boundaries without breaking the app
+4) The refresh must be safe to run repeatedly and must not run concurrently.
+5) A manual admin endpoint must exist to force a GeoJSON refresh (protected by the same admin token system).
+6) The client app must not need changes for this step.
+
+Implementation plan (do this):
+
+A) Identify GeoJSON datasets
+- Treat each dataset as its own refreshable unit:
+  - Texas House districts
+  - Texas Senate districts
+  - U.S. House districts (Texas)
+- Assign each a stable dataset key (e.g. `TX_HOUSE_GEOJSON`, `TX_SENATE_GEOJSON`, `US_HOUSE_TX_GEOJSON`).
+
+B) Upstream sources
+- Define configurable source URLs for each GeoJSON dataset (keep URLs in a config file or constants module).
+- Fetch raw GeoJSON from those sources during refresh checks.
+
+C) Change detection (reuse framework)
+- Compute a fingerprint/hash of the upstream GeoJSON (raw response text).
+- Compare it to the stored fingerprint for that dataset.
+- Store:
+  - fingerprint
+  - lastCheckedAt
+  - lastChangedAt
+- Use the SAME refresh_state table/pattern used for Officials.
+
+D) Refresh behavior
+- If unchanged:
+  - Update lastCheckedAt only.
+- If changed:
+  - Replace the stored GeoJSON data atomically (no partial writes).
+  - Update fingerprint + timestamps.
+  - Log which datasets were updated.
+
+E) Storage strategy
+Choose ONE and implement cleanly:
+- Option A (preferred): Store GeoJSON blobs in the database and serve them from there.
+- Option B: Overwrite files in `server/data/geojson/` and reload from disk.
+Explain briefly (in comments) why you chose that option.
+
+F) Scheduler integration
+- Hook GeoJSON refresh checks into the same Monday-morning scheduler loop.
+- Ensure GeoJSON refresh and Officials refresh do NOT overlap or block each other.
+
+G) Manual admin endpoint
+- Add `POST /admin/refresh/geojson`
+- Protect with the same `x-admin-token` header.
+- Response should clearly indicate:
+  - which datasets were checked
+  - which were changed
+  - which were refreshed
+
+Files to modify / create:
+- Create `server/jobs/refreshGeoJSON.ts`
+- Update scheduler startup code to include GeoJSON refresh
+- Update routes to expose the admin endpoint
+- Reuse existing utilities for hashing, locking, and refresh state
+
+Constraints:
+- Do NOT modify any map UI or client code.
+- Do NOT change draw-to-search behavior.
+- This prompt is ONLY about GeoJSON refresh logic.
+
+After changes:
+- List all files changed
+- Summarize how GeoJSON refresh now works
+- Explain how to:
+  1) force a GeoJSON refresh via the admin endpoint
+  2) confirm no-op behavior when data is unchanged
