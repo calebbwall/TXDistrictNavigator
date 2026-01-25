@@ -53,27 +53,45 @@ The application is built using Expo and React Native for the frontend, an Expres
 ## Smart Refresh System
 
 ### Fingerprint-Based Change Detection
-The refresh system uses SHA256 fingerprints to detect changes in upstream data sources before performing database updates. This avoids unnecessary writes when data hasn't changed.
+The refresh system uses SHA256 fingerprints to detect changes in upstream data sources before performing updates. This avoids unnecessary database writes or file overwrites when data hasn't changed. Both Officials data and GeoJSON district boundaries use this approach.
 
 ### Automatic Scheduling
 - Scheduler runs every 10 minutes, checking for Monday 3-4 AM Central Time window
-- Auto-refreshes if not already checked that week
+- Auto-refreshes both Officials and GeoJSON if not already checked that week
 - Starts automatically on server boot
 
 ### Admin Endpoints (require `ADMIN_REFRESH_TOKEN` secret)
-- `POST /admin/refresh/officials` - Smart refresh with change detection
+- `POST /admin/refresh/officials` - Smart refresh officials with change detection
+  - Header: `x-admin-token: <token>`
+  - Query: `force=true` to bypass change detection
+- `POST /admin/refresh/geojson` - Smart refresh GeoJSON district files with change detection
   - Header: `x-admin-token: <token>`
   - Query: `force=true` to bypass change detection
 - `GET /admin/refresh/status` - View refresh state for all sources
   - Header: `x-admin-token: <token>`
-  - Returns: scheduler status, per-source fingerprints and timestamps
+  - Returns: scheduler status, per-source fingerprints and timestamps for both officials and GeoJSON
 
-### Database Table: refresh_state
+### Database Tables
+**refresh_state** (Officials, via Drizzle ORM)
 - `source` - TX_HOUSE, TX_SENATE, US_HOUSE
 - `fingerprint` - SHA256 hash of upstream data
 - `lastCheckedAt`, `lastChangedAt`, `lastRefreshedAt` - Timestamps
 
+**geojson_refresh_state** (GeoJSON, via raw SQL - separate from shared schema)
+- `source` - TX_HOUSE_GEOJSON, TX_SENATE_GEOJSON, US_HOUSE_TX_GEOJSON
+- `fingerprint` - SHA256 hash of upstream GeoJSON data
+- `last_checked_at`, `last_changed_at`, `last_refreshed_at` - Timestamps
+
+### GeoJSON Sources
+- TX House districts: TxDOT ArcGIS MapServer Layer 0
+- TX Senate districts: TxDOT ArcGIS MapServer Layer 1
+- US Congress TX districts: TxDOT ArcGIS MapServer Layer 2
+- Files stored in: `server/data/*.geojson`
+
 ### Recent Changes
+- 2026-01-25: Extended smart refresh to include GeoJSON district boundary files
+- 2026-01-25: Added admin endpoint POST /admin/refresh/geojson with token protection
+- 2026-01-25: Created separate geojson_refresh_state table using raw SQL
 - 2026-01-25: Added smart refresh with fingerprint-based change detection
 - 2026-01-25: Created scheduler for Monday 3-4 AM Central Time auto-refresh
 - 2026-01-25: Added admin endpoints with token protection for manual refresh triggers
