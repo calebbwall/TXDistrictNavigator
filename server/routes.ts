@@ -83,6 +83,11 @@ import {
   type SmartRefreshResult 
 } from "./jobs/refreshOfficials";
 import { startOfficialsRefreshScheduler, getSchedulerStatus } from "./jobs/scheduler";
+import { 
+  checkAndRefreshGeoJSONIfChanged, 
+  getGeoJSONRefreshStates,
+  getIsRefreshingGeoJSON,
+} from "./jobs/refreshGeoJSON";
 import { lookupPlace, lookupPlaceCandidates, getCacheStats, type PlaceResult } from "./geonames";
 
 type DistrictType = "tx_house" | "tx_senate" | "us_congress";
@@ -543,18 +548,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const refreshStates = await getAllRefreshStates();
+      const geoJSONStates = await getGeoJSONRefreshStates();
       const schedulerStatus = getSchedulerStatus();
       const isRefreshing = getIsRefreshing();
+      const isRefreshingGeoJSON = getIsRefreshingGeoJSON();
       
       res.json({
         isRefreshing,
+        isRefreshingGeoJSON,
         scheduler: schedulerStatus,
-        sources: refreshStates,
+        officialsSources: refreshStates,
+        geoJSONSources: geoJSONStates,
       });
       
     } catch (err) {
       console.error("[Admin] Status error:", err);
       res.status(500).json({ error: "Failed to get status" });
+    }
+  });
+
+  app.post("/admin/refresh/geojson", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(503).json({ 
+          error: "Admin refresh not configured",
+          message: "Set ADMIN_REFRESH_TOKEN environment variable" 
+        });
+      }
+      
+      if (!providedToken || providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid or missing admin token" });
+      }
+      
+      if (getIsRefreshingGeoJSON()) {
+        return res.status(409).json({ 
+          error: "Refresh in progress",
+          message: "A GeoJSON refresh is already running. Try again later." 
+        });
+      }
+      
+      const force = req.query.force === "true";
+      
+      console.log(`[Admin] Manual GeoJSON refresh triggered (force=${force})`);
+      
+      const result = await checkAndRefreshGeoJSONIfChanged(force);
+      
+      res.json({
+        success: true,
+        force,
+        sourcesChecked: result.sourcesChecked,
+        sourcesChanged: result.sourcesChanged,
+        sourcesRefreshed: result.sourcesRefreshed,
+        errors: result.errors,
+        durationMs: result.durationMs,
+      });
+      
+    } catch (err) {
+      console.error("[Admin] GeoJSON refresh error:", err);
+      res.status(500).json({ error: "Refresh failed", details: String(err) });
     }
   });
 
