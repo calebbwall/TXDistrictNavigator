@@ -3,7 +3,8 @@ import Constants from "expo-constants";
 
 /**
  * Gets the base URL for the Express API server
- * Priority: EXPO_PUBLIC_API_BASE_URL > expo.extra.API_BASE_URL > EXPO_PUBLIC_DOMAIN
+ * In development: uses EXPO_PUBLIC_DOMAIN (Replit dev server)
+ * In production builds: uses extra.API_BASE_URL from app.json
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
@@ -11,14 +12,14 @@ export function getApiUrl(): string {
     return process.env.EXPO_PUBLIC_API_BASE_URL;
   }
 
-  const extraApiUrl = Constants.expoConfig?.extra?.API_BASE_URL;
-  if (extraApiUrl && extraApiUrl !== "YOUR_DEPLOYED_REPLIT_URL_HERE") {
-    return extraApiUrl;
-  }
-
   const host = process.env.EXPO_PUBLIC_DOMAIN;
   if (host) {
     return `https://${host}`;
+  }
+
+  const extraApiUrl = Constants.expoConfig?.extra?.API_BASE_URL;
+  if (extraApiUrl && extraApiUrl !== "YOUR_DEPLOYED_REPLIT_URL_HERE") {
+    return extraApiUrl;
   }
 
   throw new Error(
