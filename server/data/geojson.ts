@@ -22,18 +22,44 @@ export interface GeoJSONCollection {
   features: GeoJSONFeature[];
 }
 
+function findGeoJSONPath(filename: string): string | null {
+  const possiblePaths = [
+    path.join(__dirname, "geojson", filename),
+    path.join(process.cwd(), "server", "data", "geojson", filename),
+    path.join(process.cwd(), "data", "geojson", filename),
+    path.resolve("server", "data", "geojson", filename),
+  ];
+  
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+  return null;
+}
+
 function loadGeoJSON(filename: string): GeoJSONCollection {
   try {
-    const filePath = path.join(__dirname, "geojson", filename);
-    console.log(`[GeoJSON] Loading ${filename} from: ${filePath}`);
+    const filePath = findGeoJSONPath(filename);
     
-    if (!fs.existsSync(filePath)) {
-      console.error(`[GeoJSON] File not found: ${filePath}`);
+    if (!filePath) {
+      console.error(`[GeoJSON] File not found: ${filename}`);
       console.log(`[GeoJSON] __dirname is: ${__dirname}`);
-      console.log(`[GeoJSON] Directory contents:`, fs.readdirSync(__dirname));
+      console.log(`[GeoJSON] process.cwd() is: ${process.cwd()}`);
+      
+      const checkDir = path.join(__dirname, "geojson");
+      if (fs.existsSync(checkDir)) {
+        console.log(`[GeoJSON] Contents of ${checkDir}:`, fs.readdirSync(checkDir));
+      } else {
+        console.log(`[GeoJSON] Directory does not exist: ${checkDir}`);
+        if (fs.existsSync(__dirname)) {
+          console.log(`[GeoJSON] Contents of __dirname:`, fs.readdirSync(__dirname));
+        }
+      }
       return { type: "FeatureCollection", features: [] };
     }
     
+    console.log(`[GeoJSON] Loading ${filename} from: ${filePath}`);
     const data = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(data) as GeoJSONCollection;
     console.log(`[GeoJSON] Successfully loaded ${filename}: ${parsed.features.length} features`);
