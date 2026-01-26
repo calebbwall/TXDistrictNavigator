@@ -1,19 +1,29 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import Constants from "expo-constants";
 
 /**
- * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
+ * Gets the base URL for the Express API server
+ * Priority: EXPO_PUBLIC_API_BASE_URL > expo.extra.API_BASE_URL > EXPO_PUBLIC_DOMAIN
  * @returns {string} The API base URL
  */
 export function getApiUrl(): string {
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
-
-  if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
+    return process.env.EXPO_PUBLIC_API_BASE_URL;
   }
 
-  let url = new URL(`https://${host}`);
+  const extraApiUrl = Constants.expoConfig?.extra?.API_BASE_URL;
+  if (extraApiUrl && extraApiUrl !== "YOUR_DEPLOYED_REPLIT_URL_HERE") {
+    return extraApiUrl;
+  }
 
-  return url.href;
+  const host = process.env.EXPO_PUBLIC_DOMAIN;
+  if (host) {
+    return `https://${host}`;
+  }
+
+  throw new Error(
+    "No API URL configured. Set EXPO_PUBLIC_API_BASE_URL or update app.json extra.API_BASE_URL"
+  );
 }
 
 async function throwIfResNotOk(res: Response) {

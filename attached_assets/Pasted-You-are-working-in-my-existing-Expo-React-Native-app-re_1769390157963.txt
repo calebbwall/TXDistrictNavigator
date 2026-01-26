@@ -1,0 +1,49 @@
+You are working in my existing Expo React Native app repo on Replit. Goal: make the codebase fully ready to build an Android APK using Expo EAS Build from my local machine (not from Replit). Do NOT change UI/UX. Only make build-readiness and configuration improvements.
+
+1) Verify this is an Expo Managed Workflow project.
+   - Confirm we have package.json and app.json (or app.config.js).
+   - If it’s not managed or has partial native folders, do NOT migrate workflows unless required; instead, report what would block EAS.
+
+2) Ensure Expo config is valid and complete for Android:
+   - In app.json/app.config.js, ensure:
+     - expo.name, expo.slug exist
+     - expo.version exists
+     - android.package exists and is stable (reverse-DNS, no spaces). If missing, add "com.caleb.txdistrictnavigator" (or a safe placeholder) and note it.
+     - android.versionCode exists (integer) and increment if needed
+     - (optional but helpful) expo.extra contains a key for API_BASE_URL
+   - Do not break existing assets/icons/splash references.
+
+3) Eliminate any “localhost” / hardcoded dev URLs that would break on a physical Android device:
+   - Search the entire repo for:
+     - "localhost", "127.0.0.1", "10.0.2.2"
+     - hardcoded http:// URLs
+   - Replace API base usage with a single source of truth:
+     - Create src/config/api.ts (or src/config.ts) that exports API_BASE_URL
+     - API_BASE_URL should come from (in order):
+       a) process.env.EXPO_PUBLIC_API_BASE_URL
+       b) Constants.expoConfig?.extra?.API_BASE_URL
+       c) a safe fallback pointing to my deployed Replit backend URL if it exists in the repo
+   - Update all fetch/axios calls to use this API_BASE_URL + path. Keep behavior identical.
+
+4) Add EAS configuration files if missing:
+   - Add eas.json with:
+     - build.preview.android.buildType = "apk"
+     - build.production.android.buildType = "app-bundle"
+   - Add minimal .gitignore entries if needed (node_modules, .expo, dist, etc) but don’t overreach.
+
+5) Make sure the project can run cleanly:
+   - Ensure npm scripts exist: "start", "android", "ios" (typical Expo scripts)
+   - Fix any obvious import/path issues introduced by the config change.
+   - Run any available Replit checks/tests or at least ensure TypeScript/build passes if tooling exists.
+
+6) Output a concise “Build from my computer” checklist at the end (commands only):
+   - npm install
+   - npm i -g eas-cli
+   - eas login
+   - eas build -p android --profile preview
+
+Constraints:
+- Do not add new major dependencies unless absolutely necessary.
+- Do not refactor unrelated code.
+- Make changes in small commits/steps and explain exactly what files changed and why.
+- If you need my deployed Replit backend URL and it’s not in the repo, use a placeholder and clearly mark where I should paste it.
