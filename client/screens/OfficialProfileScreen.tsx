@@ -299,7 +299,8 @@ export default function OfficialProfileScreen() {
       setCommitteesLoading(true);
       try {
         const baseUrl = getApiUrl();
-        const response = await fetch(`${baseUrl}api/officials/${officialId}/committees`);
+        const url = new URL(`/api/officials/${officialId}/committees`, baseUrl);
+        const response = await fetch(url.toString());
         if (response.ok) {
           const data = await response.json();
           setCommittees(data);

@@ -79,7 +79,8 @@ export default function CommitteeListScreen() {
     queryKey: ["/api/committees", chamber],
     queryFn: async () => {
       const baseUrl = getApiUrl();
-      const response = await fetch(`${baseUrl}api/committees?chamber=${chamber}`);
+      const url = new URL(`/api/committees?chamber=${chamber}`, baseUrl);
+      const response = await fetch(url.toString());
       if (!response.ok) throw new Error("Failed to fetch committees");
       return response.json();
     },

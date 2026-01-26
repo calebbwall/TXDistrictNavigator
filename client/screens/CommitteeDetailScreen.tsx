@@ -131,7 +131,8 @@ export default function CommitteeDetailScreen() {
     queryKey: ["/api/committees", committeeId],
     queryFn: async () => {
       const baseUrl = getApiUrl();
-      const response = await fetch(`${baseUrl}api/committees/${committeeId}`);
+      const url = new URL(`/api/committees/${committeeId}`, baseUrl);
+      const response = await fetch(url.toString());
       if (!response.ok) throw new Error("Failed to fetch committee details");
       return response.json();
     },
