@@ -1142,30 +1142,55 @@ export default function MapScreen() {
       return cached.data;
     }
     
-    try {
-      const baseUrl = getApiUrl();
-      const url = new URL(`/api/geojson/${layerType}`, baseUrl);
-      console.log(`[MapScreen] Fetching ${layerType} from: ${url.toString()}`);
-      
+    const fetchFromEndpoint = async (endpoint: string) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
       
-      const response = await fetch(url.toString(), { signal: controller.signal });
+      const response = await fetch(endpoint, { signal: controller.signal });
       clearTimeout(timeoutId);
-      console.log(`[MapScreen] ${layerType} response status: ${response.status}`);
       
       if (!response.ok) {
-        const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
-        setLoadStatus(prev => ({
-          ...prev,
-          [layerKey]: { loaded: false, features: 0, error: errorMsg }
-        }));
-        throw new Error(errorMsg);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
+      return await response.json();
+    };
+    
+    const validateGeoJSON = (data: unknown): boolean => {
+      if (!data || typeof data !== 'object') return false;
+      const geojson = data as { features?: unknown[] };
+      if (!Array.isArray(geojson.features) || geojson.features.length === 0) return false;
+      return true;
+    };
+    
+    try {
+      const baseUrl = getApiUrl();
+      const simplifiedUrl = new URL(`/api/geojson/${layerType}`, baseUrl);
+      console.log(`[MapScreen] Fetching ${layerType} (simplified) from: ${simplifiedUrl.toString()}`);
+      
+      let data;
+      let usedFallback = false;
+      
+      try {
+        data = await fetchFromEndpoint(simplifiedUrl.toString());
+        
+        if (!validateGeoJSON(data)) {
+          console.warn(`[MapScreen] ${layerType} simplified GeoJSON failed validation, trying full version`);
+          throw new Error('Validation failed');
+        }
+      } catch (simplifiedError) {
+        console.log(`[MapScreen] ${layerType} simplified failed, falling back to full version`);
+        const fullUrl = new URL(`/api/geojson/${layerType}_full`, baseUrl);
+        data = await fetchFromEndpoint(fullUrl.toString());
+        usedFallback = true;
+        
+        if (!validateGeoJSON(data)) {
+          throw new Error('Both simplified and full GeoJSON failed validation');
+        }
+      }
+      
       const featureCount = data?.features?.length || 0;
-      console.log(`[MapScreen] ${layerType} loaded: ${featureCount} features`);
+      console.log(`[MapScreen] ${layerType} loaded: ${featureCount} features${usedFallback ? ' (using full version fallback)' : ''}`);
       
       geoJSONCache[layerType] = { data, timestamp: Date.now() };
       

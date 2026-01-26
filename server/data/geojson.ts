@@ -73,3 +73,7 @@ function loadGeoJSON(filename: string): GeoJSONCollection {
 export const txSenateGeoJSON = loadGeoJSON("tx_senate_simplified.geojson");
 export const txHouseGeoJSON = loadGeoJSON("tx_house_simplified.geojson");
 export const usCongressGeoJSON = loadGeoJSON("us_congress_simplified.geojson");
+
+export const txSenateGeoJSONFull = loadGeoJSON("tx_senate.geojson");
+export const txHouseGeoJSONFull = loadGeoJSON("tx_house.geojson");
+export const usCongressGeoJSONFull = loadGeoJSON("us_congress.geojson");

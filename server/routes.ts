@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
-import { txHouseGeoJSON, txSenateGeoJSON, usCongressGeoJSON } from "./data/geojson";
+import { txHouseGeoJSON, txSenateGeoJSON, usCongressGeoJSON, txHouseGeoJSONFull, txSenateGeoJSONFull, usCongressGeoJSONFull } from "./data/geojson";
 import { db } from "./db";
 import { 
   officialPublic, 
@@ -145,6 +145,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/geojson/us_congress", (_req, res) => {
     res.json(usCongressGeoJSON);
+  });
+
+  app.get("/api/geojson/tx_house_full", (_req, res) => {
+    res.json(txHouseGeoJSONFull);
+  });
+
+  app.get("/api/geojson/tx_senate_full", (_req, res) => {
+    res.json(txSenateGeoJSONFull);
+  });
+
+  app.get("/api/geojson/us_congress_full", (_req, res) => {
+    res.json(usCongressGeoJSONFull);
   });
 
   app.get("/api/officials", async (req, res) => {
