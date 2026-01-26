@@ -25,10 +25,21 @@ export interface GeoJSONCollection {
 function loadGeoJSON(filename: string): GeoJSONCollection {
   try {
     const filePath = path.join(__dirname, "geojson", filename);
+    console.log(`[GeoJSON] Loading ${filename} from: ${filePath}`);
+    
+    if (!fs.existsSync(filePath)) {
+      console.error(`[GeoJSON] File not found: ${filePath}`);
+      console.log(`[GeoJSON] __dirname is: ${__dirname}`);
+      console.log(`[GeoJSON] Directory contents:`, fs.readdirSync(__dirname));
+      return { type: "FeatureCollection", features: [] };
+    }
+    
     const data = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(data) as GeoJSONCollection;
+    const parsed = JSON.parse(data) as GeoJSONCollection;
+    console.log(`[GeoJSON] Successfully loaded ${filename}: ${parsed.features.length} features`);
+    return parsed;
   } catch (error) {
-    console.error(`Error loading ${filename}:`, error);
+    console.error(`[GeoJSON] Error loading ${filename}:`, error);
     return { type: "FeatureCollection", features: [] };
   }
 }
