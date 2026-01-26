@@ -638,6 +638,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/admin/geojson/source-debug", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(503).json({ 
+          error: "Admin refresh not configured",
+          message: "Set ADMIN_REFRESH_TOKEN environment variable" 
+        });
+      }
+      
+      if (!providedToken || providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid or missing admin token" });
+      }
+      
+      const sources = [
+        {
+          name: "TX_HOUSE",
+          url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson&resultRecordCount=1"
+        },
+        {
+          name: "TX_SENATE",
+          url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_Senate_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson&resultRecordCount=1"
+        },
+        {
+          name: "US_CONGRESS",
+          url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_US_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson&resultRecordCount=1"
+        }
+      ];
+      
+      const results = await Promise.all(sources.map(async (source) => {
+        try {
+          const response = await fetch(source.url);
+          const data = await response.json() as { features?: Array<{ properties?: Record<string, unknown> }> };
+          const sampleProps = data.features?.[0]?.properties || {};
+          
+          const countUrl = source.url.replace("resultRecordCount=1", "returnCountOnly=true");
+          const countResponse = await fetch(countUrl);
+          const countData = await countResponse.json() as { count?: number };
+          
+          return {
+            name: source.name,
+            featureCount: countData.count,
+            samplePropertyKeys: Object.keys(sampleProps),
+            sampleDistrictValue: sampleProps.DIST_NBR,
+            sampleRepName: sampleProps.REP_NM,
+            status: "ok"
+          };
+        } catch (err) {
+          return {
+            name: source.name,
+            status: "error",
+            error: String(err)
+          };
+        }
+      }));
+      
+      res.json({ sources: results });
+      
+    } catch (err) {
+      console.error("[Admin] GeoJSON source debug error:", err);
+      res.status(500).json({ error: "Debug failed", details: String(err) });
+    }
+  });
+
   app.get("/api/admin/officials-counts", async (_req, res) => {
     try {
       const counts = await db.select({
