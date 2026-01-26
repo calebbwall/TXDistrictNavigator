@@ -47,7 +47,7 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **GeoJSON**: Geographic data format.
 - **Texas Legislature Online (capitol.texas.gov)**: Source for Texas legislative data.
 - **Congress.gov API**: Source for US Congress data.
-- **TxDOT OpenData**: Source for GeoJSON district boundaries.
+- **TxDOT FeatureServer**: Source for GeoJSON district boundaries (Texas_State_House_Districts, Texas_State_Senate_Districts, Texas_US_House_Districts services with DIST_NBR and REP_NM fields).
 - **GeoNames API**: Place search (cities, ZIP codes).
 - **Drizzle ORM**: Database interactions.
 - **NetInfo**: Network connectivity detection.
