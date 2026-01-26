@@ -479,10 +479,17 @@ const MAP_HTML = `
         }
         
         if (found) {
+          // Fallbacks for various field naming conventions
           const districtNum = feature.properties.district || 
+                              feature.properties.TX_HOUSE_DIST_NBR ||
+                              feature.properties.TX_SEN_DIST_NBR ||
+                              feature.properties.TX_US_HOUSE_DIST_NBR ||
+                              feature.properties.TX_REP_DIST_NBR ||
                               feature.properties.SLDUST || 
                               feature.properties.SLDLST ||
-                              feature.properties.CD;
+                              feature.properties.CD ||
+                              feature.properties.CONG_DIST ||
+                              feature.properties.DIST_NBR;
           return parseInt(districtNum) || 1;
         }
       }
@@ -824,10 +831,17 @@ const MAP_HTML = `
       }
       
       const feature = data.features.find(f => {
+        // Fallbacks for various field naming conventions
         const districtNum = f.properties.district || 
+                           f.properties.TX_HOUSE_DIST_NBR ||
+                           f.properties.TX_SEN_DIST_NBR ||
+                           f.properties.TX_US_HOUSE_DIST_NBR ||
+                           f.properties.TX_REP_DIST_NBR ||
                            f.properties.SLDUST || 
                            f.properties.SLDLST ||
-                           f.properties.CD;
+                           f.properties.CD ||
+                           f.properties.CONG_DIST ||
+                           f.properties.DIST_NBR;
         return parseInt(districtNum) === districtNumber;
       });
       
