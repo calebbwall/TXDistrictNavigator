@@ -1,0 +1,75 @@
+If it “used to be correct” and now the lines themselves look wrong, the most likely culprit is: your refresh job is now downloading a different boundary dataset than before (or the same endpoint now serves different content). In your code, you’re currently pulling districts from TxDOT’s Boundaries MapServer endpoints:
+	•	https://maps.dot.state.tx.us/arcgis/rest/services/Boundaries/MapServer/{6,7,8}/query?...&f=geojson
+
+Those can change structure/fields over time, and (in your case) the TX House mapping logic was already using the wrong attribute keys.
+
+A cleaner fix is to switch to TxDOT’s dedicated legislative district FeatureServer layers (they’re explicitly labeled for the 89th session / 119th Congress and include stable fields like DIST_NBR and REP_NM).  ￼
+
+Paste this Replit prompt:
+
+⸻
+
+Replit prompt: Switch to correct legislative boundary sources + force refresh
+
+We believe the app is pulling the wrong boundary dataset (district lines incorrect; used to be correct). Fix by switching GeoJSON refresh sources away from maps.dot.state.tx.us/.../Boundaries/MapServer/* to TxDOT’s legislative district FeatureServer services that contain the correct district boundaries and stable fields (DIST_NBR, REP_NM).
+
+1) Update GeoJSON source URLs (server/jobs/refreshGeoJSON.ts)
+
+Replace the GEOJSON_SOURCES URLs with these FeatureServer query endpoints (layer 0) and keep outSR=4326:
+	•	TX House:
+https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson
+	•	TX Senate:
+https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_Senate_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson
+	•	US House (Texas):
+https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_US_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson
+
+These services are the ones labeled as the current session datasets and expose fields DIST_NBR and REP_NM. (Do not keep using the old TX_*_DIST_NBR keys in normalize.)
+
+2) Fix normalizeGeoJSON() to match the new schema
+
+In normalizeGeoJSON(raw, source):
+	•	For ALL three sources, compute:
+	•	district = Number(props.DIST_NBR ?? props.district)
+	•	name = String(props.REP_NM ?? props.name ?? <fallback>)
+	•	Remove any fallback that uses idx + 1. If district is missing/NaN, treat it as an error.
+
+3) Add a hard validation step before writing files
+
+Before writeGeoJSONFile(...), validate:
+	•	House featureCount = 150, Senate = 31, US House = 38
+	•	Every feature has finite integer district > 0
+	•	Districts are unique
+If validation fails, log a clear error and DO NOT overwrite existing geojson files.
+
+4) Force a refresh (bypass cached fingerprints)
+
+Because we store fingerprints in geojson_refresh_state, switching URLs might not trigger refresh as expected depending on how the agent runs it.
+
+Implement ONE of these:
+	•	Option A (preferred): Change the source names to versioned keys:
+	•	TX_HOUSE_GEOJSON_V2, TX_SENATE_GEOJSON_V2, US_HOUSE_TX_GEOJSON_V2
+so the refresh table treats them as new.
+	•	Option B: Add a small admin helper in this module that deletes rows from geojson_refresh_state for the three sources (or truncates the table) and call it once during a “force refresh” run.
+
+Also delete any existing local geojson files in server/data/geojson/ during the forced refresh so we know the new files are being used.
+
+5) Add a quick diagnostic endpoint (optional but recommended)
+
+Add a server route like GET /api/admin/geojson/source-debug that fetches each source and returns:
+	•	URL
+	•	feature count (use returnCountOnly=true query if needed)
+	•	sample properties keys from the first feature
+This lets us confirm in-app what data we’re actually pulling.
+
+Acceptance test
+
+After running the refresh:
+	•	tx_house.geojson has 150 features and the borders match real districts.
+	•	DIST_NBR maps to the correct polygons (no “correct numbers but wrong shape”).
+	•	Senate + US House also match.
+
+Implement cleanly and keep existing filenames the same so the client doesn’t need changes.
+
+⸻
+
+If you want the “why” in one sentence: your current MapServer source is a moving target; the FeatureServer legislative layers are the “pinned” dataset (they even advertise the session/congress in the layer name and have consistent fields).  ￼

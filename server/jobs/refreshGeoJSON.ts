@@ -8,21 +8,21 @@ import { sql } from "drizzle-orm";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-type GeoJSONSourceType = "TX_HOUSE_GEOJSON" | "TX_SENATE_GEOJSON" | "US_HOUSE_TX_GEOJSON";
+type GeoJSONSourceType = "TX_HOUSE_GEOJSON_V2" | "TX_SENATE_GEOJSON_V2" | "US_HOUSE_TX_GEOJSON_V2";
 
 const GEOJSON_SOURCES: Record<GeoJSONSourceType, { url: string; localFile: string; simplifiedFile: string }> = {
-  TX_HOUSE_GEOJSON: {
-    url: "https://maps.dot.state.tx.us/arcgis/rest/services/Boundaries/MapServer/8/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
+  TX_HOUSE_GEOJSON_V2: {
+    url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
     localFile: "tx_house.geojson",
     simplifiedFile: "tx_house_simplified.geojson",
   },
-  TX_SENATE_GEOJSON: {
-    url: "https://maps.dot.state.tx.us/arcgis/rest/services/Boundaries/MapServer/7/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
+  TX_SENATE_GEOJSON_V2: {
+    url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_Senate_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
     localFile: "tx_senate.geojson",
     simplifiedFile: "tx_senate_simplified.geojson",
   },
-  US_HOUSE_TX_GEOJSON: {
-    url: "https://maps.dot.state.tx.us/arcgis/rest/services/Boundaries/MapServer/6/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
+  US_HOUSE_TX_GEOJSON_V2: {
+    url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_US_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
     localFile: "us_congress.geojson",
     simplifiedFile: "us_congress_simplified.geojson",
   },
@@ -176,21 +176,13 @@ interface NormalizeResult {
 }
 
 const EXPECTED_COUNTS: Record<GeoJSONSourceType, number> = {
-  TX_HOUSE_GEOJSON: 150,
-  TX_SENATE_GEOJSON: 31,
-  US_HOUSE_TX_GEOJSON: 38,
+  TX_HOUSE_GEOJSON_V2: 150,
+  TX_SENATE_GEOJSON_V2: 31,
+  US_HOUSE_TX_GEOJSON_V2: 38,
 };
 
-function extractDistrictNumber(props: Record<string, unknown>, source: GeoJSONSourceType): number | null {
-  let value: unknown;
-  
-  if (source === "TX_HOUSE_GEOJSON") {
-    value = props.TX_HOUSE_DIST_NBR ?? props.TX_REP_DIST_NBR ?? props.DIST_NBR ?? props.SLDLST ?? props.district;
-  } else if (source === "TX_SENATE_GEOJSON") {
-    value = props.TX_SEN_DIST_NBR ?? props.DIST_NBR ?? props.SLDUST ?? props.district;
-  } else {
-    value = props.TX_US_HOUSE_DIST_NBR ?? props.CD ?? props.CONG_DIST ?? props.district;
-  }
+function extractDistrictNumber(props: Record<string, unknown>, _source: GeoJSONSourceType): number | null {
+  const value = props.DIST_NBR ?? props.district;
   
   if (value === undefined || value === null) return null;
   
@@ -224,12 +216,12 @@ function normalizeGeoJSON(raw: GeoJSONCollection, source: GeoJSONSourceType): No
     districtsSeen.add(district);
     
     let name: string;
-    if (source === "TX_HOUSE_GEOJSON") {
-      name = String(props.TX_HOUSE_DIST_NM || props.TX_REP_DIST_NM || props.name || `TX House District ${district}`);
-    } else if (source === "TX_SENATE_GEOJSON") {
-      name = String(props.TX_SEN_DIST_NM || props.name || `TX Senate District ${district}`);
+    if (source === "TX_HOUSE_GEOJSON_V2") {
+      name = String(props.REP_NM || props.name || `TX House District ${district}`);
+    } else if (source === "TX_SENATE_GEOJSON_V2") {
+      name = String(props.REP_NM || props.name || `TX Senate District ${district}`);
     } else {
-      name = String(props.NAMELSAD || props.name || `US Congress District ${district}`);
+      name = String(props.REP_NM || props.name || `US Congress District ${district}`);
     }
     
     features.push({
@@ -604,7 +596,7 @@ export async function checkAndRefreshGeoJSONIfChanged(force = false): Promise<Sm
       sourcesChecked: [],
       sourcesChanged: [],
       sourcesRefreshed: [],
-      errors: [{ source: "TX_HOUSE_GEOJSON", error: "Refresh already in progress" }],
+      errors: [{ source: "TX_HOUSE_GEOJSON_V2", error: "Refresh already in progress" }],
       durationMs: 0,
     };
   }
@@ -622,7 +614,7 @@ export async function checkAndRefreshGeoJSONIfChanged(force = false): Promise<Sm
   console.log(`[RefreshGeoJSON] Starting smart check-and-refresh (force=${force})`);
   
   try {
-    const sources: GeoJSONSourceType[] = ["TX_HOUSE_GEOJSON", "TX_SENATE_GEOJSON", "US_HOUSE_TX_GEOJSON"];
+    const sources: GeoJSONSourceType[] = ["TX_HOUSE_GEOJSON_V2", "TX_SENATE_GEOJSON_V2", "US_HOUSE_TX_GEOJSON_V2"];
     
     for (const source of sources) {
       result.sourcesChecked.push(source);
@@ -665,7 +657,7 @@ export async function checkAndRefreshGeoJSONIfChanged(force = false): Promise<Sm
 }
 
 export async function wasGeoJSONCheckedThisWeek(): Promise<boolean> {
-  const sources: GeoJSONSourceType[] = ["TX_HOUSE_GEOJSON", "TX_SENATE_GEOJSON", "US_HOUSE_TX_GEOJSON"];
+  const sources: GeoJSONSourceType[] = ["TX_HOUSE_GEOJSON_V2", "TX_SENATE_GEOJSON_V2", "US_HOUSE_TX_GEOJSON_V2"];
   const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   
   for (const source of sources) {
