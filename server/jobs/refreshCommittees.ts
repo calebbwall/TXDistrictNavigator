@@ -499,7 +499,8 @@ export async function getAllCommitteeRefreshStates(): Promise<Array<{
   }));
 }
 
-if (require.main === module) {
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
   checkAndRefreshCommitteesIfChanged(true)
     .then((result) => {
       console.log("Result:", JSON.stringify(result, null, 2));

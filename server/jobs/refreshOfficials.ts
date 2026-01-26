@@ -1057,7 +1057,8 @@ export async function getAllRefreshStates(): Promise<Array<{
   }));
 }
 
-if (require.main === module) {
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
   refreshAllOfficials()
     .then(() => process.exit(0))
     .catch((err) => {

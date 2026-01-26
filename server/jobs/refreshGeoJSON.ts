@@ -1,8 +1,12 @@
 import * as crypto from "crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 type GeoJSONSourceType = "TX_HOUSE_GEOJSON" | "TX_SENATE_GEOJSON" | "US_HOUSE_TX_GEOJSON";
 
