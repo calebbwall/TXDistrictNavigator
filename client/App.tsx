@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, View, ActivityIndicator } from "react-native";
+import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -60,7 +60,7 @@ export default function App() {
               <NavigationContainer>
                 <RootStackNavigator />
               </NavigationContainer>
-              <StatusBar style="auto" />
+              <StatusBar style="auto" translucent={Platform.OS !== "android"} />
             </KeyboardProvider>
           </GestureHandlerRootView>
         </SafeAreaProvider>

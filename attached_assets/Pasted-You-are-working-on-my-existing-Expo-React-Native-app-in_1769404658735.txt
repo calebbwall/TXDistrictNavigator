@@ -1,0 +1,38 @@
+You are working on my existing Expo React Native app in Replit (TXDistrictNavigator). Problem: when installed as an Android APK, the top of the UI is cut off (content appears under the Android status bar/notch). Goal: optimize formatting so screens render correctly on Android standalone builds (APK), WITHOUT changing features or redesigning the UI.
+
+Constraints:
+- Do not change app functionality, navigation structure, or visual style beyond what’s needed to prevent clipping.
+- Fix should apply consistently across Android devices with different status bar heights/notches.
+- Prefer safe-area + insets over hardcoded padding values.
+- Make minimal, targeted changes and list every file changed.
+
+Tasks:
+1) Add safe-area support globally
+- Ensure `react-native-safe-area-context` is installed and correctly configured.
+- Wrap the root of the app (e.g., App.tsx / RootLayout / NavigationContainer entry) with `SafeAreaProvider`.
+
+2) Fix all top-clipped screens
+- Identify every main screen and any component that renders at the top (headers, top tiles, search bars, maps, lists with header components).
+- Wrap each screen’s top-level container in `SafeAreaView` from `react-native-safe-area-context` with `style={{ flex: 1 }}` and edges set appropriately (usually `["top", "left", "right"]`).
+- If any screens use `View` + `paddingTop`, replace with `useSafeAreaInsets()` and set `paddingTop: insets.top` (or add insets.top to existing top padding).
+- Ensure ScrollViews/FlatLists have `contentContainerStyle` or `ListHeaderComponentStyle` adjusted so their first items are not hidden under the status bar.
+
+3) Eliminate risky layout patterns that cause clipping
+- Search for absolute-positioned top elements: `position: "absolute"` with `top: 0` or negative margins. Replace with normal layout flow or safe-area inset padding.
+- Check any custom header components used across screens and apply safe-area insets there as well.
+
+4) Android status bar behavior
+- If the app sets `StatusBar` props, ensure they do not cause overlay issues on Android. Prefer `translucent={false}` unless there’s a specific design reason.
+- Confirm the app is not using `expo-status-bar` in a way that overlays content. If it is, adjust to avoid content underlap.
+
+5) Verify on Android
+- Add a temporary debug toggle/log (no visible UI changes in production) to print safe-area inset values on Android, to confirm insets are applied.
+- Provide instructions for how to verify in Expo Go AND in a standalone APK build.
+
+Deliverable:
+- Implement the fixes, then summarize:
+  - Which screens were updated
+  - The exact safe-area strategy used (Provider + SafeAreaView / insets)
+  - Any absolute-positioned header fixes
+  - Any StatusBar changes
+  - How to test that the top is no longer clipped on Android APK

@@ -13,6 +13,8 @@ export function useScreenOptions({
 }: UseScreenOptionsParams = {}): NativeStackNavigationOptions {
   const { theme, isDark } = useTheme();
 
+  const isAndroid = Platform.OS === "android";
+
   return {
     headerTitleAlign: "center",
     headerTransparent: transparent,
@@ -20,11 +22,12 @@ export function useScreenOptions({
     headerTintColor: theme.text,
     headerStyle: {
       backgroundColor: Platform.select({
-        ios: undefined,
+        ios: transparent ? undefined : theme.backgroundRoot,
         android: theme.backgroundRoot,
         web: theme.backgroundRoot,
       }),
     },
+    headerShadowVisible: isAndroid ? false : undefined,
     gestureEnabled: true,
     gestureDirection: "horizontal",
     fullScreenGestureEnabled: isLiquidGlassAvailable() ? false : true,
