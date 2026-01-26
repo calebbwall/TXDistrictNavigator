@@ -1,0 +1,89 @@
+Here’s a Replit prompt you can paste to the agent to fix the “district lines look wrong” problem in a way that’s actually defensible (not vibes-based). This specifically targets the two most common causes in your codebase:
+	1.	Wrong property→district mapping (labels correct but attached to wrong polygons)
+	2.	Invalid/garbled polygon rings caused by our homemade simplifier (rings stop being valid/closed, polygons collapse, borders look wrong)
+
+⸻
+
+Replit prompt: Fix district boundary correctness + validation (TX House, Senate, US Congress)
+
+We need to fix a mapping + geometry integrity issue: TX House (and possibly Senate/Congress) district boundaries are not laid correctly on the map. The district numbers appear plausible, but the actual polygon lines are wrong/misaligned.
+
+Primary suspects in current code
+
+File: server/jobs/refreshGeoJSON.ts
+	1.	normalizeGeoJSON() uses wrong source property keys for the TxDOT ArcGIS Boundaries layers, which can force fallback to idx + 1 (feature order), attaching the wrong district number to the wrong polygon.
+	2.	Our createSimplifiedGeoJSON() uses a custom simplifyCoordinates() that can break GeoJSON polygon rules, especially for closed rings:
+	•	A Polygon ring must be closed (first coordinate = last coordinate)
+	•	A ring must have >= 4 positions (because of closure)
+	•	If the ring is closed, our simplifier can collapse it into [first,last] where first===last, producing an invalid ring and weird rendering.
+
+Required fixes
+
+A) Correct the district field mapping from TxDOT
+Update normalizeGeoJSON() so district numbers are extracted from the correct TxDOT fields first:
+	•	TX House (MapServer layer 8): TX_HOUSE_DIST_NBR
+	•	TX Senate (layer 7): TX_SEN_DIST_NBR (already OK but keep)
+	•	US Congress (layer 6): TX_US_HOUSE_DIST_NBR
+
+Keep fallbacks, but remove reliance on idx + 1 unless absolutely necessary, and if idx+1 is used, treat that as a validation failure (see section C).
+
+Example logic:
+	•	House district: Number(props.TX_HOUSE_DIST_NBR ?? props.TX_REP_DIST_NBR ?? props.DIST_NBR ?? props.district)
+	•	Congress district: Number(props.TX_US_HOUSE_DIST_NBR ?? props.CD ?? props.CONG_DIST ?? props.district)
+
+B) Fix simplification so it never breaks polygon rings
+In simplifyGeometry() / simplifyCoordinates():
+	•	Detect if a ring is closed (coords[0] equals coords[coords.length - 1])
+	•	If closed:
+	1.	Temporarily drop the final duplicate point
+	2.	Simplify the open ring
+	3.	Ensure at least 3 unique vertices
+	4.	Re-add the first point at the end to close the ring
+	5.	Ensure final ring length is >= 4
+	•	If simplification would reduce a ring below validity, fall back to the original ring (do not corrupt geometry)
+
+Also ensure MultiPolygon rings are treated the same way.
+
+C) Add hard validation before writing geojson files
+Before saving tx_house.geojson, tx_house_simplified.geojson, etc., validate the normalized output:
+
+For each source:
+	•	All features must have properties.district as a finite integer > 0
+	•	District numbers should be unique (or duplicates should be logged and treated as error)
+	•	Expected counts:
+	•	TX House: 150
+	•	TX Senate: 31
+	•	US Congress (TX): validate count matches the dataset returned, but districts must be reasonable (1–99), unique, and non-null
+
+Geometry validation for each Polygon/MultiPolygon:
+	•	Polygon rings must be closed and have >=4 points
+	•	MultiPolygon rings must be closed and have >=4 points
+	•	If any invalid geometry exists, log:
+	•	source
+	•	district
+	•	ring length stats
+	•	sample of Object.keys(rawFeature.properties)
+…and abort writing files (don’t overwrite good data with broken data).
+
+D) Make the map use the non-simplified boundaries if simplified fails
+On the client (likely client/screens/MapScreen.tsx or wherever overlays are loaded):
+	•	Attempt to load simplified first
+	•	If simplified fails validation/load/parsing, automatically fall back to the full geojson (non-simplified)
+	•	Add one clear log line in dev mode when fallback happens
+
+Acceptance tests
+	1.	Run refresh job and confirm:
+	•	tx_house.geojson produces exactly 150 features
+	•	Each feature has correct district extracted from TX_HOUSE_DIST_NBR (not idx)
+	2.	Verify geometry validity:
+	•	No polygon rings collapse to 2 points
+	•	All rings closed and >=4 points
+	3.	In the app:
+	•	Overlay boundaries visually match expected district shapes (no “spiky”/collapsed/incorrect edges)
+	•	Tap-to-identify and highlight selects the correct district boundary
+
+Implement cleanly with TypeScript types intact and add minimal logging for debugging. Do not change unrelated behavior.
+
+⸻
+
+This prompt forces the agent to fix the actual “lines are wrong” failure mode in your code: invalid ring simplification + incorrect district field extraction. The universe is cruel, but it’s at least consistent.

@@ -282,7 +282,16 @@ function normalizeGeoJSON(raw: GeoJSONCollection, source: GeoJSONSourceType): No
   };
 }
 
-function simplifyCoordinates(coords: number[][], tolerance: number): number[][] {
+function coordsEqual(a: number[], b: number[]): boolean {
+  return a[0] === b[0] && a[1] === b[1];
+}
+
+function isRingClosed(ring: number[][]): boolean {
+  if (ring.length < 2) return false;
+  return coordsEqual(ring[0], ring[ring.length - 1]);
+}
+
+function douglasPeuckerSimplify(coords: number[][], tolerance: number): number[][] {
   if (coords.length <= 2) return coords;
   
   let maxDist = 0;
@@ -299,12 +308,42 @@ function simplifyCoordinates(coords: number[][], tolerance: number): number[][] 
   }
   
   if (maxDist > tolerance) {
-    const left = simplifyCoordinates(coords.slice(0, maxIdx + 1), tolerance);
-    const right = simplifyCoordinates(coords.slice(maxIdx), tolerance);
+    const left = douglasPeuckerSimplify(coords.slice(0, maxIdx + 1), tolerance);
+    const right = douglasPeuckerSimplify(coords.slice(maxIdx), tolerance);
     return [...left.slice(0, -1), ...right];
   }
   
   return [first, last];
+}
+
+function simplifyRing(ring: number[][], tolerance: number): number[][] {
+  const wasClosed = isRingClosed(ring);
+  
+  if (wasClosed) {
+    const openRing = ring.slice(0, -1);
+    
+    if (openRing.length < 3) {
+      return ring;
+    }
+    
+    const simplified = douglasPeuckerSimplify(openRing, tolerance);
+    
+    if (simplified.length < 3) {
+      console.warn(`[RefreshGeoJSON] Ring simplified to ${simplified.length} points, using original`);
+      return ring;
+    }
+    
+    const closedRing = [...simplified, simplified[0]];
+    
+    if (closedRing.length < 4) {
+      console.warn(`[RefreshGeoJSON] Closed ring has ${closedRing.length} points, using original`);
+      return ring;
+    }
+    
+    return closedRing;
+  } else {
+    return douglasPeuckerSimplify(ring, tolerance);
+  }
 }
 
 function perpendicularDistance(point: number[], lineStart: number[], lineEnd: number[]): number {
@@ -322,32 +361,96 @@ function perpendicularDistance(point: number[], lineStart: number[], lineEnd: nu
   return Math.sqrt(Math.pow(point[0] - nearestX, 2) + Math.pow(point[1] - nearestY, 2));
 }
 
+interface GeometryValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+function validateGeometry(geometry: GeoJSONFeature["geometry"], district: number): GeometryValidationResult {
+  const errors: string[] = [];
+  
+  const validateRing = (ring: number[][], ringType: string) => {
+    if (ring.length < 4) {
+      errors.push(`${ringType} has only ${ring.length} points (min 4)`);
+    }
+    if (!isRingClosed(ring)) {
+      errors.push(`${ringType} is not closed`);
+    }
+  };
+  
+  if (geometry.type === "Polygon") {
+    const coords = geometry.coordinates as number[][][];
+    coords.forEach((ring, i) => {
+      validateRing(ring, `District ${district} Polygon ring ${i}`);
+    });
+  } else if (geometry.type === "MultiPolygon") {
+    const coords = geometry.coordinates as number[][][][];
+    coords.forEach((polygon, p) => {
+      polygon.forEach((ring, r) => {
+        validateRing(ring, `District ${district} MultiPolygon[${p}] ring ${r}`);
+      });
+    });
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+
 function simplifyGeometry(geometry: GeoJSONFeature["geometry"], tolerance = 0.001): GeoJSONFeature["geometry"] {
   if (geometry.type === "Polygon") {
     const coords = geometry.coordinates as number[][][];
     return {
       type: "Polygon",
-      coordinates: coords.map(ring => simplifyCoordinates(ring, tolerance)),
+      coordinates: coords.map(ring => simplifyRing(ring, tolerance)),
     };
   } else if (geometry.type === "MultiPolygon") {
     const coords = geometry.coordinates as number[][][][];
     return {
       type: "MultiPolygon",
       coordinates: coords.map(polygon => 
-        polygon.map(ring => simplifyCoordinates(ring, tolerance))
+        polygon.map(ring => simplifyRing(ring, tolerance))
       ),
     };
   }
   return geometry;
 }
 
-function createSimplifiedGeoJSON(geojson: GeoJSONCollection): GeoJSONCollection {
-  return {
-    type: "FeatureCollection",
-    features: geojson.features.map(feature => ({
+interface SimplifiedGeoJSONResult {
+  collection: GeoJSONCollection | null;
+  errors: string[];
+}
+
+function createSimplifiedGeoJSON(geojson: GeoJSONCollection): SimplifiedGeoJSONResult {
+  const allErrors: string[] = [];
+  
+  const features = geojson.features.map(feature => {
+    const district = feature.properties.district as number;
+    const simplifiedGeometry = simplifyGeometry(feature.geometry);
+    
+    const validation = validateGeometry(simplifiedGeometry, district);
+    if (!validation.valid) {
+      allErrors.push(...validation.errors);
+    }
+    
+    return {
       ...feature,
-      geometry: simplifyGeometry(feature.geometry),
-    })),
+      geometry: simplifiedGeometry,
+    };
+  });
+  
+  if (allErrors.length > 0) {
+    console.error(`[RefreshGeoJSON] Geometry validation errors: ${allErrors.slice(0, 5).join("; ")}${allErrors.length > 5 ? ` ... and ${allErrors.length - 5} more` : ""}`);
+    return {
+      collection: null,
+      errors: allErrors,
+    };
+  }
+  
+  return {
+    collection: {
+      type: "FeatureCollection",
+      features,
+    },
+    errors: [],
   };
 }
 
@@ -444,10 +547,20 @@ async function refreshGeoJSONSource(source: GeoJSONSourceType): Promise<GeoJSONR
     }
     
     const normalized = normalizeResult.collection;
-    const simplified = createSimplifiedGeoJSON(normalized);
+    const simplifiedResult = createSimplifiedGeoJSON(normalized);
+    
+    if (!simplifiedResult.collection) {
+      console.error(`[RefreshGeoJSON] ${source}: Simplified geometry validation failed`);
+      return {
+        source,
+        success: false,
+        featureCount: 0,
+        error: `Geometry validation failed: ${simplifiedResult.errors.slice(0, 3).join("; ")}`,
+      };
+    }
     
     await writeGeoJSONFile(config.localFile, normalized);
-    await writeGeoJSONFile(config.simplifiedFile, simplified);
+    await writeGeoJSONFile(config.simplifiedFile, simplifiedResult.collection);
     
     console.log(`[RefreshGeoJSON] ${source}: Wrote ${normalized.features.length} features to ${config.localFile} and ${config.simplifiedFile}`);
     
