@@ -169,36 +169,116 @@ interface GeoJSONCollection {
   features: GeoJSONFeature[];
 }
 
-function normalizeGeoJSON(raw: GeoJSONCollection, source: GeoJSONSourceType): GeoJSONCollection {
-  const features = raw.features.map((feature, idx) => {
+interface NormalizeResult {
+  collection: GeoJSONCollection | null;
+  error?: string;
+  samplePropertyKeys?: string[];
+}
+
+const EXPECTED_COUNTS: Record<GeoJSONSourceType, number> = {
+  TX_HOUSE_GEOJSON: 150,
+  TX_SENATE_GEOJSON: 31,
+  US_HOUSE_TX_GEOJSON: 38,
+};
+
+function extractDistrictNumber(props: Record<string, unknown>, source: GeoJSONSourceType): number | null {
+  let value: unknown;
+  
+  if (source === "TX_HOUSE_GEOJSON") {
+    value = props.TX_HOUSE_DIST_NBR ?? props.TX_REP_DIST_NBR ?? props.DIST_NBR ?? props.SLDLST ?? props.district;
+  } else if (source === "TX_SENATE_GEOJSON") {
+    value = props.TX_SEN_DIST_NBR ?? props.DIST_NBR ?? props.SLDUST ?? props.district;
+  } else {
+    value = props.TX_US_HOUSE_DIST_NBR ?? props.CD ?? props.CONG_DIST ?? props.district;
+  }
+  
+  if (value === undefined || value === null) return null;
+  
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function normalizeGeoJSON(raw: GeoJSONCollection, source: GeoJSONSourceType): NormalizeResult {
+  const sampleProps = raw.features[0]?.properties;
+  const samplePropertyKeys = sampleProps ? Object.keys(sampleProps) : [];
+  
+  const features: GeoJSONFeature[] = [];
+  const districtsSeen = new Set<number>();
+  let fallbackCount = 0;
+  
+  for (let idx = 0; idx < raw.features.length; idx++) {
+    const feature = raw.features[idx];
     const props = feature.properties || {};
     
-    let district: number;
-    let name: string;
+    const district = extractDistrictNumber(props, source);
     
+    if (district === null) {
+      fallbackCount++;
+      console.error(`[RefreshGeoJSON] ${source}: Feature ${idx} has no valid district number. Props: ${JSON.stringify(Object.keys(props))}`);
+      continue;
+    }
+    
+    if (districtsSeen.has(district)) {
+      console.warn(`[RefreshGeoJSON] ${source}: Duplicate district ${district} at feature ${idx}`);
+    }
+    districtsSeen.add(district);
+    
+    let name: string;
     if (source === "TX_HOUSE_GEOJSON") {
-      district = Number(props.TX_REP_DIST_NBR || props.DIST_NBR || props.district || idx + 1);
-      name = String(props.TX_REP_DIST_NM || props.name || `TX House District ${district}`);
+      name = String(props.TX_HOUSE_DIST_NM || props.TX_REP_DIST_NM || props.name || `TX House District ${district}`);
     } else if (source === "TX_SENATE_GEOJSON") {
-      district = Number(props.TX_SEN_DIST_NBR || props.DIST_NBR || props.district || idx + 1);
       name = String(props.TX_SEN_DIST_NM || props.name || `TX Senate District ${district}`);
     } else {
-      district = Number(props.CD || props.CONG_DIST || props.district || idx + 1);
       name = String(props.NAMELSAD || props.name || `US Congress District ${district}`);
     }
     
-    return {
-      type: "Feature" as const,
+    features.push({
+      type: "Feature",
       properties: { district, name },
       geometry: feature.geometry,
-    };
-  });
+    });
+  }
   
-  features.sort((a, b) => a.properties.district - b.properties.district);
+  features.sort((a, b) => a.properties.district as number - (b.properties.district as number));
+  
+  const expectedCount = EXPECTED_COUNTS[source];
+  const actualCount = features.length;
+  
+  if (fallbackCount > 0) {
+    return {
+      collection: null,
+      error: `${fallbackCount} features had no valid district number. Sample props: ${samplePropertyKeys.join(", ")}`,
+      samplePropertyKeys,
+    };
+  }
+  
+  if (actualCount === 0) {
+    return {
+      collection: null,
+      error: `No valid features extracted. Sample props: ${samplePropertyKeys.join(", ")}`,
+      samplePropertyKeys,
+    };
+  }
+  
+  if (actualCount !== expectedCount) {
+    console.warn(`[RefreshGeoJSON] ${source}: Expected ${expectedCount} districts but got ${actualCount}`);
+  }
+  
+  const duplicateCount = raw.features.length - districtsSeen.size;
+  if (duplicateCount > 1) {
+    return {
+      collection: null,
+      error: `Too many duplicate districts (${duplicateCount}). Sample props: ${samplePropertyKeys.join(", ")}`,
+      samplePropertyKeys,
+    };
+  }
   
   return {
-    type: "FeatureCollection",
-    features,
+    collection: {
+      type: "FeatureCollection",
+      features,
+    },
+    samplePropertyKeys,
   };
 }
 
@@ -350,7 +430,20 @@ async function refreshGeoJSONSource(source: GeoJSONSourceType): Promise<GeoJSONR
       throw new Error("No features in response");
     }
     
-    const normalized = normalizeGeoJSON(rawData, source);
+    const normalizeResult = normalizeGeoJSON(rawData, source);
+    
+    if (!normalizeResult.collection) {
+      console.error(`[RefreshGeoJSON] ${source}: Normalization failed - ${normalizeResult.error}`);
+      console.error(`[RefreshGeoJSON] ${source}: Sample property keys: ${normalizeResult.samplePropertyKeys?.join(", ")}`);
+      return {
+        source,
+        success: false,
+        featureCount: 0,
+        error: `Validation failed: ${normalizeResult.error}`,
+      };
+    }
+    
+    const normalized = normalizeResult.collection;
     const simplified = createSimplifiedGeoJSON(normalized);
     
     await writeGeoJSONFile(config.localFile, normalized);

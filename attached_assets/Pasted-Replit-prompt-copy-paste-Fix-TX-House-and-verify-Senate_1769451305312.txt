@@ -1,0 +1,51 @@
+Replit prompt (copy/paste): Fix TX House (and verify Senate/Congress) GeoJSON district-to-geometry mapping
+
+We have a bug where TX House reps appear in the wrong geographic districts on the map. The district numbers show up as 1–150, but the geometry is being labeled with the wrong district number, so map placement is wrong.
+
+Root cause (likely)
+
+In server/jobs/refreshGeoJSON.ts, normalizeGeoJSON() is extracting the district number using the wrong field names for the TxDOT ArcGIS layers. The TxDOT Boundaries service uses:
+	•	Texas House Districts (layer 8): TX_HOUSE_DIST_NBR
+	•	Texas Senate Districts (layer 7): TX_SEN_DIST_NBR
+	•	US Congressional Districts (layer 6): TX_US_HOUSE_DIST_NBR
+
+But our code currently checks TX_REP_DIST_NBR for house, and CD/CONG_DIST for congress, which can cause it to fall back to idx + 1 (feature order), creating a perfectly numbered but totally wrong district labeling.
+
+Required changes
+	1.	Update normalizeGeoJSON() field mapping
+	•	File: server/jobs/refreshGeoJSON.ts
+	•	Replace the district extraction logic so it prefers the correct TxDOT fields:
+House
+	•	district: props.TX_HOUSE_DIST_NBR (primary)
+	•	fallback: props.TX_REP_DIST_NBR, props.TX_REP_DIST_NBR (if present), props.DIST_NBR, props.SLDLST, props.district
+Senate
+	•	district: props.TX_SEN_DIST_NBR (primary)
+	•	fallback: props.DIST_NBR, props.SLDUST, props.district
+US Congress
+	•	district: props.TX_US_HOUSE_DIST_NBR (primary)
+	•	fallback: props.CD, props.CONG_DIST, props.district
+Keep the final features.sort((a,b)=>a.properties.district-b.properties.district).
+	2.	Add a safety check so we never overwrite GeoJSON with “idx+1” junk
+	•	After mapping features, validate:
+	•	district is a finite number
+	•	no duplicates (or at least duplicates < 2)
+	•	count matches expected (House 150, Senate 31, Congress should match the dataset count for Texas districts)
+	•	If validation fails:
+	•	log a clear error including a sample of Object.keys(feature.properties) from the raw input
+	•	abort the refresh for that layer (do not write files)
+	3.	Regenerate the normalized files
+	•	Ensure the refresh job is executed (whatever the project’s mechanism is—manual run endpoint, scheduler, or script).
+	•	Confirm that server/data/geojson/tx_house.geojson and tx_house_simplified.geojson now contain properties { district, name } where district came from TX_HOUSE_DIST_NBR, not idx+1.
+	4.	Optional but recommended: make the client tap-lookup more robust
+	•	In client/screens/MapScreen.tsx (Leaflet findDistrictAtPoint + focusOnDistrict), add fallbacks for:
+	•	feature.properties.TX_HOUSE_DIST_NBR
+	•	feature.properties.TX_US_HOUSE_DIST_NBR
+	•	This helps even if a non-normalized GeoJSON ever sneaks in.
+
+Acceptance tests
+	•	Load map with overlays on.
+	•	Tap a known location (e.g., a city you know is in a specific TX House district).
+	•	The hit result should return the correct districtNumber, and the highlighted boundary should match the real district boundary.
+	•	Repeat for TX Senate and US Congress to confirm they weren’t affected (or are now corrected).
+
+Implement the above changes cleanly, keep TypeScript types intact, and do not change unrelated behavior.
