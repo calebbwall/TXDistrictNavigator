@@ -26,6 +26,7 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Private Notes & Engagement**: Users can add timestamped notes with follow-up flags and track engagement dates, with data keyed to persist across vacancies or data refreshes.
 - **Project Structure**: Divided into `client` (React Native), `server` (Express.js), `shared` (schema definitions), and `scripts`.
 - **Smart Refresh System**: Utilizes SHA256 fingerprints to detect changes in upstream data sources (Officials, GeoJSON, Committees, Other Texas Officials) before refreshing, preventing unnecessary updates. The refresh cycle is ordered to ensure data consistency.
+- **GeoJSON Fallback System**: Client attempts to load simplified GeoJSON first, then automatically falls back to full (unsimplified) version if validation fails. Both simplified and full versions are served from `/api/geojson/{type}` and `/api/geojson/{type}_full` endpoints. Simplification uses Douglas-Peucker with geometry validation to ensure rings stay closed with >=4 points.
 - **Identity Resolution**: A `persons` table and `identityResolver` module ensure stable identity tracking for officials across position changes, crucial for maintaining note continuity.
 
 ### Feature Specifications
