@@ -40,6 +40,7 @@ export interface OtherTxRefreshResult {
     secretaryOfState: number;
     supremeCourt: number;
     criminalAppeals: number;
+    usSenate: number;
   };
   sources: {
     executive: { success: boolean; error?: string };
@@ -109,6 +110,7 @@ export async function refreshOtherTexasOfficials(
     secretaryOfState: 0,
     supremeCourt: 0,
     criminalAppeals: 0,
+    usSenate: 0,
   };
   
   try {
@@ -134,6 +136,7 @@ export async function refreshOtherTexasOfficials(
         if (o.roleTitle?.includes('Supreme Court')) breakdown.supremeCourt++;
         else if (o.roleTitle?.includes('Criminal Appeals')) breakdown.criminalAppeals++;
         else if (o.roleTitle?.includes('Secretary of State')) breakdown.secretaryOfState++;
+        else if (o.roleTitle?.includes('United States Senator')) breakdown.usSenate++;
         else breakdown.executive++;
       }
       
@@ -180,6 +183,7 @@ export async function refreshOtherTexasOfficials(
         case 'CRIMINAL_APPEALS': breakdown.criminalAppeals++; break;
         case 'SECRETARY_OF_STATE': breakdown.secretaryOfState++; break;
         case 'EXECUTIVE': breakdown.executive++; break;
+        case 'US_SENATE': breakdown.usSenate++; break;
       }
       
       // Resolve person identity

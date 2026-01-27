@@ -90,7 +90,7 @@ export default function ProfileStackNavigator() {
         name="OtherTexasOfficials"
         component={OtherTexasOfficialsScreen}
         options={{
-          headerTitle: "Other Texas Officials",
+          headerTitle: "Statewide Texas Officials",
         }}
       />
     </Stack.Navigator>

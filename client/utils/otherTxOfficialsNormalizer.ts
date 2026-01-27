@@ -1,12 +1,13 @@
 import type { MergedOfficial } from "@shared/schema";
 
-export type OfficialBranch = "executive" | "commission" | "judiciary";
-export type OfficialGroup = "Statewide Executive" | "Boards & Commissions" | "Statewide Judiciary";
+export type OfficialBranch = "executive" | "commission" | "judiciary" | "federal";
+export type OfficialGroup = "Statewide Executive" | "Boards & Commissions" | "Statewide Judiciary" | "Federal Representatives";
 export type OfficialSubgroup = 
   | "Executive Officers"
   | "Railroad Commission" 
   | "Texas Supreme Court" 
-  | "Texas Court of Criminal Appeals";
+  | "Texas Court of Criminal Appeals"
+  | "US Senate";
 
 export type RoleModifier = 
   | "Governor" 
@@ -65,6 +66,14 @@ function categorizeOfficial(official: MergedOfficial): {
 } {
   const role = official.roleTitle || "";
   
+  if (role.includes("United States Senator") || role === "United States Senator") {
+    return {
+      branch: "federal",
+      group: "Federal Representatives",
+      subgroup: "US Senate",
+    };
+  }
+  
   if (role.includes("Railroad Commissioner") || role === "Railroad Commissioner") {
     return {
       branch: "commission",
@@ -122,6 +131,10 @@ function calculateSortPriority(
     return placeNumber ?? 99;
   }
   
+  if (subgroup === "US Senate") {
+    return 1;
+  }
+  
   return 999;
 }
 
@@ -157,6 +170,7 @@ export function normalizeAndGroupOfficials(officials: MergedOfficial[]): Officia
   const railroad: NormalizedOfficial[] = [];
   const supremeCourt: NormalizedOfficial[] = [];
   const criminalAppeals: NormalizedOfficial[] = [];
+  const usSenate: NormalizedOfficial[] = [];
   
   for (const official of unique) {
     switch (official.subgroup) {
@@ -172,6 +186,9 @@ export function normalizeAndGroupOfficials(officials: MergedOfficial[]): Officia
       case "Texas Court of Criminal Appeals":
         criminalAppeals.push(official);
         break;
+      case "US Senate":
+        usSenate.push(official);
+        break;
     }
   }
   
@@ -184,6 +201,7 @@ export function normalizeAndGroupOfficials(officials: MergedOfficial[]): Officia
   railroad.sort(sortByPriority);
   supremeCourt.sort(sortByPriority);
   criminalAppeals.sort(sortByPriority);
+  usSenate.sort(sortByPriority);
   
   const sections: OfficialSection[] = [];
   
@@ -224,6 +242,15 @@ export function normalizeAndGroupOfficials(officials: MergedOfficial[]): Officia
     });
   }
   
+  if (usSenate.length > 0) {
+    sections.push({
+      key: "federal",
+      title: "Federal Representatives",
+      description: "Texas representatives in the United States Senate",
+      data: usSenate,
+    });
+  }
+  
   return sections;
 }
 
@@ -236,6 +263,9 @@ export function getSubgroupLabel(official: NormalizedOfficial): string | null {
   }
   if (official.subgroup === "Railroad Commission") {
     return "Railroad Commission";
+  }
+  if (official.subgroup === "US Senate") {
+    return "US Senate";
   }
   return null;
 }

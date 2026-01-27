@@ -14,7 +14,7 @@
 export interface OtherTexasOfficialData {
   roleTitle: string;
   fullName: string;
-  category: 'EXECUTIVE' | 'SECRETARY_OF_STATE' | 'SUPREME_COURT' | 'CRIMINAL_APPEALS';
+  category: 'EXECUTIVE' | 'SECRETARY_OF_STATE' | 'SUPREME_COURT' | 'CRIMINAL_APPEALS' | 'US_SENATE';
   placeNumber?: number;
   party?: string;
   photoUrl?: string;
@@ -590,6 +590,35 @@ function getStaticCriminalAppeals(): OtherTexasOfficialData[] {
 }
 
 /**
+ * Static data for US Senators representing Texas.
+ * Updated January 2026 based on senate.gov
+ */
+function getStaticUSSenators(): OtherTexasOfficialData[] {
+  return [
+    {
+      roleTitle: 'United States Senator',
+      fullName: 'John Cornyn',
+      category: 'US_SENATE',
+      party: 'R',
+      website: 'https://www.cornyn.senate.gov',
+      capitolAddress: '517 Hart Senate Office Building, Washington, DC 20510',
+      capitolPhone: '(202) 224-2934',
+      sourceUrl: 'https://www.senate.gov',
+    },
+    {
+      roleTitle: 'United States Senator',
+      fullName: 'Ted Cruz',
+      category: 'US_SENATE',
+      party: 'R',
+      website: 'https://www.cruz.senate.gov',
+      capitolAddress: '127A Russell Senate Office Building, Washington, DC 20510',
+      capitolPhone: '(202) 224-5922',
+      sourceUrl: 'https://www.senate.gov',
+    },
+  ];
+}
+
+/**
  * Fetch all Other Texas Officials from authoritative sources.
  * Uses web scraping with fallback to static data.
  */
@@ -610,7 +639,10 @@ export async function fetchAllOtherTexasOfficials(): Promise<OtherTxScrapedData>
     scrapeCriminalAppeals().then(r => { sources.criminalAppeals.success = true; return r; }).catch(e => { sources.criminalAppeals.error = e.message; return getStaticCriminalAppeals(); }),
   ]);
   
-  const allOfficials = [...executive, ...supremeCourt, ...criminalAppeals];
+  // US Senators use static data (only 2 per state, change infrequently)
+  const usSenators = getStaticUSSenators();
+  
+  const allOfficials = [...executive, ...supremeCourt, ...criminalAppeals, ...usSenators];
   
   // Generate fingerprint from sorted officials data
   const sortedForFingerprint = [...allOfficials].sort((a, b) => 
@@ -640,6 +672,7 @@ export function getAllStaticOfficials(): OtherTexasOfficialData[] {
     ...getStaticExecutiveOfficials(),
     ...getStaticSupremeCourt(),
     ...getStaticCriminalAppeals(),
+    ...getStaticUSSenators(),
   ];
 }
 

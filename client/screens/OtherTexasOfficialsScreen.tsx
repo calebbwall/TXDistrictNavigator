@@ -217,7 +217,7 @@ export default function OtherTexasOfficialsScreen() {
         scrollIndicatorInsets={{ bottom: insets.bottom }}
         ListHeaderComponent={
           <ThemedText type="body" style={[styles.description, { color: theme.secondaryText }]}>
-            Texas statewide elected officials organized by branch of government.
+            Statewide Texas officials and federal representatives organized by branch of government.
           </ThemedText>
         }
         SectionSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
