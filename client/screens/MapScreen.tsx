@@ -441,25 +441,42 @@ const MAP_HTML = `
       console.log('[DRAW] Drawing cleared');
     }
 
-    function pointInPolygon(point, polygon) {
+    function pointInRing(point, ring) {
       const [x, y] = point;
       let inside = false;
-      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const [xi, yi] = polygon[i];
-        const [xj, yj] = polygon[j];
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i];
+        const [xj, yj] = ring[j];
         const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
         if (intersect) inside = !inside;
       }
       return inside;
     }
 
+    function pointInPolygonWithHoles(point, coordinates) {
+      if (!coordinates || coordinates.length === 0) return false;
+      if (!pointInRing(point, coordinates[0])) return false;
+      for (let i = 1; i < coordinates.length; i++) {
+        if (pointInRing(point, coordinates[i])) return false;
+      }
+      return true;
+    }
+
     function pointInMultiPolygon(point, multiPolygon) {
       for (const polygon of multiPolygon) {
-        for (const ring of polygon) {
-          if (pointInPolygon(point, ring)) return true;
-        }
+        if (pointInPolygonWithHoles(point, polygon)) return true;
       }
       return false;
+    }
+
+    function calculatePolygonArea(coordinates) {
+      if (!coordinates || coordinates.length === 0) return 0;
+      const ring = coordinates[0];
+      let area = 0;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        area += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+      }
+      return Math.abs(area / 2);
     }
 
     function findDistrictAtPoint(latlng, layerType) {
@@ -467,19 +484,22 @@ const MAP_HTML = `
       if (!data || !data.features) return null;
       
       const point = [latlng.lng, latlng.lat];
+      const matches = [];
       
       for (const feature of data.features) {
         const geom = feature.geometry;
         let found = false;
+        let area = 0;
         
         if (geom.type === 'Polygon') {
-          found = pointInPolygon(point, geom.coordinates[0]);
+          found = pointInPolygonWithHoles(point, geom.coordinates);
+          area = calculatePolygonArea(geom.coordinates);
         } else if (geom.type === 'MultiPolygon') {
           found = pointInMultiPolygon(point, geom.coordinates);
+          area = geom.coordinates.reduce((sum, poly) => sum + calculatePolygonArea(poly), 0);
         }
         
         if (found) {
-          // Fallbacks for various field naming conventions
           const districtNum = feature.properties.district || 
                               feature.properties.TX_HOUSE_DIST_NBR ||
                               feature.properties.TX_SEN_DIST_NBR ||
@@ -490,10 +510,13 @@ const MAP_HTML = `
                               feature.properties.CD ||
                               feature.properties.CONG_DIST ||
                               feature.properties.DIST_NBR;
-          return parseInt(districtNum) || 1;
+          matches.push({ district: parseInt(districtNum) || 1, area });
         }
       }
-      return null;
+      
+      if (matches.length === 0) return null;
+      matches.sort((a, b) => a.area - b.area);
+      return matches[0].district;
     }
 
     map.on('click', function(e) {
