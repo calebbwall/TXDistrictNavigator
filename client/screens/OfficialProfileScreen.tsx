@@ -18,7 +18,8 @@ import {
   formatPhone,
   getPhoneDigits,
   isLikelyAddress,
-  formatDateFriendly,
+  formatDateMMDDYYYY,
+  toStorageDateString,
   toISODateString,
   parseISODate,
   getGoogleMapsUrl,
@@ -950,7 +951,7 @@ export default function OfficialProfileScreen() {
                       ]}
                     >
                       <ThemedText type="body" style={{ color: privateNotes.birthday ? theme.text : theme.secondaryText }}>
-                        {privateNotes.birthday ? formatDateFriendly(privateNotes.birthday) : "Select birthday..."}
+                        {privateNotes.birthday ? formatDateMMDDYYYY(privateNotes.birthday) : "Select birthday..."}
                       </ThemedText>
                       <Feather name="calendar" size={18} color={theme.secondaryText} />
                     </Pressable>
@@ -978,9 +979,9 @@ export default function OfficialProfileScreen() {
                           <View>
                             <TextInput
                               style={[styles.noteInput, { backgroundColor: theme.inputBackground, color: theme.text }]}
-                              value={privateNotes.birthday || ""}
-                              onChangeText={(text) => setPrivateNotes({ ...privateNotes, birthday: text })}
-                              placeholder="YYYY-MM-DD"
+                              value={privateNotes.birthday ? formatDateMMDDYYYY(privateNotes.birthday) : ""}
+                              onChangeText={(text) => setPrivateNotes({ ...privateNotes, birthday: toStorageDateString(text) || text })}
+                              placeholder="MM-DD-YYYY"
                               placeholderTextColor={theme.secondaryText}
                             />
                             <Pressable
@@ -1007,7 +1008,7 @@ export default function OfficialProfileScreen() {
                   </View>
                 ) : (
                   <ThemedText type="body">
-                    {privateNotes.birthday ? formatDateFriendly(privateNotes.birthday) : "Not set"}
+                    {privateNotes.birthday ? formatDateMMDDYYYY(privateNotes.birthday) : "Not set"}
                   </ThemedText>
                 )}
               </View>
@@ -1027,7 +1028,7 @@ export default function OfficialProfileScreen() {
                       ]}
                     >
                       <ThemedText type="body" style={{ color: privateNotes.anniversary ? theme.text : theme.secondaryText }}>
-                        {privateNotes.anniversary ? formatDateFriendly(privateNotes.anniversary) : "Select anniversary..."}
+                        {privateNotes.anniversary ? formatDateMMDDYYYY(privateNotes.anniversary) : "Select anniversary..."}
                       </ThemedText>
                       <Feather name="calendar" size={18} color={theme.secondaryText} />
                     </Pressable>
@@ -1055,9 +1056,9 @@ export default function OfficialProfileScreen() {
                           <View>
                             <TextInput
                               style={[styles.noteInput, { backgroundColor: theme.inputBackground, color: theme.text }]}
-                              value={privateNotes.anniversary || ""}
-                              onChangeText={(text) => setPrivateNotes({ ...privateNotes, anniversary: text })}
-                              placeholder="YYYY-MM-DD"
+                              value={privateNotes.anniversary ? formatDateMMDDYYYY(privateNotes.anniversary) : ""}
+                              onChangeText={(text) => setPrivateNotes({ ...privateNotes, anniversary: toStorageDateString(text) || text })}
+                              placeholder="MM-DD-YYYY"
                               placeholderTextColor={theme.secondaryText}
                             />
                             <Pressable
@@ -1084,7 +1085,7 @@ export default function OfficialProfileScreen() {
                   </View>
                 ) : (
                   <ThemedText type="body">
-                    {privateNotes.anniversary ? formatDateFriendly(privateNotes.anniversary) : "Not set"}
+                    {privateNotes.anniversary ? formatDateMMDDYYYY(privateNotes.anniversary) : "Not set"}
                   </ThemedText>
                 )}
               </View>
