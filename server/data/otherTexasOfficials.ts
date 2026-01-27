@@ -80,103 +80,17 @@ function cleanName(name: string): string {
 }
 
 /**
- * Fetch and parse Texas statewide elected officials from SOS website.
+ * Get executive officials data.
+ * Uses static data since these positions change only every 4 years with elections.
+ * The static data is maintained manually and verified against SOS website.
  */
 async function scrapeExecutiveOfficials(): Promise<OtherTexasOfficialData[]> {
-  const url = 'https://www.sos.state.tx.us/elections/voter/elected.shtml';
-  const officials: OtherTexasOfficialData[] = [];
-  
-  try {
-    const response = await fetch(url, { 
-      headers: { 'User-Agent': 'TXDistrictNavigator/1.0' },
-      signal: AbortSignal.timeout(30000)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const html = await response.text();
-    
-    // Parse statewide officials from table rows
-    // Looking for rows with: Office | Office Holder | Term Expires | Party | ...
-    const tableRowRegex = /<tr[^>]*>[\s\S]*?<\/tr>/gi;
-    const rows = html.match(tableRowRegex) || [];
-    
-    for (const row of rows) {
-      // Extract cells
-      const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-      const cells: string[] = [];
-      let match;
-      while ((match = cellRegex.exec(row)) !== null) {
-        cells.push(match[1].replace(/<[^>]+>/g, '').trim());
-      }
-      
-      if (cells.length < 4) continue;
-      
-      const [office, holder, termExpires, party] = cells;
-      
-      // Skip court officials - we'll get those from txcourts.gov
-      if (office.includes('Supreme Court') || office.includes('Criminal Appeals')) {
-        continue;
-      }
-      
-      // Map offices to roles
-      let category: 'EXECUTIVE' | 'SECRETARY_OF_STATE' = 'EXECUTIVE';
-      let roleTitle = '';
-      
-      if (office.includes('Governor') && !office.includes('Lieutenant')) {
-        roleTitle = 'Governor';
-      } else if (office.includes('Lieutenant Governor')) {
-        roleTitle = 'Lieutenant Governor';
-      } else if (office.includes('Attorney General')) {
-        roleTitle = 'Attorney General';
-      } else if (office.includes('Comptroller')) {
-        roleTitle = 'Comptroller of Public Accounts';
-      } else if (office.includes('General Land Office')) {
-        roleTitle = 'Commissioner of the General Land Office';
-      } else if (office.includes('Commissioner of Agriculture') || office === 'Commissioner of Agriculture') {
-        roleTitle = 'Commissioner of Agriculture';
-      } else if (office.includes('Railroad Commission')) {
-        roleTitle = 'Railroad Commissioner';
-      } else {
-        continue; // Skip unrecognized offices
-      }
-      
-      const fullName = parseHonorableName(holder);
-      if (!fullName || fullName.length < 3) continue;
-      
-      officials.push({
-        roleTitle,
-        fullName,
-        category,
-        party: party === 'R' ? 'R' : party === 'D' ? 'D' : undefined,
-        termEnd: termExpires ? `20${termExpires.slice(-2)}-12-31` : undefined,
-        sourceUrl: url,
-        capitolAddress: 'Austin, TX 78711',
-        website: getOfficialWebsite(roleTitle),
-      });
-    }
-    
-    // Add Secretary of State (appointed, not in the table)
-    officials.push({
-      roleTitle: 'Secretary of State',
-      fullName: 'Jane Nelson',
-      category: 'SECRETARY_OF_STATE',
-      party: 'R',
-      website: 'https://www.sos.state.tx.us',
-      capitolAddress: 'P.O. Box 12887, Austin, TX 78711',
-      capitolPhone: '(512) 463-5770',
-      sourceUrl: 'https://www.sos.state.tx.us/about/sosbio.shtml',
-    });
-    
-    console.log(`[OtherTxScrape] Executive: found ${officials.length} officials`);
-    return officials;
-    
-  } catch (error) {
-    console.error('[OtherTxScrape] Failed to scrape executive officials:', error);
-    return getStaticExecutiveOfficials();
-  }
+  // Executive officials change infrequently (every 4 years with elections).
+  // Using curated static data is more reliable than web scraping the SOS table.
+  // Source: https://www.sos.state.tx.us/elections/voter/elected.shtml
+  const officials = getStaticExecutiveOfficials();
+  console.log(`[OtherTxScrape] Executive: using ${officials.length} officials from curated data`);
+  return officials;
 }
 
 /**

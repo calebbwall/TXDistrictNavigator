@@ -1079,7 +1079,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Other Texas Officials endpoints
   app.get("/api/other-tx-officials", async (req, res) => {
     try {
-      const { active } = req.query;
+      const { active, grouped } = req.query;
       
       const conditions = [eq(officialPublic.source, "OTHER_TX")];
       
@@ -1097,6 +1097,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const merged: MergedOfficial[] = officials.map(pub => 
         mergeOfficial(pub, privateMap.get(pub.id) || null)
       );
+      
+      // Return grouped by category if requested
+      if (grouped === "true") {
+        const groupedOfficials = {
+          executive: [] as MergedOfficial[],
+          secretaryOfState: [] as MergedOfficial[],
+          supremeCourt: [] as MergedOfficial[],
+          criminalAppeals: [] as MergedOfficial[],
+        };
+        
+        for (const official of merged) {
+          const role = official.roleTitle || '';
+          if (role.includes('Supreme Court')) {
+            groupedOfficials.supremeCourt.push(official);
+          } else if (role.includes('Criminal Appeals')) {
+            groupedOfficials.criminalAppeals.push(official);
+          } else if (role.includes('Secretary of State')) {
+            groupedOfficials.secretaryOfState.push(official);
+          } else {
+            groupedOfficials.executive.push(official);
+          }
+        }
+        
+        // Sort Supreme Court and Criminal Appeals by place number
+        const extractPlace = (role: string): number => {
+          const match = role.match(/Place (\d+)/);
+          return match ? parseInt(match[1], 10) : 0;
+        };
+        
+        groupedOfficials.supremeCourt.sort((a, b) => 
+          extractPlace(a.roleTitle || '') - extractPlace(b.roleTitle || '')
+        );
+        groupedOfficials.criminalAppeals.sort((a, b) => 
+          extractPlace(a.roleTitle || '') - extractPlace(b.roleTitle || '')
+        );
+        
+        res.json({
+          grouped: groupedOfficials,
+          counts: {
+            executive: groupedOfficials.executive.length,
+            secretaryOfState: groupedOfficials.secretaryOfState.length,
+            supremeCourt: groupedOfficials.supremeCourt.length,
+            criminalAppeals: groupedOfficials.criminalAppeals.length,
+            total: merged.length,
+          },
+        });
+        return;
+      }
       
       res.json(merged);
     } catch (err) {
@@ -1131,6 +1179,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         changed: result.changed,
         upsertedCount: result.upsertedCount,
         deactivatedCount: result.deactivatedCount,
+        totalOfficials: result.totalOfficials,
+        breakdown: result.breakdown,
+        sources: result.sources,
         error: result.error,
       });
     } catch (err) {
