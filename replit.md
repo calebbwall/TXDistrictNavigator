@@ -35,7 +35,7 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Official Profiles**: Detailed official information, integrated with private notes, engagement logging, and quick actions.
 - **Workflow Tools**: Includes "Saved Officials," "Recent Tracking," and a "Follow-up Dashboard."
 - **Committees Feature**: Allows browsing Texas House and Senate committees and their members, integrated into official profiles.
-- **Other Texas Officials**: Displays statewide elected officials (Governor, Lt Governor, etc.) in a dedicated screen.
+- **Other Texas Officials**: Displays all 28 statewide officials in grouped categories (9 Executive, 1 Secretary of State, 9 Supreme Court justices, 9 Court of Criminal Appeals judges). Executive officials use curated static data (updated every 4 years with elections), while court rosters are scraped from txcourts.gov with static fallback. Officials display their specific roleTitle (e.g., "Chief Justice of the Texas Supreme Court") in detail screens.
 - **Admin Functionalities**: Endpoints for triggering manual data refreshes, checking refresh status, and managing explicit person identity overrides.
 
 ## External Dependencies
