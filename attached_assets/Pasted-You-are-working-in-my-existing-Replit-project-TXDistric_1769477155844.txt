@@ -1,0 +1,91 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Fix and expand the “Other Texas Officials” feature so it is UP-TO-DATE and includes EVERYONE on the Texas Supreme Court.
+
+Current problem:
+- The “Other Texas Officials” section is outdated.
+- It does not include the complete Texas Supreme Court roster (Chief Justice + 8 Justices).
+- It likely uses static or stale data.
+
+Goal / Acceptance criteria:
+1) “Other Texas Officials” always reflects CURRENT officeholders.
+2) Texas Supreme Court includes:
+   - Chief Justice
+   - Justices for Places 1–9 (8 associate justices + chief justice; as listed on txcourts.gov)
+3) Texas Court of Criminal Appeals includes:
+   - Presiding Judge
+   - Judges for Places 1–9 (as listed on txcourts.gov)
+4) Statewide elected officials list is current (Governor, Lt Governor, AG, Comptroller, Ag Commissioner, Land Commissioner, Railroad Commissioners).
+5) Data updates WEEKLY early Monday morning (Central Time) using the SAME weekly refresh + fingerprint “only refresh if changed” framework already used in this project.
+6) Provide an admin endpoint to force refresh: POST /admin/refresh/other-tx-officials protected by x-admin-token (ADMIN_REFRESH_TOKEN).
+
+Authoritative sources to use (prefer these):
+- Texas Secretary of State “Statewide Elected Officials” table:
+  https://www.sos.state.tx.us/elections/voter/elected.shtml
+- Texas Supreme Court official roster (Chief + Justices, includes place numbers):
+  https://www.txcourts.gov/supreme/about-the-court/
+- Texas Court of Criminal Appeals official roster (Presiding Judge + Judges, includes place numbers):
+  https://www.txcourts.gov/cca/about-the-court/judges/
+- Secretary of State officeholder page (appointed position; use this as source of truth):
+  https://www.sos.state.tx.us/about/sosbio.shtml
+
+Implementation requirements:
+
+A) Server: replace static “Other Texas Officials” data with a refresh job
+1) Create or update `server/jobs/refreshOtherTexasOfficials.ts` to:
+   - Fetch each source page above
+   - Parse the current officeholders into a normalized dataset
+   - Compute a fingerprint (hash) of the normalized dataset per source group
+   - Compare to stored fingerprint in the existing refresh_state table
+   - If unchanged: update lastCheckedAt only
+   - If changed: upsert the public records and update fingerprint + lastChangedAt
+
+2) Normalize records into your existing “public officials” system:
+   - Use the same public officials table (preferred) with a source/category like OTHER_TX
+   - Add/ensure fields needed:
+     - roleTitle (e.g., “Governor”, “Chief Justice of the Texas Supreme Court”, “Justice of the Texas Supreme Court (Place 5)”)
+     - fullName
+     - party (when available; SOS statewide table includes party for elected officials)
+     - sourceUrl
+     - photoUrl (optional; only if easy to extract reliably; otherwise omit)
+     - active boolean true/false
+     - personId linking (reuse your identity system so private notes follow the person)
+
+3) Ensure the roster roles that have multiple seats are fully included:
+   - Texas Supreme Court: 9 members total (Chief Justice + Place 1–9)
+   - Texas Court of Criminal Appeals: 9 members total (Presiding + Places 1–9)
+   - Railroad Commissioner: multiple seats (include each listed commissioner)
+   - Supreme Court Justices and CCA Judges should have roleTitle that includes their Place number (or Presiding/Chief)
+
+B) Server: API endpoints
+- GET /api/other-tx-officials
+  - Returns active OTHER_TX officials grouped logically:
+    - Executive statewide (Governor, Lt Gov, AG, Comptroller, Ag, Land, Railroad)
+    - Secretary of State
+    - Texas Supreme Court
+    - Texas Court of Criminal Appeals
+- POST /admin/refresh/other-tx-officials (protected)
+  - Returns which groups were checked/changed/refreshed and timestamps
+
+C) Client: Profile UI updates (minimal)
+1) Update Profile tab “Other Texas Officials” section to display:
+   - A list of categories (Executive, Secretary of State, Texas Supreme Court, Court of Criminal Appeals)
+   - Within categories, show all current officials (including all Supreme Court justices)
+2) Tapping an item opens the same Official Card UI (public/private tabs) as other officials.
+
+D) Scheduling integration
+- Plug refreshOtherTexasOfficials into the existing Monday early-morning scheduler.
+- Ensure it does not collide with other refresh jobs (use the same locking/concurrency guard patterns).
+
+Testing checklist:
+1) Call GET /api/other-tx-officials and confirm:
+   - Texas Supreme Court has 9 members (Chief + 8 Justices)
+   - CCA has 9 members (Presiding + 8 Judges)
+2) Confirm records appear in Profile → Other Texas Officials.
+3) Force refresh via admin endpoint and confirm it runs.
+4) Re-run immediately and confirm it no-ops (fingerprint unchanged).
+5) Confirm private notes still work and follow personId.
+
+After changes:
+- List every file changed.
+- Explain exactly how you parse each source page.
+- Confirm Supreme Court roster completeness and how Place numbers are captured.
+- Confirm how you handle missing party/phone/address for court officials (leave blank; do not invent).
