@@ -1,0 +1,70 @@
+Copy/paste this into Replit:
+
+⸻
+
+REPLIT PROMPT (REORDER + RESECTION “OTHER TEXAS OFFICIALS”)
+
+Update the “Other Texas Officials” screen to use a clearer, more intuitive structure and ordering. Right now the list feels jumbled. Rework the UI + sorting so it reads like a normal Texas civics org chart.
+
+1) New screen structure (sections + sub-sections)
+
+Replace the current layout with these sections, in this order:
+	1.	Statewide Executive
+	•	Governor
+	•	Lieutenant Governor
+	•	Attorney General
+	•	Comptroller of Public Accounts
+	•	Commissioner of the General Land Office
+	•	Commissioner of Agriculture
+	•	Secretary of State
+	2.	Statewide Boards & Commissions
+	•	Railroad Commission
+	•	Commissioner (Chair if applicable / or just list all 3)
+	•	Commissioner
+	•	Commissioner
+	3.	Statewide Judiciary
+	•	Texas Supreme Court
+	•	Chief Justice
+	•	Justice (Place 1–9 in numeric order)
+	•	Texas Court of Criminal Appeals
+	•	Presiding Judge
+	•	Judge (Place 1–9 in numeric order)
+
+2) Ordering rules
+
+Implement deterministic sorting:
+	•	Within each (sub)section:
+	•	If role_modifier is “Governor/Lt Gov/Chief Justice/Presiding Judge”, those appear first.
+	•	Then sort by place_number ascending when present.
+	•	If no place_number, sort by office priority list (for Executive) or by name as final fallback.
+	•	Ensure no duplicates across sections (same person should not appear twice).
+
+3) UI behavior
+	•	Make section headers sticky while scrolling (if feasible).
+	•	Add a short one-line description under each section header (optional, subtle text).
+	•	Each row shows: Name (primary), Office title + Place (secondary).
+	•	Keep the detail navigation (chevron) the same.
+
+4) Data normalization requirement
+
+If the underlying data source does not already provide structured fields, add a normalization step that maps each official into:
+	•	branch (executive / commission / judiciary)
+	•	group (Statewide Executive / Boards & Commissions / Judiciary)
+	•	subgroup (Railroad Commission / Supreme Court / Court of Criminal Appeals)
+	•	place_number (nullable)
+	•	role_modifier (nullable: Governor, Lieutenant Governor, Chief Justice, Presiding Judge)
+
+The UI must render from these normalized fields (no hardcoded UI ordering logic scattered across components).
+
+5) Acceptance checks
+
+After changes:
+	•	Executive officials appear exactly in the priority order listed above.
+	•	Railroad Commission is grouped and contains exactly 3 members.
+	•	Supreme Court lists Chief Justice first, then Places 1–9.
+	•	Court of Criminal Appeals lists Presiding Judge first, then Places 1–9.
+	•	No repeated entries when scrolling (fix any virtualization key issues; use stable unique keys).
+
+Implement this now and update any related components, sorting utilities, and tests.
+
+⸻
