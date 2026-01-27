@@ -166,9 +166,9 @@ export async function savePrivateNotes(officialId: string, notes: PrivateNotes):
 }
 
 const DEFAULT_OVERLAY_PREFS: OverlayPreferences = { 
-  senate: true,   // Default to showing Senate overlay
-  house: false, 
-  congress: true  // Default to showing Congress overlay
+  senate: true,   // Default to showing TX Senate overlay
+  house: true,    // Default to showing TX House overlay
+  congress: false // Default to NOT showing US Congress overlay
 };
 
 export async function getOverlayPreferences(): Promise<OverlayPreferences> {

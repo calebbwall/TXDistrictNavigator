@@ -931,9 +931,9 @@ export default function MapScreen() {
   const webViewRef = useRef<WebView>(null);
 
   const [overlays, setOverlays] = useState<OverlayPreferences>({
-    senate: true,  // Default to showing at least one overlay
-    house: false,
-    congress: true,
+    senate: true,   // Default to showing TX Senate overlay
+    house: true,    // Default to showing TX House overlay  
+    congress: false, // Default to NOT showing US Congress overlay
   });
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<SelectedDistrict | null>(null);
