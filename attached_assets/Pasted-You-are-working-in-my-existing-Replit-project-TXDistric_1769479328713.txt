@@ -1,0 +1,87 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Set sensible DEFAULT MAP OVERLAYS on first app launch, and ensure overlay preferences saved in the Profile tab are persisted and applied on every startup.
+
+========================================================
+GOALS / ACCEPTANCE CRITERIA
+========================================================
+
+A) First-ever app open (fresh install / no saved settings yet)
+1) Default overlays must be:
+   - TX House = ON
+   - TX Senate = ON
+   - US Congress = OFF
+2) This default must apply ONLY the first time the app is ever opened (i.e., when no saved overlay preferences exist yet).
+
+B) Persisted overlay preferences
+3) When the user changes default overlays in the Profile tab (or wherever overlay settings live), those choices must be saved to persistent storage.
+4) On every app startup, the overlay settings must load from persistent storage and be applied BEFORE the map renders (or as early as possible) so the map doesn’t flash the wrong overlays.
+5) Changes made in Profile should immediately reflect on the Map (if the map is mounted) and also persist across restarts.
+
+========================================================
+IMPLEMENTATION REQUIREMENTS
+========================================================
+
+1) Use persistent storage appropriate for Expo/React Native:
+   - Prefer AsyncStorage (or whatever storage is already used in the project)
+2) Create a single source of truth for overlay preferences:
+   - e.g., an `OverlayPreferences` object:
+     {
+       showTxHouse: boolean,
+       showTxSenate: boolean,
+       showUsCongress: boolean
+     }
+3) Storage key example: `overlayPreferences_v1`
+
+First-run logic:
+- On app startup:
+  - Attempt to load `overlayPreferences_v1` from storage.
+  - If it exists: use it.
+  - If it does NOT exist:
+    - Set preferences to defaults (House true, Senate true, Congress false)
+    - Save them immediately to storage
+    - Use them for the initial session
+
+State management:
+- Ensure Map screen and Profile screen read/write the same shared overlay state.
+- If there is already a global store/context (recommended), use it.
+- If not, create a lightweight context/provider (e.g. `OverlayPreferencesContext`) initialized on app startup.
+
+Avoid UI glitches:
+- Don’t render the Map overlays until overlay preferences have loaded.
+- Show a small loading state or keep the map un-overlaid until ready.
+
+========================================================
+WHERE TO CHANGE (search and confirm)
+========================================================
+- The app entry point / initialization (likely `client/App.tsx`)
+- The map overlay toggle UI in the Profile tab
+- The map screen overlay rendering logic
+- Any existing storage utility
+
+========================================================
+TESTING CHECKLIST
+========================================================
+
+Test 1: Fresh install simulation
+1) Clear app storage (or use a new simulator/device).
+2) Launch app.
+3) Confirm:
+   - TX House overlay ON
+   - TX Senate overlay ON
+   - Congress overlay OFF
+
+Test 2: Persisted settings
+4) Go to Profile → overlay settings.
+5) Change overlays (e.g., turn Congress ON, Senate OFF).
+6) Close and relaunch app.
+7) Confirm overlays match the saved settings immediately on startup (no wrong “flash”).
+
+Test 3: Immediate sync
+8) Toggle overlays in Profile while Map is open/available.
+9) Confirm the Map overlay display updates immediately.
+
+========================================================
+AFTER CHANGES
+========================================================
+- List all files changed.
+- Describe the storage key used and the default preferences.
+- Confirm how first-run detection works (i.e., “no saved preferences exists”).
