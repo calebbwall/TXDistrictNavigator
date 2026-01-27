@@ -13,6 +13,7 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   isValidUSPhone,
   formatPhone,
@@ -199,6 +200,8 @@ export default function OfficialProfileScreen() {
   );
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [showAnniversaryPicker, setShowAnniversaryPicker] = useState(false);
+  const [birthdayPickerDate, setBirthdayPickerDate] = useState<Date>(new Date());
+  const [anniversaryPickerDate, setAnniversaryPickerDate] = useState<Date>(new Date());
   const [isSaved, setIsSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [privateNotes, setPrivateNotes] = useState<PrivateNotes>({});
@@ -207,8 +210,8 @@ export default function OfficialProfileScreen() {
   const [newNoteText, setNewNoteText] = useState("");
   const [newNoteFollowUp, setNewNoteFollowUp] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showEngagementPicker, setShowEngagementPicker] = useState(false);
+  const [engagementPickerDate, setEngagementPickerDate] = useState<Date>(new Date());
   const [engagementNote, setEngagementNote] = useState("");
   const [committees, setCommittees] = useState<Array<{
     committeeId: string;
@@ -445,18 +448,18 @@ export default function OfficialProfileScreen() {
     ]);
   }, [official]);
 
-  const handleSetEngagementDate = useCallback(async (selectedDate: Date) => {
+  const handleSetEngagementDate = useCallback(async (date: Date) => {
     if (!official?.source || !official?.districtNumber) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const entry = await addEngagement(
       official.source, 
       official.districtNumber, 
-      selectedDate.toISOString(), 
+      date.toISOString(), 
       engagementNote.trim() || undefined
     );
     setEngagementLog([entry]);
     addRecentEngaged(official.source, official.districtNumber);
-    setShowDatePicker(false);
+    setShowEngagementPicker(false);
   }, [official, engagementNote]);
 
   const handleSaveEngagementNote = useCallback(async () => {
@@ -977,19 +980,34 @@ export default function OfficialProfileScreen() {
                           />
                         ) : (
                           <View>
-                            <TextInput
-                              style={[styles.noteInput, { backgroundColor: theme.inputBackground, color: theme.text }]}
-                              value={privateNotes.birthday ? formatDateMMDDYYYY(privateNotes.birthday) : ""}
-                              onChangeText={(text) => setPrivateNotes({ ...privateNotes, birthday: toStorageDateString(text) || text })}
-                              placeholder="MM-DD-YYYY"
-                              placeholderTextColor={theme.secondaryText}
+                            <DateTimePicker
+                              value={birthdayPickerDate}
+                              mode="date"
+                              display="spinner"
+                              onChange={(event, date) => {
+                                if (event.type === "dismissed") {
+                                  setShowBirthdayPicker(false);
+                                  return;
+                                }
+                                if (date) {
+                                  setBirthdayPickerDate(date);
+                                  const dateStr = toISODateString(date);
+                                  setPrivateNotes({ ...privateNotes, birthday: dateStr });
+                                  if (Platform.OS === "android") {
+                                    setShowBirthdayPicker(false);
+                                  }
+                                }
+                              }}
+                              maximumDate={new Date()}
                             />
-                            <Pressable
-                              onPress={() => setShowBirthdayPicker(false)}
-                              style={[styles.dateConfirmButton, { backgroundColor: theme.primary }]}
-                            >
-                              <ThemedText type="caption" style={{ color: "#FFFFFF" }}>Done</ThemedText>
-                            </Pressable>
+                            {Platform.OS === "ios" ? (
+                              <Pressable
+                                onPress={() => setShowBirthdayPicker(false)}
+                                style={[styles.dateConfirmButton, { backgroundColor: theme.primary }]}
+                              >
+                                <ThemedText type="caption" style={{ color: "#FFFFFF" }}>Done</ThemedText>
+                              </Pressable>
+                            ) : null}
                           </View>
                         )}
                         {privateNotes.birthday ? (
@@ -1054,19 +1072,34 @@ export default function OfficialProfileScreen() {
                           />
                         ) : (
                           <View>
-                            <TextInput
-                              style={[styles.noteInput, { backgroundColor: theme.inputBackground, color: theme.text }]}
-                              value={privateNotes.anniversary ? formatDateMMDDYYYY(privateNotes.anniversary) : ""}
-                              onChangeText={(text) => setPrivateNotes({ ...privateNotes, anniversary: toStorageDateString(text) || text })}
-                              placeholder="MM-DD-YYYY"
-                              placeholderTextColor={theme.secondaryText}
+                            <DateTimePicker
+                              value={anniversaryPickerDate}
+                              mode="date"
+                              display="spinner"
+                              onChange={(event, date) => {
+                                if (event.type === "dismissed") {
+                                  setShowAnniversaryPicker(false);
+                                  return;
+                                }
+                                if (date) {
+                                  setAnniversaryPickerDate(date);
+                                  const dateStr = toISODateString(date);
+                                  setPrivateNotes({ ...privateNotes, anniversary: dateStr });
+                                  if (Platform.OS === "android") {
+                                    setShowAnniversaryPicker(false);
+                                  }
+                                }
+                              }}
+                              maximumDate={new Date()}
                             />
-                            <Pressable
-                              onPress={() => setShowAnniversaryPicker(false)}
-                              style={[styles.dateConfirmButton, { backgroundColor: theme.primary }]}
-                            >
-                              <ThemedText type="caption" style={{ color: "#FFFFFF" }}>Done</ThemedText>
-                            </Pressable>
+                            {Platform.OS === "ios" ? (
+                              <Pressable
+                                onPress={() => setShowAnniversaryPicker(false)}
+                                style={[styles.dateConfirmButton, { backgroundColor: theme.primary }]}
+                              >
+                                <ThemedText type="caption" style={{ color: "#FFFFFF" }}>Done</ThemedText>
+                              </Pressable>
+                            ) : null}
                           </View>
                         )}
                         {privateNotes.anniversary ? (
@@ -1223,7 +1256,14 @@ export default function OfficialProfileScreen() {
                 </View>
                 <View style={styles.engagementDateActions}>
                   <Pressable
-                    onPress={() => setShowDatePicker(true)}
+                    onPress={() => {
+                      if (engagementLog.length > 0) {
+                        setEngagementPickerDate(new Date(engagementLog[0].engagedAt));
+                      } else {
+                        setEngagementPickerDate(new Date());
+                      }
+                      setShowEngagementPicker(true);
+                    }}
                     style={({ pressed }) => [
                       styles.dateButton,
                       { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
@@ -1247,7 +1287,7 @@ export default function OfficialProfileScreen() {
                 </View>
               </View>
 
-              {showDatePicker ? (
+              {showEngagementPicker ? (
                 <View style={[styles.webDatePickerContainer, { backgroundColor: theme.cardBackground }]}>
                   {Platform.OS === "web" ? (
                     <input
@@ -1256,7 +1296,7 @@ export default function OfficialProfileScreen() {
                         ? new Date(engagementLog[0].engagedAt).toISOString().split('T')[0]
                         : new Date().toISOString().split('T')[0]}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const date = new Date(e.target.value);
+                        const date = new Date(e.target.value + "T12:00:00");
                         handleSetEngagementDate(date);
                       }}
                       style={{
@@ -1271,24 +1311,23 @@ export default function OfficialProfileScreen() {
                     />
                   ) : (
                     <View>
-                      <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
-                        Enter date (YYYY-MM-DD):
-                      </ThemedText>
-                      <TextInput
-                        style={[
-                          styles.noteInput,
-                          { backgroundColor: theme.inputBackground, color: theme.text },
-                        ]}
-                        placeholder="2026-01-15"
-                        placeholderTextColor={theme.secondaryText}
-                        value={selectedDate.toISOString().split('T')[0]}
-                        onChangeText={(text) => {
-                          const parsed = new Date(text);
-                          if (!isNaN(parsed.getTime()) && parsed <= new Date()) {
-                            setSelectedDate(parsed);
+                      <DateTimePicker
+                        value={engagementPickerDate}
+                        mode="date"
+                        display="spinner"
+                        onChange={(event, date) => {
+                          if (event.type === "dismissed") {
+                            setShowEngagementPicker(false);
+                            return;
+                          }
+                          if (date) {
+                            setEngagementPickerDate(date);
+                            if (Platform.OS === "android") {
+                              handleSetEngagementDate(date);
+                            }
                           }
                         }}
-                        keyboardType="default"
+                        maximumDate={new Date()}
                       />
                       <View style={styles.iosPickerButtons}>
                         <Pressable
@@ -1304,7 +1343,7 @@ export default function OfficialProfileScreen() {
                           </ThemedText>
                         </Pressable>
                         <Pressable
-                          onPress={() => handleSetEngagementDate(selectedDate)}
+                          onPress={() => handleSetEngagementDate(engagementPickerDate)}
                           style={({ pressed }) => [
                             styles.setTodayButton,
                             { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.sm },
@@ -1319,7 +1358,7 @@ export default function OfficialProfileScreen() {
                     </View>
                   )}
                   <Pressable 
-                    onPress={() => setShowDatePicker(false)}
+                    onPress={() => setShowEngagementPicker(false)}
                     style={{ marginTop: Spacing.sm, alignItems: "center" }}
                   >
                     <ThemedText type="caption" style={{ color: theme.secondaryText }}>Cancel</ThemedText>
