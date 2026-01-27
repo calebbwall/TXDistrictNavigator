@@ -41,9 +41,9 @@ export interface OtherTxScrapedData {
  * Generate a unique source member ID for an Other TX official.
  * Format: OTHER_TX_<category>_<role-slug>_<name-slug>
  */
-export function generateOtherTxSourceMemberId(roleTitle: string, fullName: string, category?: string): string {
-  const categorySlug = category ? `${category.toLowerCase()}_` : '';
-  
+export function generateOtherTxSourceMemberId(roleTitle: string, fullName: string, _category?: string): string {
+  // Don't include category in source ID - role title is already unique enough
+  // e.g., "Governor" vs "Chief Justice of the Texas Supreme Court"
   const roleSlug = roleTitle
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
@@ -56,7 +56,7 @@ export function generateOtherTxSourceMemberId(roleTitle: string, fullName: strin
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '');
   
-  return `OTHER_TX_${categorySlug}${roleSlug}_${nameSlug}`;
+  return `OTHER_TX_${roleSlug}_${nameSlug}`;
 }
 
 /**

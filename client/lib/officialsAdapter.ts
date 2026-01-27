@@ -58,6 +58,9 @@ export function getDistrictTypeFromApiSource(source: SourceType): DistrictType {
     case "TX_HOUSE": return "tx_house";
     case "TX_SENATE": return "tx_senate";
     case "US_HOUSE": return "us_congress";
+    case "OTHER_TX":
+    default:
+      return "tx_senate"; // Default fallback for statewide officials
   }
 }
 
@@ -74,9 +77,11 @@ export function apiOfficialToLegacy(apiOfficial: MergedOfficial): MockOfficial {
     ? "tx_house" 
     : apiOfficial.source === "TX_SENATE" 
       ? "tx_senate" 
-      : "us_house";
+      : apiOfficial.source === "OTHER_TX"
+        ? "statewide"
+        : "us_house";
 
-  const districtPrefix = officeType === "tx_senate" ? "s" : officeType === "tx_house" ? "h" : "c";
+  const districtPrefix = officeType === "tx_senate" ? "s" : officeType === "tx_house" ? "h" : officeType === "statewide" ? "sw" : "c";
   const districtId = `${districtPrefix}-${apiOfficial.district}`;
 
   const offices = [];
@@ -126,6 +131,7 @@ export function apiOfficialToLegacy(apiOfficial: MergedOfficial): MockOfficial {
     isVacant: apiOfficial.isVacant || false,
     source: apiOfficial.source,
     districtNumber: parseInt(String(apiOfficial.district || "0"), 10),
+    roleTitle: apiOfficial.roleTitle || undefined,
     privateNotes: apiOfficial.private ? {
       personalPhone: apiOfficial.private.personalPhone || undefined,
       personalAddress: apiOfficial.private.personalAddress || undefined,

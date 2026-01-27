@@ -4,11 +4,12 @@ export type DistrictType = "tx_senate" | "tx_house" | "us_congress";
 
 export interface OfficialPublic {
   id: string;
-  source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+  source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
   sourceMemberId: string;
   chamber: string;
   district: string;
   fullName: string;
+  roleTitle?: string | null; // For statewide officials (e.g., "Governor", "Chief Justice of the Texas Supreme Court")
   party: string | null;
   photoUrl: string | null;
   capitolAddress: string | null;
@@ -147,6 +148,9 @@ export function getDistrictTypeFromSource(source: MergedOfficial["source"]): Dis
     case "TX_HOUSE": return "tx_house";
     case "TX_SENATE": return "tx_senate";
     case "US_HOUSE": return "us_congress";
+    case "OTHER_TX": 
+    default:
+      return "tx_senate"; // Default fallback for non-district officials
   }
 }
 
@@ -163,6 +167,8 @@ export function getSourceLabel(source: MergedOfficial["source"]): string {
     case "TX_HOUSE": return "Texas House";
     case "TX_SENATE": return "Texas Senate";
     case "US_HOUSE": return "US House";
+    case "OTHER_TX": return "Texas Statewide";
+    default: return "Texas Official";
   }
 }
 

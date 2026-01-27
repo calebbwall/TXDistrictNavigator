@@ -25,7 +25,7 @@ export interface Office {
 export interface Official {
   id: string;
   fullName: string;
-  officeType: "tx_senate" | "tx_house" | "us_house";
+  officeType: "tx_senate" | "tx_house" | "us_house" | "statewide";
   districtId: string;
   photoUrl: string | null;
   city: string;
@@ -33,8 +33,9 @@ export interface Official {
   offices: Office[];
   staff: Staff[];
   isVacant?: boolean;
-  source?: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+  source?: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
   districtNumber?: number;
+  roleTitle?: string; // For statewide officials like Governor, Supreme Court justices
   privateNotes?: {
     personalPhone?: string;
     personalAddress?: string;
@@ -201,7 +202,7 @@ export function getDistrictTypeLabel(type: DistrictType): string {
   }
 }
 
-export function getOfficeTypeLabel(type: Official["officeType"]): string {
+export function getOfficeTypeLabel(type: Official["officeType"], roleTitle?: string): string {
   switch (type) {
     case "tx_senate":
       return "Texas Senate";
@@ -209,6 +210,11 @@ export function getOfficeTypeLabel(type: Official["officeType"]): string {
       return "Texas House";
     case "us_house":
       return "US House";
+    case "statewide":
+      // For statewide officials, use their roleTitle if available
+      return roleTitle || "Texas Statewide";
+    default:
+      return "Texas Official";
   }
 }
 

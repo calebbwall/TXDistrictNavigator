@@ -51,7 +51,7 @@ export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCar
     }
   };
 
-  const districtLabel = `${getOfficeTypeLabel(official.officeType)}${official.districtNumber ? ` - District ${official.districtNumber}` : ""}`;
+  const districtLabel = `${getOfficeTypeLabel(official.officeType, official.roleTitle)}${official.districtNumber ? ` - District ${official.districtNumber}` : ""}`;
 
   return (
     <AnimatedPressable

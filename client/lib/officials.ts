@@ -1,4 +1,4 @@
-export type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+export type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
 export type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
 export interface Official {
@@ -6,6 +6,7 @@ export interface Official {
   source: SourceType;
   districtNumber: number;
   fullName: string;
+  roleTitle?: string | null; // For statewide officials (e.g., "Governor", "Chief Justice")
   party: string | null;
   photoUrl: string | null;
   capitolPhone: string | null;
@@ -15,7 +16,7 @@ export interface Official {
   districtAddresses: string[];
   districtPhones: string[];
   isVacant: boolean;
-  officeType: "tx_senate" | "tx_house" | "us_house";
+  officeType: "tx_senate" | "tx_house" | "us_house" | "statewide";
   districtId: string;
   city: string;
   private?: {
@@ -35,10 +36,11 @@ export interface DistrictHit {
   districtNumber: number;
 }
 
-const sourceToOfficeType: Record<SourceType, "tx_senate" | "tx_house" | "us_house"> = {
+const sourceToOfficeType: Record<SourceType, "tx_senate" | "tx_house" | "us_house" | "statewide"> = {
   TX_HOUSE: "tx_house",
   TX_SENATE: "tx_senate",
   US_HOUSE: "us_house",
+  OTHER_TX: "statewide",
 };
 
 const districtTypeToSource: Record<DistrictType, SourceType> = {
@@ -56,14 +58,18 @@ export function sourceTypeToDistrictType(source: SourceType): DistrictType {
     case "TX_HOUSE": return "tx_house";
     case "TX_SENATE": return "tx_senate";
     case "US_HOUSE": return "us_congress";
+    case "OTHER_TX": 
+    default:
+      return "tx_senate"; // Default fallback for statewide officials
   }
 }
 
-export function getOfficeTypeLabel(officeType: string): string {
+export function getOfficeTypeLabel(officeType: string, roleTitle?: string | null): string {
   switch (officeType) {
     case "tx_senate": return "TX Senate";
     case "tx_house": return "TX House";
     case "us_house": return "US Congress";
+    case "statewide": return roleTitle || "Texas Statewide";
     default: return officeType;
   }
 }

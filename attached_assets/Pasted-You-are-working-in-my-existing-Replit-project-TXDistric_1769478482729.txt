@@ -1,0 +1,99 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Fix a DATE HANDLING BUG in Private Notes where Birthday and Anniversary dates shift backward by one day after saving, and standardize date input to MM-DD-YYYY.
+
+========================================================
+PROBLEM DESCRIPTION (important)
+========================================================
+
+Current behavior:
+- When entering a date in Private Notes (Birthday or Anniversary), the saved value is one day earlier than the selected date.
+  Example:
+  - User selects: Nov 14, 2000
+  - App displays/saves: Nov 13, 2000
+- This is a classic timezone / Date object conversion bug.
+
+Root cause (likely):
+- Dates are being stored or processed using JavaScript `Date` objects with implicit timezones (UTC vs local).
+- The date picker returns a Date at midnight local time, which then gets converted to UTC and shifts backward.
+- Or ISO strings (`toISOString()`) are being used incorrectly for date-only fields.
+
+========================================================
+GOALS / ACCEPTANCE CRITERIA
+========================================================
+
+1) Birthday and Anniversary must be treated as DATE-ONLY values (no time, no timezone).
+2) The date must NEVER shift when saved, reloaded, or displayed.
+3) User input format must be standardized to: MM-DD-YYYY.
+4) Display format must also be MM-DD-YYYY.
+5) Works identically on:
+   - iOS
+   - Android Expo Go
+6) No regressions to other private note fields.
+
+========================================================
+IMPLEMENTATION REQUIREMENTS
+========================================================
+
+A) Date storage strategy (critical)
+- DO NOT store Birthday or Anniversary as JavaScript Date objects.
+- DO NOT store ISO timestamps with timezone (e.g. `2020-11-14T00:00:00Z`).
+- Store dates as a plain STRING in one of these formats:
+  - Preferred internal format: `YYYY-MM-DD` (date-only, no timezone)
+- Treat Birthday and Anniversary as **calendar dates**, not moments in time.
+
+B) Input handling
+1) When the user selects a date from the date picker:
+   - Extract year, month, day using LOCAL values:
+     - `getFullYear()`
+     - `getMonth() + 1`
+     - `getDate()`
+   - Construct a date-only string manually (YYYY-MM-DD).
+2) Never call:
+   - `toISOString()`
+   - `new Date(string)` for these fields
+
+C) Display formatting
+- Convert stored date-only string to display format:
+  - MM-DD-YYYY
+- Example:
+  - Stored: `2000-11-14`
+  - Displayed: `11-14-2000`
+
+D) Editing existing values
+- When loading existing Birthday/Anniversary values:
+  - Parse the stored date-only string manually (split by `-`)
+  - Initialize the date picker using:
+    - `new Date(year, monthIndex, day)` (LOCAL constructor)
+- Ensure round-trip consistency:
+  - Load → edit → save → reload = SAME DATE
+
+========================================================
+FILES TO CHECK / MODIFY (confirm exact names)
+========================================================
+
+- Private Notes input component(s) handling Birthday and Anniversary
+- Any shared date utility functions
+- Any server-side schema or validation that assumes Date objects
+- Ensure DB columns (if applicable) are string / date-only compatible
+
+========================================================
+TESTING CHECKLIST (MANDATORY)
+========================================================
+
+1) Enter Birthday: 11-14-2000
+   - Save
+   - Reload card
+   - Confirm it still shows 11-14-2000
+2) Test multiple dates near DST boundaries (March / November).
+3) Test on:
+   - Android Expo Go
+   - iOS device/simulator
+4) Confirm no off-by-one behavior remains.
+5) Confirm format is always MM-DD-YYYY in UI.
+
+========================================================
+AFTER CHANGES
+========================================================
+
+- List all files changed.
+- Explain exactly how date-only values are stored and why timezone shifts can no longer occur.
+- Confirm the internal storage format and the display format.

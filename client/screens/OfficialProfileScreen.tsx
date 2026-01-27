@@ -545,14 +545,14 @@ export default function OfficialProfileScreen() {
               <Pressable onPress={handleJumpToDistrict} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, marginTop: Spacing.xs })}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                   <ThemedText type="body" style={{ color: theme.primary, textAlign: "center" }}>
-                    {getOfficeTypeLabel(official.officeType)} - District {district.districtNumber}
+                    {getOfficeTypeLabel(official.officeType, official.roleTitle)} - District {district.districtNumber}
                   </ThemedText>
                   <Feather name="map-pin" size={14} color={theme.primary} />
                 </View>
               </Pressable>
             ) : (
               <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}>
-                {getOfficeTypeLabel(official.officeType)}
+                {getOfficeTypeLabel(official.officeType, official.roleTitle)}
               </ThemedText>
             )}
           </View>
@@ -599,7 +599,7 @@ export default function OfficialProfileScreen() {
           <View style={styles.headerInfo}>
             <ThemedText type="h2">{official.fullName}</ThemedText>
             <ThemedText type="body" style={{ color: theme.secondaryText }}>
-              {getOfficeTypeLabel(official.officeType)}
+              {getOfficeTypeLabel(official.officeType, official.roleTitle)}
             </ThemedText>
             {district ? (
               <Pressable onPress={handleJumpToDistrict} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>

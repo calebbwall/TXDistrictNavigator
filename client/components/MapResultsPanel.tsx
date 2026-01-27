@@ -68,7 +68,7 @@ function OfficialCardItem({ official, onPress, isFirst }: OfficialCardItemProps)
       <View style={styles.cardHeader}>
         <View style={[styles.districtBadge, { backgroundColor: badgeColor }]}>
           <ThemedText type="small" style={{ color: "#FFFFFF", fontWeight: "600" }}>
-            {getOfficeTypeLabel(official.officeType)}
+            {getOfficeTypeLabel(official.officeType, official.roleTitle)}
           </ThemedText>
         </View>
         <View style={styles.districtRow}>

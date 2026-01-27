@@ -116,7 +116,7 @@ export function DistrictCard({
               type="caption"
               style={{ color: theme.secondaryText }}
             >
-              {getOfficeTypeLabel(official.officeType)} - {official.city}
+              {getOfficeTypeLabel(official.officeType, official.roleTitle)} - {official.city}
             </ThemedText>
           </View>
           <Feather name="chevron-right" size={20} color={theme.secondaryText} />
