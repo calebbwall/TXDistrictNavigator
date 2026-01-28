@@ -9,6 +9,7 @@ import Animated, {
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
+import { PartyBadge } from "@/components/PartyBadge";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { type Official, getOfficeTypeLabel, type SourceType } from "@/lib/officials";
@@ -83,9 +84,12 @@ export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCar
         )}
       </View>
       <View style={styles.info}>
-        <ThemedText type="body" style={{ fontWeight: "600", fontStyle: isVacant ? "italic" : "normal" }}>
-          {official.fullName || "Unknown"}
-        </ThemedText>
+        <View style={styles.nameRow}>
+          <ThemedText type="body" style={{ fontWeight: "600", fontStyle: isVacant ? "italic" : "normal", flex: 1 }}>
+            {official.fullName || "Unknown"}
+          </ThemedText>
+          {!isVacant && official.party ? <PartyBadge party={official.party} size="small" /> : null}
+        </View>
         {onDistrictPress && official.districtNumber ? (
           <Pressable onPress={handleDistrictPress} hitSlop={8}>
             <View style={styles.districtLink}>
@@ -103,10 +107,6 @@ export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCar
         {isVacant ? (
           <ThemedText type="small" style={{ color: theme.warning }}>
             Seat Currently Vacant
-          </ThemedText>
-        ) : official.party ? (
-          <ThemedText type="small" style={{ color: theme.secondaryText }}>
-            {official.party === "R" ? "Republican" : official.party === "D" ? "Democrat" : official.party}
           </ThemedText>
         ) : null}
       </View>
@@ -153,5 +153,10 @@ const styles = StyleSheet.create({
   districtLink: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
 });

@@ -1,0 +1,113 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Fix a data bug where ALL officials are currently showing as Republican, and ensure party is displayed correctly across the app (Public Info tab + map result cards).
+
+Do NOT change unrelated fields, map tools, committees, or refresh scheduling. Focus only on party data correctness and UI display.
+
+========================================================
+PROBLEMS
+========================================================
+
+1) Data bug:
+- Every official is displaying as Republican (R), which is incorrect.
+- We need to ensure party is correctly stored and correctly mapped to the UI “Party” field on the Public tab.
+
+2) UI enhancement:
+- On the map result cards that appear after tapping a district (and any similar mini-cards/results list),
+  show a party badge:
+  - Republican => red “R”
+  - Democrat => blue “D”
+  - (Optional: Independent/Other => gray “I” or “—”)
+
+========================================================
+ACCEPTANCE CRITERIA
+========================================================
+
+A) Data correctness
+1) The `party` field for each official must reflect the actual party from the official source data.
+2) The “Party” label on the Public tab must display this correct party value.
+3) The party must NOT default to Republican when missing or unknown.
+4) If party is unknown/unavailable, show “—” (or blank), not “R”.
+
+B) UI badge on map cards
+5) Map tap result cards show:
+   - red “R” for Republican
+   - blue “D” for Democrat
+6) Badge must appear consistently anywhere those map-result cards appear (tap-to-search results, draw-to-search results panel/list, etc., if they reuse the same card component).
+7) Badge should be small and unobtrusive, near the official name.
+
+========================================================
+IMPLEMENTATION REQUIREMENTS
+========================================================
+
+PART 1 — Fix party ingestion / mapping (server + shared schema)
+
+1) Find where party is determined during ingestion:
+- Likely in `server/jobs/refreshOfficials.ts` (or similar).
+- Identify parsing logic for party for each source:
+  - TX House
+  - TX Senate
+  - US House TX
+2) Ensure party is extracted from the upstream source correctly:
+- Normalize to one of:
+  - "Republican"
+  - "Democrat"
+  - "Independent" (or "Other")
+- Also store a short code if helpful: "R" / "D" / "I"
+3) If a party field is missing:
+- Store NULL/undefined (not "Republican").
+4) Verify DB schema:
+- Ensure the public officials table has a proper `party` field and it is populated.
+- Ensure client receives the correct `party` value in API responses.
+
+IMPORTANT:
+- Add minimal logging in the refresh job to output a count of parties after refresh:
+  - e.g. `R count`, `D count`, `Unknown count`
+- This is to confirm the fix and prevent future regressions.
+
+PART 2 — Fix client Public Info “Party” field display
+
+5) In the official card PUBLIC tab:
+- Ensure “Party” label is mapped to the correct `party` field from public official data.
+- Confirm it is not accidentally showing another field (like occupation or default).
+
+PART 3 — Add R/D badge on map result cards
+
+6) Locate the map results card component (the mini card shown when you tap a district).
+- It might be:
+  - `client/components/OfficialResultCard.tsx`
+  - or part of Map screen results panel
+7) Add a party badge component:
+- If party is Republican => show “R” inside a small red pill/circle
+- If party is Democrat => show “D” inside a small blue pill/circle
+- Otherwise show nothing or “—” in gray
+
+Badge styling guidelines:
+- small (e.g. 18–22px)
+- text bold
+- placed to the right of name or near header
+- do not disrupt layout
+
+8) Reuse badge in other result lists if they share the same card component.
+
+========================================================
+TESTING CHECKLIST
+========================================================
+
+1) Run officials refresh (or use existing refreshed data) and verify:
+- At least one known Democrat displays “Democrat” (not Republican).
+- At least one known Republican displays “Republican”.
+- Unknown party shows “—” not “R”.
+2) Open an official card Public tab:
+- “Party” shows correct value.
+3) Tap a known Democrat district on the map:
+- result card shows blue “D”.
+4) Tap a known Republican district:
+- result card shows red “R”.
+5) Confirm no crashes on Android Expo Go and iOS.
+
+========================================================
+AFTER CHANGES
+========================================================
+- List all files changed.
+- Explain what caused the “all Republican” bug (wrong mapping/default/parsing).
+- Explain how party is parsed/normalized for each source.
+- Confirm badge appears on map result cards and uses correct colors.

@@ -16,6 +16,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
+import { PartyBadge } from "@/components/PartyBadge";
 import { useTheme } from "@/hooks/useTheme";
 import { useDebugFlags } from "@/hooks/useDebugFlags";
 import { BorderRadius, Spacing, Shadows } from "@/constants/theme";
@@ -78,22 +79,20 @@ function OfficialCardItem({ official, onPress, isFirst }: OfficialCardItemProps)
           <Feather name="chevron-right" size={18} color={theme.secondaryText} />
         </View>
       </View>
-      <ThemedText
-        type="body"
-        style={{
-          color: theme.text,
-          fontWeight: "600",
-          marginTop: Spacing.xs,
-          fontStyle: official.isVacant ? "italic" : "normal",
-        }}
-      >
-        {official.fullName}
-      </ThemedText>
-      {!official.isVacant && official.party ? (
-        <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }}>
-          {official.party === "R" ? "Republican" : official.party === "D" ? "Democrat" : official.party}
+      <View style={styles.nameRow}>
+        <ThemedText
+          type="body"
+          style={{
+            color: theme.text,
+            fontWeight: "600",
+            fontStyle: official.isVacant ? "italic" : "normal",
+            flex: 1,
+          }}
+        >
+          {official.fullName}
         </ThemedText>
-      ) : null}
+        {!official.isVacant && official.party ? <PartyBadge party={official.party} size="small" /> : null}
+      </View>
       {official.capitolPhone ? (
         <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }}>
           {official.capitolPhone}
@@ -312,5 +311,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: Spacing.xl,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: Spacing.xs,
   },
 });
