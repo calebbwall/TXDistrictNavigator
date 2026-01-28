@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from "@react-navigation/native";
@@ -994,6 +994,7 @@ export default function MapScreen() {
     address: string;
     lat: number;
     lng: number;
+    source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
   }
   const [addressDots, setAddressDots] = useState<AddressDot[]>([]);
 
@@ -1080,33 +1081,47 @@ export default function MapScreen() {
           const dots: AddressDot[] = [];
 
           for (const { officialId, personalAddress } of notesWithAddresses) {
-            // Fetch official name
             let officialName = 'Unknown Official';
+            let officialSource: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX" = "OTHER_TX";
+            
             try {
               const url = new URL(`/api/officials/${officialId}`, getApiUrl());
               const response = await fetch(url.toString());
               if (response.ok) {
                 const data = await response.json();
                 officialName = data.official?.fullName || 'Unknown Official';
+                officialSource = data.official?.source || "OTHER_TX";
               }
             } catch (e) {
-              console.log('[MapScreen] Could not fetch official name:', e);
+              console.log('[MapScreen] Could not fetch official:', e);
             }
 
-            // Check cache first
             const cached = cache[officialId];
             if (cached && cached.address === personalAddress) {
               console.log('[MapScreen] Using cached coords for:', officialId);
-              dots.push({ officialId, officialName, address: personalAddress, lat: cached.lat, lng: cached.lng });
+              dots.push({ 
+                officialId, 
+                officialName, 
+                address: personalAddress, 
+                lat: cached.lat, 
+                lng: cached.lng,
+                source: officialSource
+              });
               continue;
             }
 
-            // Rate limit: small delay between geocoding requests
             await new Promise(r => setTimeout(r, 200));
             
             const coords = await geocodeAddress(personalAddress);
             if (coords) {
-              dots.push({ officialId, officialName, address: personalAddress, lat: coords.lat, lng: coords.lng });
+              dots.push({ 
+                officialId, 
+                officialName, 
+                address: personalAddress, 
+                lat: coords.lat, 
+                lng: coords.lng,
+                source: officialSource
+              });
               await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
             } else {
               console.log('[MapScreen] Could not geocode:', personalAddress);
@@ -1390,11 +1405,30 @@ export default function MapScreen() {
     }
   }, [route.params?.focusDistrict, mapReady, dataLoaded, overlays, sendToWebView, navigation]);
 
-  // Send address dots to WebView when ready
+  // Filter address dots based on overlay settings
+  const filteredAddressDots = useMemo(() => {
+    return addressDots.filter(dot => {
+      if (dot.source === "OTHER_TX") {
+        return true;
+      }
+      if (dot.source === "TX_HOUSE" && overlays.house) {
+        return true;
+      }
+      if (dot.source === "TX_SENATE" && overlays.senate) {
+        return true;
+      }
+      if (dot.source === "US_HOUSE" && overlays.congress) {
+        return true;
+      }
+      return false;
+    });
+  }, [addressDots, overlays]);
+
+  // Send filtered address dots to WebView when ready or overlays change
   useEffect(() => {
-    if (!mapReady || addressDots.length === 0) return;
+    if (!mapReady) return;
     
-    const dotsMsg = { type: 'SET_ADDRESS_DOTS', dots: addressDots };
+    const dotsMsg = { type: 'SET_ADDRESS_DOTS', dots: filteredAddressDots };
     if (Platform.OS === 'web') {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(JSON.stringify(dotsMsg), '*');
@@ -1402,8 +1436,8 @@ export default function MapScreen() {
     } else {
       sendToWebView(dotsMsg);
     }
-    console.log('[MapScreen] Sent', addressDots.length, 'address dots to WebView');
-  }, [mapReady, addressDots, sendToWebView]);
+    console.log('[MapScreen] Sent', filteredAddressDots.length, 'filtered address dots to WebView (of', addressDots.length, 'total)');
+  }, [mapReady, filteredAddressDots, addressDots.length, sendToWebView]);
 
   // Update active officials when selectedDistrict changes
   useEffect(() => {
