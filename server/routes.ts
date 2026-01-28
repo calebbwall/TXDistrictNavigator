@@ -971,7 +971,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         query = query.where(eq(committees.chamber, chamber)) as typeof query;
       }
       
-      const result = await query.orderBy(committees.name);
+      const allCommittees = await query.orderBy(committees.sortOrder, committees.name);
+      
+      const parentCommittees = allCommittees.filter(c => !c.parentCommitteeId);
+      const subcommittees = allCommittees.filter(c => c.parentCommitteeId);
+      
+      const result = parentCommittees.map(parent => ({
+        ...parent,
+        subcommittees: subcommittees.filter(sub => sub.parentCommitteeId === parent.id),
+      }));
+      
       res.json(result);
     } catch (err) {
       console.error("[API] Error fetching committees:", err);
