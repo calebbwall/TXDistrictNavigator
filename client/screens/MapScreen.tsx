@@ -164,9 +164,6 @@ const MAP_HTML = `
     let userLocationMarker = null;
     let userAccuracyCircle = null;
     
-    // Debug flag - set to true for verbose tap logging
-    const DEBUG_MAP_TAPS = false;
-    
     const layers = {
       senate: null,
       house: null,
@@ -178,9 +175,6 @@ const MAP_HTML = `
       tx_house: null,
       us_congress: null
     };
-    
-    // Persistent selection highlight layer (unified for tap/draw/jump)
-    let selectionHighlightLayer = null;
 
     // Address dots layer and data
     const addressDotsLayer = new L.FeatureGroup();
@@ -525,59 +519,23 @@ const MAP_HTML = `
       return matches[0].district;
     }
 
-    // Track last tap time to detect double-tap issues
-    let lastTapTime = 0;
-    
     map.on('click', function(e) {
-      const now = Date.now();
-      const timeSinceLastTap = now - lastTapTime;
-      lastTapTime = now;
-      
-      if (DEBUG_MAP_TAPS) {
-        console.log('[MAP_TAP] === TAP EVENT ===');
-        console.log('[MAP_TAP] Time since last tap:', timeSinceLastTap, 'ms');
-        console.log('[MAP_TAP] drawMode:', drawMode);
-        console.log('[MAP_TAP] enabledLayers:', JSON.stringify(enabledLayers));
-        console.log('[MAP_TAP] loadStatus:', JSON.stringify(loadStatus));
-        console.log('[MAP_TAP] geoJSON loaded - house:', !!geoJSONData.tx_house, 
-                    'senate:', !!geoJSONData.tx_senate, 
-                    'congress:', !!geoJSONData.us_congress);
-      }
-      
       if (drawMode) {
-        if (DEBUG_MAP_TAPS) console.log('[MAP_TAP] In draw mode, ignoring tap');
+        console.log('[MAP_TAP] In draw mode, ignoring tap');
         return;
       }
 
       const latlng = e.latlng;
       const hits = [];
       
-      // Verify coordinates are valid
-      if (!latlng || typeof latlng.lat !== 'number' || typeof latlng.lng !== 'number') {
-        console.log('[MAP_TAP] Invalid coordinates, ignoring');
-        return;
-      }
-      
-      if (DEBUG_MAP_TAPS) {
-        console.log('[MAP_TAP] Click at', latlng.lat.toFixed(6), latlng.lng.toFixed(6));
-      }
-      
-      // Check if any overlays are loaded
-      const anyOverlayReady = (enabledLayers.house && geoJSONData.tx_house) ||
-                              (enabledLayers.senate && geoJSONData.tx_senate) ||
-                              (enabledLayers.congress && geoJSONData.us_congress);
-      
-      if (!anyOverlayReady) {
-        console.log('[MAP_TAP] No overlays ready for hit-test');
-        postMessage({ type: 'OVERLAYS_NOT_READY' });
-        return;
-      }
+      console.log('[MAP_TAP] Click at', latlng.lat.toFixed(4), latlng.lng.toFixed(4));
+      console.log('[MAP_TAP] Enabled layers:', JSON.stringify(enabledLayers));
       
       if (enabledLayers.house && geoJSONData.tx_house) {
         const district = findDistrictAtPoint(latlng, 'tx_house');
         if (district !== null) {
           hits.push({ source: 'TX_HOUSE', districtNumber: district });
-          if (DEBUG_MAP_TAPS) console.log('[MAP_TAP] Hit TX_HOUSE district', district);
+          console.log('[MAP_TAP] Hit TX_HOUSE district', district);
         }
       }
       
@@ -585,7 +543,7 @@ const MAP_HTML = `
         const district = findDistrictAtPoint(latlng, 'tx_senate');
         if (district !== null) {
           hits.push({ source: 'TX_SENATE', districtNumber: district });
-          if (DEBUG_MAP_TAPS) console.log('[MAP_TAP] Hit TX_SENATE district', district);
+          console.log('[MAP_TAP] Hit TX_SENATE district', district);
         }
       }
       
@@ -593,7 +551,7 @@ const MAP_HTML = `
         const district = findDistrictAtPoint(latlng, 'us_congress');
         if (district !== null) {
           hits.push({ source: 'US_HOUSE', districtNumber: district });
-          if (DEBUG_MAP_TAPS) console.log('[MAP_TAP] Hit US_HOUSE district', district);
+          console.log('[MAP_TAP] Hit US_HOUSE district', district);
         }
       }
       
@@ -833,9 +791,8 @@ const MAP_HTML = `
 
     window.receiveMessage = function(message) {
       try {
-        console.log('[Leaflet] receiveMessage called, message length:', message?.length);
         const data = JSON.parse(message);
-        console.log('[Leaflet] Received message:', data.type, data.layerType || '');
+        console.log('[Leaflet] Received message:', data.type);
         
         if (data.type === 'setApiUrl') {
           apiBaseUrl = data.url;
@@ -855,7 +812,6 @@ const MAP_HTML = `
           const layerType = data.layerType;
           const typeKey = layerType === 'tx_senate' ? 'senate' : 
                           layerType === 'tx_house' ? 'house' : 'congress';
-          console.log('[setGeoJSON] Received:', layerType, 'features:', data.geojson?.features?.length);
           geoJSONData[layerType] = data.geojson;
           loadStatus[layerType].loaded = true;
           loadStatus[layerType].features = data.geojson.features?.length || 0;
@@ -863,10 +819,7 @@ const MAP_HTML = `
             map.removeLayer(layers[typeKey]);
           }
           layers[typeKey] = createLayer(typeKey, data.geojson, layerColors[layerType]);
-          console.log('[setGeoJSON] geoJSONData keys:', Object.keys(geoJSONData).filter(k => geoJSONData[k]));
           console.log('[OVERLAY]', layerType, 'set via message, features=' + loadStatus[layerType].features);
-          // Send confirmation back to parent
-          postMessage({ type: 'geoJSONLoaded', layerType: layerType, features: data.geojson.features?.length || 0 });
         } else if (data.type === 'SET_DRAW_MODE') {
           if (data.enabled) {
             enableDrawMode();
@@ -885,10 +838,6 @@ const MAP_HTML = `
           setAddressDots(data.dots);
         } else if (data.type === 'SET_ACTIVE_OFFICIALS') {
           updateActiveOfficials(data.officialIds);
-        } else if (data.type === 'HIGHLIGHT_DISTRICTS') {
-          highlightDistricts(data.districts);
-        } else if (data.type === 'CLEAR_HIGHLIGHT') {
-          clearHighlight();
         }
       } catch (e) {
         console.error('[Leaflet] Error processing message:', e);
@@ -963,79 +912,14 @@ const MAP_HTML = `
       
       console.log('[FOCUS] Focused on district', districtNumber, 'in', layerType);
     }
-    
-    // Unified selection highlight - persists until explicitly cleared
-    function highlightDistricts(districts) {
-      // Clear any existing highlight
-      clearHighlight();
-      
-      if (!districts || districts.length === 0) return;
-      
-      const featureGroup = new L.FeatureGroup();
-      
-      districts.forEach(function(d) {
-        const layerType = d.source === 'TX_HOUSE' ? 'tx_house' : 
-                          d.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
-        const data = geoJSONData[layerType];
-        if (!data || !data.features) return;
-        
-        const feature = data.features.find(function(f) {
-          const districtNum = f.properties.district || 
-                             f.properties.TX_HOUSE_DIST_NBR ||
-                             f.properties.TX_SEN_DIST_NBR ||
-                             f.properties.TX_US_HOUSE_DIST_NBR ||
-                             f.properties.TX_REP_DIST_NBR ||
-                             f.properties.SLDUST || 
-                             f.properties.SLDLST ||
-                             f.properties.CD ||
-                             f.properties.CONG_DIST ||
-                             f.properties.DIST_NBR;
-          return parseInt(districtNum) === d.districtNumber;
-        });
-        
-        if (feature) {
-          const colors = layerColors[layerType];
-          const highlightGeoJSON = L.geoJSON(feature, {
-            style: {
-              fillColor: colors.stroke,
-              color: colors.stroke,
-              weight: 4,
-              opacity: 1,
-              fillOpacity: 0.35
-            }
-          });
-          featureGroup.addLayer(highlightGeoJSON);
-        }
-      });
-      
-      if (featureGroup.getLayers().length > 0) {
-        selectionHighlightLayer = featureGroup;
-        selectionHighlightLayer.addTo(map);
-        selectionHighlightLayer.bringToFront();
-        console.log('[HIGHLIGHT] Highlighted', districts.length, 'districts');
-      }
-    }
-    
-    function clearHighlight() {
-      if (selectionHighlightLayer) {
-        map.removeLayer(selectionHighlightLayer);
-        selectionHighlightLayer = null;
-        console.log('[HIGHLIGHT] Cleared selection highlight');
-      }
-    }
 
     document.addEventListener('message', function(e) {
       window.receiveMessage(e.data);
     });
     
     window.addEventListener('message', function(e) {
-      console.log('[Leaflet] Message event received, data type:', typeof e.data);
       if (e.data && typeof e.data === 'string') {
-        console.log('[Leaflet] Processing string message');
         window.receiveMessage(e.data);
-      } else if (e.data && typeof e.data === 'object') {
-        console.log('[Leaflet] Processing object message');
-        window.receiveMessage(JSON.stringify(e.data));
       }
     });
 
@@ -1600,19 +1484,6 @@ export default function MapScreen() {
       const officials = await fetchOfficialsByDistricts(hits);
       console.log('[MapScreen] Fetched', officials.length, 'officials');
       
-      // Highlight the selected district(s) on the map
-      const highlightMsg = { 
-        type: 'HIGHLIGHT_DISTRICTS', 
-        districts: hits.map(h => ({ source: h.source, districtNumber: h.districtNumber }))
-      };
-      if (Platform.OS === 'web') {
-        if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
-        }
-      } else {
-        sendToWebView(highlightMsg);
-      }
-      
       setSelectedDistrict({
         hits,
         officials,
@@ -1621,7 +1492,7 @@ export default function MapScreen() {
       // For tap-to-search, no stored polygon needed
       setStoredPolygon(null);
     },
-    [fetchOfficialsByDistricts, sendToWebView]
+    [fetchOfficialsByDistricts]
   );
 
   const handleOfficialCardPress = useCallback((official: Official) => {
@@ -1655,18 +1526,15 @@ export default function MapScreen() {
     setStoredPolygon(null);
     setShowResultsPanel(false);
     
-    const clearDrawMsg = { type: 'CLEAR_DRAWING' };
-    const clearHighlightMsg = { type: 'CLEAR_HIGHLIGHT' };
+    const msg = { type: 'CLEAR_DRAWING' };
     if (Platform.OS === 'web') {
       if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearDrawMsg), '*');
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHighlightMsg), '*');
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
       }
     } else {
-      sendToWebView(clearDrawMsg);
-      sendToWebView(clearHighlightMsg);
+      sendToWebView(msg);
     }
-    console.log('[MapScreen] Drawing and highlight cleared');
+    console.log('[MapScreen] Drawing cleared');
   }, [sendToWebView]);
 
   const handleDrawComplete = useCallback(async (geometry: { type: string; coordinates: number[][][] }) => {
@@ -1715,19 +1583,6 @@ export default function MapScreen() {
       const officials = await fetchOfficialsByDistricts(hits);
       console.log('[MapScreen] Draw search officials:', officials.length);
       
-      // Highlight the matched district(s) on the map
-      const highlightMsg = { 
-        type: 'HIGHLIGHT_DISTRICTS', 
-        districts: hits.map((h: DistrictHit) => ({ source: h.source, districtNumber: h.districtNumber }))
-      };
-      if (Platform.OS === 'web') {
-        if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
-        }
-      } else {
-        sendToWebView(highlightMsg);
-      }
-      
       // Store polygon and results for persistence
       setStoredPolygon({ geometry, hits, officials });
       setSelectedDistrict({ hits, officials });
@@ -1737,7 +1592,7 @@ export default function MapScreen() {
     } finally {
       setDrawLoading(false);
     }
-  }, [overlays, fetchOfficialsByDistricts, sendToWebView]);
+  }, [overlays, fetchOfficialsByDistricts]);
 
   // Location handlers
   const handleLocateMe = useCallback(async () => {
@@ -1879,19 +1734,9 @@ export default function MapScreen() {
   }, [sendToWebView]);
 
   const handleCloseDistrictCard = useCallback(() => {
-    // Hide the results panel and clear the highlight
+    // Only hide the results panel, keep data for restore
     setShowResultsPanel(false);
-    
-    // Clear the highlight when closing the panel
-    const clearHighlightMsg = { type: 'CLEAR_HIGHLIGHT' };
-    if (Platform.OS === 'web') {
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHighlightMsg), '*');
-      }
-    } else {
-      sendToWebView(clearHighlightMsg);
-    }
-  }, [sendToWebView]);
+  }, []);
   
   // Restore stored polygon results when tapping the chip
   const handleRestorePolygonResults = useCallback(() => {
@@ -1902,23 +1747,8 @@ export default function MapScreen() {
         officials: storedPolygon.officials,
       });
       setShowResultsPanel(true);
-      
-      // Re-highlight the districts
-      if (storedPolygon.hits.length > 0) {
-        const highlightMsg = { 
-          type: 'HIGHLIGHT_DISTRICTS', 
-          districts: storedPolygon.hits.map((h: DistrictHit) => ({ source: h.source, districtNumber: h.districtNumber }))
-        };
-        if (Platform.OS === 'web') {
-          if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
-          }
-        } else {
-          sendToWebView(highlightMsg);
-        }
-      }
     }
-  }, [storedPolygon, sendToWebView]);
+  }, [storedPolygon]);
 
   const handleLayerButtonPressIn = () => {
     layerButtonScale.value = withSpring(0.9, springConfig);
@@ -2030,8 +1860,6 @@ export default function MapScreen() {
               officialId: data.officialId,
               initialTab: "private"
             });
-          } else if (data.type === "geoJSONLoaded") {
-            console.log('[MapScreen] Iframe confirmed GeoJSON loaded:', data.layerType, data.features, 'features');
           }
         } catch (e) {
           // Not JSON, ignore
@@ -2103,14 +1931,6 @@ export default function MapScreen() {
             border: 'none',
           }}
           title="Texas Districts Map"
-          onLoad={() => {
-            console.log('[MapScreen] Iframe onLoad fired');
-            // Give the iframe's JS a moment to initialize
-            setTimeout(() => {
-              console.log('[MapScreen] Iframe ready after delay');
-              setMapReady(true);
-            }, 300);
-          }}
         />
       ) : (
         <WebView
