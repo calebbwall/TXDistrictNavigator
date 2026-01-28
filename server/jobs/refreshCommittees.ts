@@ -15,6 +15,9 @@ interface ParsedCommittee {
   slug: string;
   code: string;
   sourceUrl: string;
+  isSubcommittee: boolean;
+  parentCode: string | null; // Code of parent committee for subcommittees
+  sortOrder: number;
 }
 
 interface ParsedMember {
@@ -86,7 +89,7 @@ async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]
   const html = await response.text();
   const $ = cheerio.load(html);
   
-  const committees: ParsedCommittee[] = [];
+  const rawCommittees: Array<{ name: string; code: string }> = [];
   
   $('a[href*="MeetingsByCmte.aspx"]').each((_, el) => {
     const href = $(el).attr("href") || "";
@@ -99,16 +102,45 @@ async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]
     
     if (!code) return;
     
-    committees.push({
+    rawCommittees.push({ name, code });
+  });
+  
+  const result: ParsedCommittee[] = [];
+  let currentParentCode: string | null = null;
+  let sortOrder = 0;
+  
+  for (const { name, code } of rawCommittees) {
+    const isAppropriationsSubcommittee = name.toLowerCase().startsWith("appropriations - s/c");
+    const isStandaloneSubcommittee = name.toLowerCase().startsWith("s/c on") || name.toLowerCase().startsWith("s/c ");
+    const isSubcommittee = isAppropriationsSubcommittee || isStandaloneSubcommittee;
+    
+    let parentCode: string | null = null;
+    
+    if (isAppropriationsSubcommittee) {
+      const appropriationsCommittee = rawCommittees.find(c => 
+        c.name.toLowerCase() === "appropriations"
+      );
+      parentCode = appropriationsCommittee?.code || null;
+    } else if (isStandaloneSubcommittee) {
+      parentCode = currentParentCode;
+    } else {
+      currentParentCode = code;
+    }
+    
+    result.push({
       name,
       slug: createSlug(name),
       code,
       sourceUrl: `${TLO_BASE_URL}/Committees/MembershipCmte.aspx?LegSess=${CURRENT_LEG_SESSION}&CmteCode=${code}`,
+      isSubcommittee,
+      parentCode,
+      sortOrder: sortOrder++,
     });
-  });
+  }
   
-  console.log(`[RefreshCommittees] Found ${committees.length} committees for chamber ${chamber}`);
-  return committees;
+  const subcommitteeCount = result.filter(c => c.isSubcommittee).length;
+  console.log(`[RefreshCommittees] Found ${result.length} committees for chamber ${chamber} (${subcommitteeCount} subcommittees)`);
+  return result;
 }
 
 function isValidPersonName(name: string): boolean {
@@ -314,6 +346,8 @@ async function refreshChamberCommittees(
   let committeesCount = 0;
   let membershipsCount = 0;
   
+  const codeToId = new Map<string, string>();
+  
   for (const { committee, members } of committeesWithMembers) {
     const existing = await db
       .select()
@@ -333,6 +367,7 @@ async function refreshChamberCommittees(
         .set({
           name: committee.name,
           sourceUrl: committee.sourceUrl,
+          sortOrder: String(committee.sortOrder),
           updatedAt: new Date(),
         })
         .where(eq(committees.id, committeeId));
@@ -344,10 +379,13 @@ async function refreshChamberCommittees(
           name: committee.name,
           slug: committee.slug,
           sourceUrl: committee.sourceUrl,
+          sortOrder: String(committee.sortOrder),
         })
         .returning();
       committeeId = inserted[0].id;
     }
+    
+    codeToId.set(committee.code, committeeId);
     committeesCount++;
     
     await db
@@ -365,6 +403,27 @@ async function refreshChamberCommittees(
         sortOrder: String(member.sortOrder),
       });
       membershipsCount++;
+    }
+  }
+  
+  for (const { committee } of committeesWithMembers) {
+    if (committee.isSubcommittee && committee.parentCode) {
+      const parentId = codeToId.get(committee.parentCode);
+      const childId = codeToId.get(committee.code);
+      if (parentId && childId) {
+        await db
+          .update(committees)
+          .set({ parentCommitteeId: parentId })
+          .where(eq(committees.id, childId));
+      }
+    } else {
+      const childId = codeToId.get(committee.code);
+      if (childId) {
+        await db
+          .update(committees)
+          .set({ parentCommitteeId: null })
+          .where(eq(committees.id, childId));
+      }
     }
   }
   
