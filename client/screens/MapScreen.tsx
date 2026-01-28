@@ -833,8 +833,9 @@ const MAP_HTML = `
 
     window.receiveMessage = function(message) {
       try {
+        console.log('[Leaflet] receiveMessage called, message length:', message?.length);
         const data = JSON.parse(message);
-        console.log('[Leaflet] Received message:', data.type);
+        console.log('[Leaflet] Received message:', data.type, data.layerType || '');
         
         if (data.type === 'setApiUrl') {
           apiBaseUrl = data.url;
@@ -854,6 +855,7 @@ const MAP_HTML = `
           const layerType = data.layerType;
           const typeKey = layerType === 'tx_senate' ? 'senate' : 
                           layerType === 'tx_house' ? 'house' : 'congress';
+          console.log('[setGeoJSON] Received:', layerType, 'features:', data.geojson?.features?.length);
           geoJSONData[layerType] = data.geojson;
           loadStatus[layerType].loaded = true;
           loadStatus[layerType].features = data.geojson.features?.length || 0;
@@ -861,7 +863,10 @@ const MAP_HTML = `
             map.removeLayer(layers[typeKey]);
           }
           layers[typeKey] = createLayer(typeKey, data.geojson, layerColors[layerType]);
+          console.log('[setGeoJSON] geoJSONData keys:', Object.keys(geoJSONData).filter(k => geoJSONData[k]));
           console.log('[OVERLAY]', layerType, 'set via message, features=' + loadStatus[layerType].features);
+          // Send confirmation back to parent
+          postMessage({ type: 'geoJSONLoaded', layerType: layerType, features: data.geojson.features?.length || 0 });
         } else if (data.type === 'SET_DRAW_MODE') {
           if (data.enabled) {
             enableDrawMode();
@@ -1024,8 +1029,13 @@ const MAP_HTML = `
     });
     
     window.addEventListener('message', function(e) {
+      console.log('[Leaflet] Message event received, data type:', typeof e.data);
       if (e.data && typeof e.data === 'string') {
+        console.log('[Leaflet] Processing string message');
         window.receiveMessage(e.data);
+      } else if (e.data && typeof e.data === 'object') {
+        console.log('[Leaflet] Processing object message');
+        window.receiveMessage(JSON.stringify(e.data));
       }
     });
 
@@ -2020,6 +2030,8 @@ export default function MapScreen() {
               officialId: data.officialId,
               initialTab: "private"
             });
+          } else if (data.type === "geoJSONLoaded") {
+            console.log('[MapScreen] Iframe confirmed GeoJSON loaded:', data.layerType, data.features, 'features');
           }
         } catch (e) {
           // Not JSON, ignore
@@ -2091,6 +2103,14 @@ export default function MapScreen() {
             border: 'none',
           }}
           title="Texas Districts Map"
+          onLoad={() => {
+            console.log('[MapScreen] Iframe onLoad fired');
+            // Give the iframe's JS a moment to initialize
+            setTimeout(() => {
+              console.log('[MapScreen] Iframe ready after delay');
+              setMapReady(true);
+            }, 300);
+          }}
         />
       ) : (
         <WebView
