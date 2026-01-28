@@ -1,0 +1,99 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Fix TWO committees UX/data issues:
+
+1) TX HOUSE subcommittees (outside of Appropriations) are not being listed underneath their parent committees in the Committees tool. Fix the hierarchy + ordering so subcommittees are shown under the correct committee.
+2) On an official’s card (PUBLIC tab) where their committees are listed, make each committee item tappable so tapping it navigates to that committee’s detail screen (the committee page showing members/roles).
+
+Do NOT change unrelated features (maps, overlays, refresh scheduling framework beyond what’s necessary for hierarchy correctness, private notes, other officials, archived officials).
+
+========================================================
+ISSUE 1 — TX House subcommittee hierarchy + ordering
+========================================================
+
+Current problem:
+- TX House subcommittees (other than Appropriations subcommittees) are not appearing under their correct parent committees.
+- They may be displayed as separate top-level committees or not grouped at all.
+
+Goal / Acceptance criteria:
+1) In the Committees UI:
+   - Texas House Committees display as top-level committees.
+   - Subcommittees appear nested underneath their parent committee.
+2) Ordering:
+   - Parent committee appears first
+   - Its subcommittees appear immediately beneath it (indented or visually marked “Subcommittee”).
+3) Appropriations subcommittees must continue working as they do now.
+4) Data must be updated weekly using the existing refresh system (no new scheduler).
+
+Implementation requirements:
+A) Server ingestion:
+- Update the House committees parser in `server/jobs/refreshCommittees.ts`:
+  1) When scraping https://house.texas.gov/committees
+  2) Detect which items are subcommittees and identify their parent committee.
+  3) Store parent-child relationship in the database.
+
+B) Database changes (if needed):
+- Update the `committees` table to support hierarchy:
+  - Add `parentCommitteeId` (nullable FK to committees.id)
+  - Add `isSubcommittee` boolean (optional) or infer from parentCommitteeId
+  - Add `sortOrder` (optional) for stable ordering
+- Migrate existing data accordingly.
+
+C) API changes:
+- Ensure endpoints return hierarchical data:
+  - Either:
+    - return committees with their `subcommittees: []` embedded
+  - Or:
+    - return flat list with `parentCommitteeId`, and the client nests them
+- Prefer embedded structure for simplicity in UI.
+
+D) Client Committees UI:
+- In “Texas House Committees” list:
+  - Render parent committees as normal
+  - Render subcommittees directly under the parent:
+    - visually indented
+    - label includes “Subcommittee” if helpful
+- Ensure selecting a subcommittee opens the subcommittee detail page (members/roles).
+
+========================================================
+ISSUE 2 — Tap committee on official card to open committee detail
+========================================================
+
+Current problem:
+- On an official’s PUBLIC tab, committees are listed but tapping does nothing (or just looks like text).
+
+Goal / Acceptance criteria:
+1) Each committee row on the official card is a tappable button/link.
+2) Tapping a committee navigates to that committee’s detail view within the Committees tool.
+3) The committee detail view should open to the correct chamber and committee.
+4) Works for both House and Senate committees.
+
+Implementation requirements:
+A) Identify the component rendering committees on the official card (PUBLIC tab).
+B) Wrap each committee item in a Pressable.
+C) Navigation:
+- Navigate to the Committees screens with params:
+  - chamber (TX_HOUSE or TX_SENATE)
+  - committeeId (or slug/externalId used in DB)
+- The Committees screen must support deep-link style navigation:
+  - If it receives committeeId in params, it should immediately open that committee’s detail screen.
+
+========================================================
+TESTING CHECKLIST
+========================================================
+
+1) Open Profile → Tools → Committees → Texas House Committees:
+   - Confirm at least one known subcommittee appears under the correct parent
+   - Confirm ordering is parent then subcommittee(s)
+2) Open a subcommittee:
+   - Confirm members list loads
+3) Open an official card with committees:
+   - Tap a committee row
+   - Confirm it navigates to that committee detail page
+4) Confirm Senate committees still work normally.
+
+========================================================
+AFTER CHANGES
+========================================================
+
+- List all files changed.
+- Explain how House subcommittees are detected and linked to parent committees.
+- Explain how deep navigation to a committee detail page works from an official card.

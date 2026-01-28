@@ -167,6 +167,8 @@ export const committees = pgTable("committees", {
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 255 }).notNull(),
   sourceUrl: text("source_url"),
+  parentCommitteeId: varchar("parent_committee_id", { length: 255 }), // For subcommittees
+  sortOrder: varchar("sort_order", { length: 10 }), // For stable ordering
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
