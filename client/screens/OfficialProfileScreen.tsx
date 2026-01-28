@@ -723,6 +723,10 @@ export default function OfficialProfileScreen() {
                     ]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      navigation.navigate("CommitteeDetail", { 
+                        committeeId: committee.committeeId, 
+                        committeeName: committee.committeeName 
+                      });
                     }}
                   >
                     <View style={[styles.committeeIcon, { backgroundColor: theme.primary + "20" }]}>
@@ -745,6 +749,7 @@ export default function OfficialProfileScreen() {
                         </View>
                       ) : null}
                     </View>
+                    <Feather name="chevron-right" size={18} color={theme.secondaryText} />
                   </Pressable>
                 ))
               ) : (

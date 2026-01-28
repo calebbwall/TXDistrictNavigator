@@ -22,13 +22,17 @@ interface Committee {
   name: string;
   slug: string;
   sourceUrl: string | null;
+  parentCommitteeId: string | null;
+  sortOrder: string | null;
+  subcommittees?: Committee[];
 }
 
 interface CommitteeRowProps {
   committee: Committee;
+  isSubcommittee?: boolean;
 }
 
-function CommitteeRow({ committee }: CommitteeRowProps) {
+function CommitteeRow({ committee, isSubcommittee = false }: CommitteeRowProps) {
   const { theme } = useTheme();
   const navigation = useNavigation<NavigationProp>();
 
@@ -36,8 +40,6 @@ function CommitteeRow({ committee }: CommitteeRowProps) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate("CommitteeDetail", { committeeId: committee.id, committeeName: committee.name });
   };
-
-  const isSubcommittee = committee.name.toLowerCase().includes("s/c");
 
   return (
     <Pressable
@@ -62,9 +64,35 @@ function CommitteeRow({ committee }: CommitteeRowProps) {
         <ThemedText type="body" numberOfLines={2}>
           {committee.name}
         </ThemedText>
+        {isSubcommittee ? (
+          <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+            Subcommittee
+          </ThemedText>
+        ) : null}
       </View>
       <Feather name="chevron-right" size={20} color={theme.secondaryText} />
     </Pressable>
+  );
+}
+
+interface CommitteeGroupProps {
+  committee: Committee;
+}
+
+function CommitteeGroup({ committee }: CommitteeGroupProps) {
+  return (
+    <View>
+      <CommitteeRow committee={committee} />
+      {committee.subcommittees && committee.subcommittees.length > 0 ? (
+        <View style={styles.subcommitteesContainer}>
+          {committee.subcommittees.map((sub) => (
+            <View key={sub.id} style={styles.subcommitteeWrapper}>
+              <CommitteeRow committee={sub} isSubcommittee />
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -87,7 +115,7 @@ export default function CommitteeListScreen() {
   });
 
   const renderItem = ({ item }: { item: Committee }) => (
-    <CommitteeRow committee={item} />
+    <CommitteeGroup committee={item} />
   );
 
   const renderEmpty = () => (
@@ -178,5 +206,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: Spacing.xl * 2,
+  },
+  subcommitteesContainer: {
+    marginTop: Spacing.xs,
+  },
+  subcommitteeWrapper: {
+    marginTop: Spacing.xs,
   },
 });
