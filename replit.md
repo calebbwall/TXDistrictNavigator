@@ -23,7 +23,8 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Data Persistence**: Public data is stored in PostgreSQL, while user preferences, private notes, and engagement tracking are managed via AsyncStorage.
 - **Weekly Data Refresh**: An automated system synchronizes public data from Texas Legislature Online and Congress.gov, including fail-safe validations and soft-deactivation for records. This process includes fingerprint-based change detection and an automated scheduler.
 - **Search Capabilities**: Comprehensive search covers official fields and GeoNames-powered place searches for Texas cities/ZIPs.
-- **Private Notes & Engagement**: Users can add timestamped notes with follow-up flags and track engagement dates, with data keyed to persist across vacancies or data refreshes.
+- **Private Notes & Engagement**: Users can add timestamped notes with follow-up flags and track engagement dates, with data keyed to persist across vacancies or data refreshes. New private notes records auto-fill the Personal Address field with the official's hometown from Texas Tribune directory (when available), providing a convenient starting point that users can edit to add full addresses.
+- **Personal Address Dots**: Purple dots on the map represent officials' personal addresses. Dots respect overlay selections: TX House dots visible when TX House overlay is ON, TX Senate dots when TX Senate overlay is ON, US Congress dots when US Congress overlay is ON. Statewide official dots are always visible regardless of overlay settings.
 - **Project Structure**: Divided into `client` (React Native), `server` (Express.js), `shared` (schema definitions), and `scripts`.
 - **Smart Refresh System**: Utilizes SHA256 fingerprints to detect changes in upstream data sources (Officials, GeoJSON, Committees, Other Texas Officials) before refreshing, preventing unnecessary updates. The refresh cycle is ordered to ensure data consistency.
 - **GeoJSON Fallback System**: Client attempts to load simplified GeoJSON first, then automatically falls back to full (unsimplified) version if validation fails. Both simplified and full versions are served from `/api/geojson/{type}` and `/api/geojson/{type}_full` endpoints. Simplification uses Douglas-Peucker with geometry validation to ensure rings stay closed with >=4 points.
@@ -49,6 +50,7 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Congress.gov API**: Source for US Congress data.
 - **TxDOT FeatureServer**: Source for GeoJSON district boundaries (Texas_State_House_Districts, Texas_State_Senate_Districts, Texas_US_House_Districts services with DIST_NBR and REP_NM fields).
 - **GeoNames API**: Place search (cities, ZIP codes).
+- **Texas Tribune Directory (directory.texastribune.org)**: Source for official hometown data used for auto-filling Personal Address field.
 - **Drizzle ORM**: Database interactions.
 - **NetInfo**: Network connectivity detection.
 - **Expo Location**: Device location access.
