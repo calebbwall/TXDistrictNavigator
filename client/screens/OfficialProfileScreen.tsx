@@ -28,7 +28,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useRoute, useNavigation, RouteProp, useFocusEffect, CommonActions } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { FocusDistrictParams } from "@/navigation/MapStackNavigator";
+import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -179,11 +181,13 @@ function ContactRow({ icon, label, value, onPress, validationHint, isPhone }: Co
   );
 }
 
+type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
+
 export default function OfficialProfileScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const route = useRoute<RouteParams>();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const { theme } = useTheme();
 
   const { officialId, initialSection, initialTab } = route.params;
