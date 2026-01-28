@@ -4,10 +4,12 @@ import { db } from "../db";
 import { officialPublic, refreshJobLog, refreshState, type InsertOfficialPublic } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 
+import { fetchTexasHouseParties, fetchTexasSenateParties } from "../lib/partyLookup";
+
 const TLO_BASE_URL = "https://capitol.texas.gov";
 const CONGRESS_API_BASE = "https://api.congress.gov/v3";
 
-type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
+type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
 
 const CITY_STATE_ZIP_REGEX = /,\s*TX\s+(\d{5})(?:-\d{4})?\b/gi;
 const CITY_REGEX = /([A-Z][a-zA-Z\s]+),\s*TX\b/gi;
@@ -410,6 +412,10 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
   
   console.log(`[RefreshOfficials] Starting ${source} refresh from ${listUrl}`);
   
+  const partyLookup = chamber === "house" 
+    ? await fetchTexasHouseParties() 
+    : await fetchTexasSenateParties();
+  
   try {
     const response = await fetchWithRetry(listUrl);
     const html = await response.text();
@@ -507,13 +513,16 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
         if (record.capitolAddress) allAddresses.push(record.capitolAddress);
         if (record.districtAddresses) allAddresses.push(...record.districtAddresses);
         
+        const districtNum = parseInt(record.district, 10);
+        const authorativeParty = partyLookup.get(districtNum) || record.party;
+        
         const insertData: InsertOfficialPublic = {
           source,
           sourceMemberId: record.sourceMemberId,
           chamber: chamber === "house" ? "TX House" : "TX Senate",
           district: record.district,
           fullName: record.fullName,
-          party: record.party,
+          party: authorativeParty,
           photoUrl: record.photoUrl,
           capitolAddress: record.capitolAddress,
           capitolPhone: record.capitolPhone,
