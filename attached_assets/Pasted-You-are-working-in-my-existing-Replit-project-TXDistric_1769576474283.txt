@@ -1,0 +1,131 @@
+You are working in my existing Replit project “TXDistrictNavigator”. Implement TWO related changes:
+
+1) Auto-fill the Private Notes “Personal Address” field with an official’s HOMETOWN (city) pulled from https://directory.texastribune.org — but ONLY for brand-new official cards, NEVER overwrite existing user-entered data, and do NOT run on a schedule.
+2) Update the purple personal-address dots on the map so visible dots respect the currently selected overlays (TX House / TX Senate / US Congress). Statewide officials’ dots can always be visible.
+
+Do NOT change committees, draw-to-search, tap-to-search, overlay defaults, or refresh scheduling jobs except where needed to read overlay state for dot filtering.
+
+========================================================
+PART 1 — Auto-fill Personal Address with hometown (Texas Tribune Directory)
+========================================================
+
+Current goal:
+- When a NEW official card exists (i.e., a person/official that has no existing private notes yet), automatically populate the Private Notes field “Personal Address” with the official’s hometown (city) from Texas Tribune Directory.
+- This should be a convenience starter value, NOT a locked field.
+- The field remains fully editable so I can later type a full street address.
+
+Strict rules (must follow):
+1) Do NOT refresh on a schedule.
+2) Only do this lookup for an official the first time they ever get a private notes record created.
+3) Never overwrite any existing data:
+   - If the Personal Address field already has any value (even partial), do nothing.
+   - If the user ever edits it, do not re-fetch or re-fill.
+4) Only pull hometown for the specific official whose private notes record is being created.
+5) If the lookup fails or the official is not found, do nothing (leave blank) and do not error.
+
+Implementation requirements:
+A) Determine where private notes are created
+- Locate the server or client flow where a private notes record is first created for an official/person.
+- Implement the auto-fill at the moment of creation (preferred server-side so it’s consistent across devices):
+  - If private notes record does not exist yet, create it
+  - Before saving, if personalAddress is empty, attempt to fetch hometown and fill it
+
+B) Texas Tribune lookup logic
+- Use https://directory.texastribune.org as the source of truth.
+- Find the best way to locate an official:
+  1) Try searching by full name + chamber (e.g., “Dan Patrick”, “Texas Senate”) if supported by their site structure
+  2) If a direct search endpoint isn’t available, fetch the likely profile page or directory listing and parse the hometown field from HTML.
+- Parse hometown (city only). Store it as something like:
+  - “Houston, TX”  (or “Houston, Texas” — choose one consistent format)
+- Do not attempt to build a full street address. Only hometown/city.
+
+C) Non-overwrite guarantees
+- Add a clear guard:
+  - only fill if personalAddress is NULL/empty string/whitespace
+- Also add a “source marker” field if helpful (optional), e.g.:
+  - personalAddressAutoFilled: boolean
+  - BUT this is optional; the main rule is “never overwrite if already present”.
+
+D) Where to store
+- Store the hometown inside the SAME private notes “Personal Address” field.
+- The UI must still allow editing (no readonly state).
+
+E) Logging
+- Add minimal logs:
+  - when an autofill attempt happens
+  - success vs failure
+  - but do not spam logs on every app open (only on new card creation)
+
+========================================================
+PART 2 — Map address dots must respect overlay selection
+========================================================
+
+Current problem:
+- Purple address dots show for officials regardless of which overlays are selected.
+- I need dots to match overlays:
+  - If TX House overlay is ON and TX Senate/US Congress are OFF: show ONLY TX House officials’ dots (plus statewide officials always).
+  - If TX Senate only: show only TX Senate dots (plus statewide).
+  - If US Congress only: show only US Congress dots (plus statewide).
+  - If multiple overlays: show dots for those selected overlays.
+
+Acceptance criteria:
+1) Dot visibility is filtered by currently selected overlays.
+2) Statewide officials’ dots are always allowed to appear, regardless of overlay toggles.
+3) Emphasis behavior (highlight dots for currently shown official cards) must still work, but only among the dots that are currently visible.
+4) No performance regressions.
+
+Implementation requirements:
+A) Identify how overlays are stored
+- Find the overlay preferences state (the same used to turn district layers on/off).
+- Use that exact state as the filter input for dots.
+
+B) Determine each dot’s category/source
+- Each dot corresponds to an official (or person) with a private personalAddress.
+- Determine the official type/chamber/source for each:
+  - TX_HOUSE
+  - TX_SENATE
+  - US_HOUSE_TX (or whatever you call congress in the app)
+  - STATEWIDE / OTHER_TX (these should always be visible)
+- If an official could have multiple roles, prefer their currently active role for dot filtering.
+
+C) Apply filtering before rendering
+- Build a filtered list of dot items based on overlay toggles:
+  - showTxHouse => include TX_HOUSE dots
+  - showTxSenate => include TX_SENATE dots
+  - showUsCongress => include US_HOUSE dots
+  - always include STATEWIDE/OTHER_TX dots
+- Then apply the existing “emphasize active officials” logic on top of that filtered set.
+
+D) Touch behavior
+- Dots should not block map taps for districts/polygons. Ensure pointer events don’t interfere.
+
+========================================================
+TESTING CHECKLIST
+========================================================
+
+Part 1 (autofill):
+1) Pick an official that does NOT yet have private notes.
+2) Open their card → create private notes record.
+3) Confirm Personal Address auto-fills with hometown (city) from Texas Tribune IF available.
+4) Edit the Personal Address field manually (add full address).
+5) Re-open the card:
+   - Confirm your edited value remains
+   - Confirm it never gets overwritten
+6) Confirm no scheduled refresh is added.
+
+Part 2 (dots filtering):
+1) Turn ON only TX House overlay:
+   - Only TX House dots show (plus statewide dots)
+2) Turn ON only TX Senate overlay:
+   - Only TX Senate dots show (plus statewide)
+3) Turn ON multiple overlays:
+   - Dots match those overlays
+4) Confirm emphasized dots still work when selecting officials.
+
+========================================================
+AFTER CHANGES
+========================================================
+- List all files changed.
+- Explain exactly when the Texas Tribune lookup runs (what event triggers it).
+- Show the guard that prevents overwriting existing Personal Address data.
+- Explain how dot filtering uses the overlay preferences state.

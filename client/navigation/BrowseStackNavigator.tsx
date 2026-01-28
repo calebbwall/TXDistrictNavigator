@@ -2,11 +2,13 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import BrowseOfficialsScreen from "@/screens/BrowseOfficialsScreen";
 import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
+import CommitteeDetailScreen from "@/screens/CommitteeDetailScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type BrowseStackParamList = {
   Browse: undefined;
   OfficialProfile: { officialId: string };
+  CommitteeDetail: { committeeId: string; committeeName: string };
 };
 
 const Stack = createNativeStackNavigator<BrowseStackParamList>();
@@ -29,6 +31,13 @@ export default function BrowseStackNavigator() {
         options={{
           headerTitle: "Official",
         }}
+      />
+      <Stack.Screen
+        name="CommitteeDetail"
+        component={CommitteeDetailScreen}
+        options={({ route }) => ({
+          headerTitle: route.params.committeeName,
+        })}
       />
     </Stack.Navigator>
   );

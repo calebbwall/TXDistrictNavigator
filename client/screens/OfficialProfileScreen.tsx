@@ -31,6 +31,7 @@ import { useRoute, useNavigation, RouteProp, useFocusEffect, CommonActions } fro
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { FocusDistrictParams } from "@/navigation/MapStackNavigator";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
+import type { BrowseStackParamList } from "@/navigation/BrowseStackNavigator";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -181,7 +182,7 @@ function ContactRow({ icon, label, value, onPress, validationHint, isPhone }: Co
   );
 }
 
-type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
+type NavigationProp = NativeStackNavigationProp<ProfileStackParamList & BrowseStackParamList>;
 
 export default function OfficialProfileScreen() {
   const insets = useSafeAreaInsets();
