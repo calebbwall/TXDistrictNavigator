@@ -480,9 +480,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .where(eq(officialPrivate.id, existing.id));
       } else {
+        let finalUpdateData = { ...updateData };
+        
+        const addressIsEmpty = !updateData.personalAddress || 
+          updateData.personalAddress.trim().length === 0;
+        
+        if (addressIsEmpty && pub.fullName) {
+          console.log(`[API] Auto-fill: Looking up hometown for new private notes record for "${pub.fullName}"`);
+          try {
+            const { lookupHometownFromTexasTribune } = await import("./lib/texasTribuneLookup");
+            const result = await lookupHometownFromTexasTribune(pub.fullName);
+            if (result.success && result.hometown) {
+              console.log(`[API] Auto-fill: Setting personalAddress to "${result.hometown}" for ${pub.fullName}`);
+              finalUpdateData.personalAddress = result.hometown;
+            } else {
+              console.log(`[API] Auto-fill: No hometown found for ${pub.fullName}`);
+            }
+          } catch (error) {
+            console.error(`[API] Auto-fill: Error looking up hometown:`, error);
+          }
+        }
+        
         await db.insert(officialPrivate).values({
           officialPublicId: id,
-          ...updateData,
+          ...finalUpdateData,
           updatedAt: new Date(),
         });
       }
