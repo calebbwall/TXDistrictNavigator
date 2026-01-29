@@ -297,6 +297,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all officials with personal addresses (for map dots)
+  // IMPORTANT: This route must come BEFORE /api/officials/:id to avoid matching "with-addresses" as an ID
+  app.get("/api/officials/with-addresses", async (req, res) => {
+    try {
+      const results = await db
+        .select({
+          officialId: officialPublic.id,
+          fullName: officialPublic.fullName,
+          source: officialPublic.source,
+          personalAddress: officialPrivate.personalAddress,
+        })
+        .from(officialPublic)
+        .innerJoin(officialPrivate, eq(officialPublic.id, officialPrivate.officialPublicId))
+        .where(
+          and(
+            eq(officialPublic.active, true),
+            sql`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
+          )
+        );
+      
+      res.json({ 
+        addresses: results.map(r => ({
+          officialId: r.officialId,
+          officialName: r.fullName,
+          source: r.source,
+          personalAddress: r.personalAddress,
+        }))
+      });
+    } catch (err) {
+      console.error("[API] Error fetching addresses:", err);
+      res.status(500).json({ error: "Failed to fetch addresses" });
+    }
+  });
+
   app.get("/api/officials/:id", async (req, res) => {
     try {
       const { id } = req.params;
@@ -518,39 +552,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("[API] Error updating private data:", err);
       res.status(500).json({ error: "Failed to update private data" });
-    }
-  });
-
-  // Get all officials with personal addresses (for map dots)
-  app.get("/api/officials/with-addresses", async (req, res) => {
-    try {
-      const results = await db
-        .select({
-          officialId: officialPublic.id,
-          fullName: officialPublic.fullName,
-          source: officialPublic.source,
-          personalAddress: officialPrivate.personalAddress,
-        })
-        .from(officialPublic)
-        .innerJoin(officialPrivate, eq(officialPublic.id, officialPrivate.officialPublicId))
-        .where(
-          and(
-            eq(officialPublic.active, true),
-            sql`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
-          )
-        );
-      
-      res.json({ 
-        addresses: results.map(r => ({
-          officialId: r.officialId,
-          officialName: r.fullName,
-          source: r.source,
-          personalAddress: r.personalAddress,
-        }))
-      });
-    } catch (err) {
-      console.error("[API] Error fetching addresses:", err);
-      res.status(500).json({ error: "Failed to fetch addresses" });
     }
   });
 
