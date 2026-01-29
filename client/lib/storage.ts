@@ -152,6 +152,17 @@ export async function getPrivateNotes(officialId: string): Promise<PrivateNotes 
   }
 }
 
+// Get all private notes keyed by official ID (for search index building)
+export async function getAllPrivateNotes(): Promise<Record<string, PrivateNotes>> {
+  try {
+    const allNotes = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
+    if (!allNotes) return {};
+    return JSON.parse(allNotes) as Record<string, PrivateNotes>;
+  } catch {
+    return {};
+  }
+}
+
 export async function savePrivateNotes(officialId: string, notes: PrivateNotes): Promise<void> {
   try {
     console.log('[Storage] Saving private notes for:', officialId, 'address:', notes.personalAddress);

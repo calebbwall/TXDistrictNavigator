@@ -30,7 +30,9 @@ import {
   setCachedOfficials,
   validateCacheData,
   addRecentViewed,
+  getAllPrivateNotes,
   type OfficialsCacheData,
+  type PrivateNotes,
 } from "@/lib/storage";
 import type { Official } from "@/lib/officials";
 import type { BrowseStackParamList } from "@/navigation/BrowseStackNavigator";
@@ -251,9 +253,37 @@ export default function BrowseOfficialsScreen() {
     return data.officials.map(apiOfficialToNormalized);
   }, [data]);
 
+  // Load private notes for address-based search
+  const [privateNotesMap, setPrivateNotesMap] = useState<Record<string, PrivateNotes>>({});
+  
+  useEffect(() => {
+    getAllPrivateNotes().then(setPrivateNotesMap);
+  }, []);
+  
+  // Merge private notes with officials for search index
+  const officialsWithPrivate: Official[] = useMemo(() => {
+    return allOfficials.map(official => {
+      const notes = privateNotesMap[official.id];
+      if (notes) {
+        return {
+          ...official,
+          private: {
+            personalPhone: notes.personalPhone,
+            personalAddress: notes.personalAddress,
+            spouseName: notes.spouse,
+            birthday: notes.birthday,
+            anniversary: notes.anniversary,
+            notes: notes.notes,
+          },
+        };
+      }
+      return official;
+    });
+  }, [allOfficials, privateNotesMap]);
+
   const searchIndex: SearchableOfficial[] = useMemo(() => {
-    return buildSearchIndex(allOfficials);
-  }, [allOfficials]);
+    return buildSearchIndex(officialsWithPrivate);
+  }, [officialsWithPrivate]);
 
   const officials: Official[] = useMemo(() => {
     if (!debouncedSearch.trim()) {

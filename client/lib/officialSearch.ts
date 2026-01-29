@@ -25,6 +25,38 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+// Extract city names and ZIP codes from an address string
+function extractCityAndZip(address: string): string[] {
+  if (!address) return [];
+  
+  const results: string[] = [];
+  
+  // Extract ZIP codes (5-digit or 5+4 format)
+  const zipMatches = address.match(/\b(\d{5})(?:-\d{4})?\b/g);
+  if (zipMatches) {
+    results.push(...zipMatches.map(z => z.slice(0, 5))); // Only keep 5-digit part
+  }
+  
+  // Try to extract city from common address patterns
+  // Pattern: "City, TX" or "City, Texas" or "City TX"
+  const cityStatePattern = /([a-zA-Z\s]+),?\s*(?:TX|Texas)\b/gi;
+  let match;
+  while ((match = cityStatePattern.exec(address)) !== null) {
+    const city = match[1].trim().toLowerCase();
+    if (city && city.length > 1) {
+      results.push(city);
+    }
+  }
+  
+  // Also add normalized full address for broader matching
+  const normalized = normalizeText(address);
+  if (normalized) {
+    results.push(normalized);
+  }
+  
+  return results;
+}
+
 function removeCommonTokens(tokens: string[]): string[] {
   return tokens.filter(t => !SUFFIX_TOKENS.has(t) && !TITLE_TOKENS.has(t));
 }
@@ -62,6 +94,23 @@ export function buildSearchableOfficial(official: Official): SearchableOfficial 
   const partyLabel = official.party?.toLowerCase() || "";
   const districtLabel = `district ${official.districtNumber} ${official.districtNumber}`;
   
+  // Extract cities and ZIPs from district office addresses
+  const districtAddressTokens: string[] = [];
+  if (official.districtAddresses && official.districtAddresses.length > 0) {
+    for (const addr of official.districtAddresses) {
+      districtAddressTokens.push(...extractCityAndZip(addr));
+    }
+  }
+  
+  // Extract city and ZIP from private personal address (if available)
+  const personalAddressTokens: string[] = [];
+  if (official.private?.personalAddress) {
+    personalAddressTokens.push(...extractCityAndZip(official.private.personalAddress));
+  }
+  
+  // Include the city field if available
+  const cityLabel = official.city ? normalizeText(official.city) : "";
+  
   const searchKey = [
     normalizedName,
     normalizedFirstLast,
@@ -69,6 +118,9 @@ export function buildSearchableOfficial(official: Official): SearchableOfficial 
     chamberLabel,
     partyLabel,
     districtLabel,
+    cityLabel,
+    ...districtAddressTokens,
+    ...personalAddressTokens,
   ].join(" ");
   
   return {
