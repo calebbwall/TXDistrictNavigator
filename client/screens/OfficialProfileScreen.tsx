@@ -246,7 +246,13 @@ export default function OfficialProfileScreen() {
   const loadSavedState = useCallback(async () => {
     if (official) {
       const notes = await getPrivateNotes(official.id);
-      if (notes) setPrivateNotes(notes);
+      if (notes) {
+        setPrivateNotes(notes);
+      } else if (official.privateNotes) {
+        // Fallback to server data when no local data exists (e.g., hometown auto-fill)
+        console.log('[OfficialProfile] Using server private notes as fallback:', official.privateNotes);
+        setPrivateNotes(official.privateNotes);
+      }
       
       if (official.source && official.districtNumber) {
         const saved = await isOfficialSavedByKey(official.source, official.districtNumber);
