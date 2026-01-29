@@ -521,6 +521,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all officials with personal addresses (for map dots)
+  app.get("/api/officials/with-addresses", async (req, res) => {
+    try {
+      const results = await db
+        .select({
+          officialId: officialPublic.id,
+          fullName: officialPublic.fullName,
+          source: officialPublic.source,
+          personalAddress: officialPrivate.personalAddress,
+        })
+        .from(officialPublic)
+        .innerJoin(officialPrivate, eq(officialPublic.id, officialPrivate.officialPublicId))
+        .where(
+          and(
+            eq(officialPublic.active, true),
+            sql`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
+          )
+        );
+      
+      res.json({ 
+        addresses: results.map(r => ({
+          officialId: r.officialId,
+          officialName: r.fullName,
+          source: r.source,
+          personalAddress: r.personalAddress,
+        }))
+      });
+    } catch (err) {
+      console.error("[API] Error fetching addresses:", err);
+      res.status(500).json({ error: "Failed to fetch addresses" });
+    }
+  });
+
   app.post("/api/refresh", async (req, res) => {
     try {
       const { refreshAllOfficials } = await import("./jobs/refreshOfficials");

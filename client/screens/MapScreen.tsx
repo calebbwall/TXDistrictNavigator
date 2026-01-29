@@ -126,6 +126,54 @@ const MAP_HTML = `
       cursor: pointer;
       min-width: 180px;
     }
+    .address-cluster {
+      width: 24px;
+      height: 24px;
+      background: rgba(147, 51, 234, 0.9);
+      border: 2px solid white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: bold;
+      color: white;
+      box-shadow: 0 2px 8px rgba(147, 51, 234, 0.5);
+    }
+    .cluster-popup-container {
+      max-height: 200px;
+      overflow-y: auto;
+      min-width: 200px;
+    }
+    .cluster-popup-container::-webkit-scrollbar {
+      width: 6px;
+    }
+    .cluster-popup-container::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+    }
+    .cluster-popup-container::-webkit-scrollbar-thumb {
+      background: rgba(147, 51, 234, 0.6);
+      border-radius: 3px;
+    }
+    .cluster-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .cluster-item:last-child {
+      border-bottom: none;
+    }
+    .cluster-item:hover {
+      background: rgba(147, 51, 234, 0.2);
+    }
+    .cluster-header {
+      padding: 8px 14px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.6);
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      text-align: center;
+    }
     .popup-name {
       color: white;
       font-weight: 600;
@@ -739,33 +787,84 @@ const MAP_HTML = `
       addressMarkers = {};
       addressDotsData = dots;
       
+      // Group dots by location (same city will have same coordinates)
+      const locationGroups = {};
       dots.forEach(function(dot) {
-        const isEmphasized = activeOfficialIds.includes(dot.officialId);
-        const icon = L.divIcon({
-          className: 'address-dot' + (isEmphasized ? ' emphasized' : ''),
-          iconSize: isEmphasized ? [18, 18] : [12, 12],
-          iconAnchor: isEmphasized ? [9, 9] : [6, 6]
-        });
-        
-        const marker = L.marker([dot.lat, dot.lng], { icon: icon });
-        
-        // Create popup with official info
-        const popupContent = '<div class="address-popup" onclick="window.handleAddressDotClick(\\'' + dot.officialId + '\\')">' +
-          '<div class="popup-name">' + (dot.officialName || 'Unknown Official') + '</div>' +
-          '<div class="popup-address">' + (dot.address || 'No address') + '</div>' +
-          '<div class="popup-hint">Tap to view private notes</div>' +
-          '</div>';
-        marker.bindPopup(popupContent, {
-          className: 'address-dot-popup',
-          closeButton: false,
-          offset: [0, -6]
-        });
-        
-        marker.addTo(addressDotsLayer);
-        addressMarkers[dot.officialId] = marker;
+        // Round to 3 decimal places to group dots in same city
+        const key = dot.lat.toFixed(3) + ',' + dot.lng.toFixed(3);
+        if (!locationGroups[key]) {
+          locationGroups[key] = [];
+        }
+        locationGroups[key].push(dot);
       });
       
-      console.log('[DOTS] Set', dots.length, 'address dots');
+      Object.keys(locationGroups).forEach(function(key) {
+        const group = locationGroups[key];
+        const firstDot = group[0];
+        
+        if (group.length === 1) {
+          // Single official - show normal dot
+          const isEmphasized = activeOfficialIds.includes(firstDot.officialId);
+          const icon = L.divIcon({
+            className: 'address-dot' + (isEmphasized ? ' emphasized' : ''),
+            iconSize: isEmphasized ? [18, 18] : [12, 12],
+            iconAnchor: isEmphasized ? [9, 9] : [6, 6]
+          });
+          
+          const marker = L.marker([firstDot.lat, firstDot.lng], { icon: icon });
+          
+          const popupContent = '<div class="address-popup" onclick="window.handleAddressDotClick(\\'' + firstDot.officialId + '\\')">' +
+            '<div class="popup-name">' + (firstDot.officialName || 'Unknown Official') + '</div>' +
+            '<div class="popup-address">' + (firstDot.address || 'No address') + '</div>' +
+            '<div class="popup-hint">Tap to view private notes</div>' +
+            '</div>';
+          marker.bindPopup(popupContent, {
+            className: 'address-dot-popup',
+            closeButton: false,
+            offset: [0, -6]
+          });
+          
+          marker.addTo(addressDotsLayer);
+          addressMarkers[firstDot.officialId] = marker;
+        } else {
+          // Multiple officials in same city - show cluster with count
+          const icon = L.divIcon({
+            className: 'address-cluster',
+            html: '<span>' + group.length + '</span>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+          
+          const marker = L.marker([firstDot.lat, firstDot.lng], { icon: icon });
+          
+          // Create scrollable popup with all officials
+          let popupHtml = '<div class="cluster-popup-container">';
+          popupHtml += '<div class="cluster-header">' + group.length + ' officials in ' + (firstDot.address || 'this location') + '</div>';
+          
+          group.forEach(function(dot) {
+            popupHtml += '<div class="cluster-item" onclick="window.handleAddressDotClick(\\'' + dot.officialId + '\\')">' +
+              '<div class="popup-name">' + (dot.officialName || 'Unknown Official') + '</div>' +
+              '</div>';
+          });
+          
+          popupHtml += '</div>';
+          
+          marker.bindPopup(popupHtml, {
+            className: 'address-dot-popup',
+            closeButton: true,
+            offset: [0, -6],
+            maxHeight: 250
+          });
+          
+          marker.addTo(addressDotsLayer);
+          // Store reference for all officials in this cluster
+          group.forEach(function(dot) {
+            addressMarkers[dot.officialId] = marker;
+          });
+        }
+      });
+      
+      console.log('[DOTS] Set', dots.length, 'address dots in', Object.keys(locationGroups).length, 'locations');
     }
     
     window.handleAddressDotClick = function(officialId) {
@@ -1064,41 +1163,70 @@ export default function MapScreen() {
   }, []);
 
   // Load and geocode addresses for dots - reload when screen comes into focus
+  // Fetches from BOTH server database (hometowns) AND local storage (user edits)
   useFocusEffect(
     useCallback(() => {
       const loadAddressDots = async () => {
         try {
-          const notesWithAddresses = await getAllPrivateNotesWithAddresses();
-          if (notesWithAddresses.length === 0) {
-            console.log('[MapScreen] No private addresses found');
+          // Fetch addresses from server database (includes auto-filled hometowns)
+          const addressMap = new Map<string, { officialName: string; personalAddress: string; source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX" }>();
+          
+          try {
+            const url = new URL('/api/officials/with-addresses', getApiUrl());
+            const response = await fetch(url.toString());
+            if (response.ok) {
+              const data = await response.json();
+              console.log('[MapScreen] Fetched', data.addresses?.length || 0, 'addresses from server');
+              for (const addr of data.addresses || []) {
+                addressMap.set(addr.officialId, {
+                  officialName: addr.officialName,
+                  personalAddress: addr.personalAddress,
+                  source: addr.source,
+                });
+              }
+            }
+          } catch (e) {
+            console.log('[MapScreen] Could not fetch server addresses:', e);
+          }
+          
+          // Also check local storage for any user edits not yet synced
+          const localNotes = await getAllPrivateNotesWithAddresses();
+          for (const { officialId, personalAddress } of localNotes) {
+            if (!addressMap.has(officialId)) {
+              // Local-only address - need to fetch official info
+              try {
+                const url = new URL(`/api/officials/${officialId}`, getApiUrl());
+                const response = await fetch(url.toString());
+                if (response.ok) {
+                  const data = await response.json();
+                  addressMap.set(officialId, {
+                    officialName: data.official?.fullName || 'Unknown Official',
+                    personalAddress,
+                    source: data.official?.source || "OTHER_TX",
+                  });
+                }
+              } catch (e) {
+                console.log('[MapScreen] Could not fetch official:', e);
+              }
+            }
+          }
+          
+          if (addressMap.size === 0) {
+            console.log('[MapScreen] No addresses found');
             setAddressDots([]);
             return;
           }
 
-          console.log('[MapScreen] Found', notesWithAddresses.length, 'officials with addresses');
+          console.log('[MapScreen] Total officials with addresses:', addressMap.size);
           
           const cache = await getGeocodedAddressCache();
           const dots: AddressDot[] = [];
 
-          for (const { officialId, personalAddress } of notesWithAddresses) {
-            let officialName = 'Unknown Official';
-            let officialSource: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX" = "OTHER_TX";
+          for (const [officialId, data] of addressMap) {
+            const { officialName, personalAddress, source: officialSource } = data;
             
-            try {
-              const url = new URL(`/api/officials/${officialId}`, getApiUrl());
-              const response = await fetch(url.toString());
-              if (response.ok) {
-                const data = await response.json();
-                officialName = data.official?.fullName || 'Unknown Official';
-                officialSource = data.official?.source || "OTHER_TX";
-              }
-            } catch (e) {
-              console.log('[MapScreen] Could not fetch official:', e);
-            }
-
             const cached = cache[officialId];
             if (cached && cached.address === personalAddress) {
-              console.log('[MapScreen] Using cached coords for:', officialId);
               dots.push({ 
                 officialId, 
                 officialName, 
