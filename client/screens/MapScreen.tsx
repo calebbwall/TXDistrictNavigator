@@ -1164,8 +1164,11 @@ export default function MapScreen() {
 
   // Load and geocode addresses for dots - reload when screen comes into focus
   // Fetches from BOTH server database (hometowns) AND local storage (user edits)
+  // Uses a two-phase approach: 1) immediately show cached dots, 2) geocode remaining in background
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
+      
       const loadAddressDots = async () => {
         try {
           // Fetch addresses from server database (includes auto-filled hometowns)
@@ -1189,6 +1192,8 @@ export default function MapScreen() {
             console.log('[MapScreen] Could not fetch server addresses:', e);
           }
           
+          if (cancelled) return;
+          
           // Also check local storage for any user edits not yet synced
           const localNotes = await getAllPrivateNotesWithAddresses();
           for (const { officialId, personalAddress } of localNotes) {
@@ -1211,6 +1216,8 @@ export default function MapScreen() {
             }
           }
           
+          if (cancelled) return;
+          
           if (addressMap.size === 0) {
             console.log('[MapScreen] No addresses found');
             setAddressDots([]);
@@ -1220,14 +1227,16 @@ export default function MapScreen() {
           console.log('[MapScreen] Total officials with addresses:', addressMap.size);
           
           const cache = await getGeocodedAddressCache();
-          const dots: AddressDot[] = [];
+          const cachedDots: AddressDot[] = [];
+          const toGeocode: Array<{ officialId: string; officialName: string; personalAddress: string; source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX" }> = [];
 
+          // Phase 1: Immediately load all cached addresses
           for (const [officialId, data] of addressMap) {
             const { officialName, personalAddress, source: officialSource } = data;
             
             const cached = cache[officialId];
             if (cached && cached.address === personalAddress) {
-              dots.push({ 
+              cachedDots.push({ 
                 officialId, 
                 officialName, 
                 address: personalAddress, 
@@ -1235,35 +1244,67 @@ export default function MapScreen() {
                 lng: cached.lng,
                 source: officialSource
               });
-              continue;
-            }
-
-            await new Promise(r => setTimeout(r, 200));
-            
-            const coords = await geocodeAddress(personalAddress);
-            if (coords) {
-              dots.push({ 
-                officialId, 
-                officialName, 
-                address: personalAddress, 
-                lat: coords.lat, 
-                lng: coords.lng,
-                source: officialSource
-              });
-              await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
             } else {
-              console.log('[MapScreen] Could not geocode:', personalAddress);
+              toGeocode.push({ officialId, officialName, personalAddress, source: officialSource });
             }
           }
 
-          console.log('[MapScreen] Loaded', dots.length, 'address dots');
-          setAddressDots(dots);
+          // Set cached dots immediately so they appear right away
+          console.log('[MapScreen] Loaded', cachedDots.length, 'cached address dots,', toGeocode.length, 'need geocoding');
+          setAddressDots(cachedDots);
+          
+          if (cancelled) return;
+          
+          // Phase 2: Geocode remaining addresses in background and update incrementally
+          if (toGeocode.length > 0) {
+            const newDots = [...cachedDots];
+            let geocodedCount = 0;
+            
+            for (const { officialId, officialName, personalAddress, source: officialSource } of toGeocode) {
+              if (cancelled) return;
+              
+              await new Promise(r => setTimeout(r, 300)); // Slightly longer delay to avoid rate limiting
+              
+              if (cancelled) return;
+              
+              const coords = await geocodeAddress(personalAddress);
+              if (coords) {
+                newDots.push({ 
+                  officialId, 
+                  officialName, 
+                  address: personalAddress, 
+                  lat: coords.lat, 
+                  lng: coords.lng,
+                  source: officialSource
+                });
+                await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
+                geocodedCount++;
+                
+                // Update state every 5 successful geocodes to show progress
+                if (geocodedCount % 5 === 0 && !cancelled) {
+                  setAddressDots([...newDots]);
+                }
+              } else {
+                console.log('[MapScreen] Could not geocode:', personalAddress);
+              }
+            }
+            
+            // Final update with all dots
+            if (!cancelled) {
+              console.log('[MapScreen] Finished geocoding, total dots:', newDots.length);
+              setAddressDots(newDots);
+            }
+          }
         } catch (error) {
           console.error('[MapScreen] Error loading address dots:', error);
         }
       };
 
       loadAddressDots();
+      
+      return () => {
+        cancelled = true;
+      };
     }, [geocodeAddress])
   );
   
