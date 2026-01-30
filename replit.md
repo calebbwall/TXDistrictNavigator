@@ -28,6 +28,7 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Project Structure**: Divided into `client` (React Native), `server` (Express.js), `shared` (schema definitions), and `scripts`.
 - **Smart Refresh System**: Utilizes SHA256 fingerprints to detect changes in upstream data sources (Officials, GeoJSON, Committees, Other Texas Officials) before refreshing, preventing unnecessary updates. The refresh cycle is ordered to ensure data consistency.
 - **GeoJSON Fallback System**: Client attempts to load simplified GeoJSON first, then automatically falls back to full (unsimplified) version if validation fails. Both simplified and full versions are served from `/api/geojson/{type}` and `/api/geojson/{type}_full` endpoints. Simplification uses Douglas-Peucker with geometry validation to ensure rings stay closed with >=4 points.
+- **Web Platform Map**: On web, the map iframe loads from `/api/map.html` (served by Express on port 5000) instead of srcDoc to avoid CORS issues. The iframe auto-fetches GeoJSON directly from same-origin API endpoints. Cross-origin postMessage communication between iframe (port 5000) and parent (port 8081) uses `'*'` origin.
 - **Identity Resolution**: A `persons` table and `identityResolver` module ensure stable identity tracking for officials across position changes, crucial for maintaining note continuity.
 
 ### Feature Specifications

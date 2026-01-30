@@ -21,6 +21,495 @@ import type { Feature, FeatureCollection, Polygon } from "geojson";
 type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
 type DistrictSourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
 
+// Generate map HTML for iframe embedding
+function getMapHtml(): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    #map { width: 100%; height: 100%; }
+    .leaflet-control-attribution { display: none; }
+    .leaflet-draw-toolbar { display: none !important; }
+    .user-location-marker {
+      background: #007AFF;
+      border: 3px solid white;
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .address-dot-marker {
+      background: #9B59B6;
+      border: 2px solid white;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .cluster-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: bold;
+      color: white;
+      background: #7B68EE;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map = L.map('map', {
+      center: [31.0, -100.0],
+      zoom: 6,
+      zoomControl: true,
+      attributionControl: false
+    });
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18
+    }).addTo(map);
+    
+    var layers = { senate: null, house: null, congress: null };
+    var highlightLayers = { senate: null, house: null, congress: null };
+    var geoJSONData = { tx_senate: null, tx_house: null, us_congress: null };
+    var enabledLayers = { senate: true, house: true, congress: false };
+    var locationMarker = null;
+    var drawnPolygon = null;
+    var polyline = null;
+    var drawPoints = [];
+    var addressDotMarkers = [];
+    var addressDotsByCity = {};
+    
+    var loadStatus = {
+      tx_senate: { loaded: false, loading: false, features: 0, error: null },
+      tx_house: { loaded: false, loading: false, features: 0, error: null },
+      us_congress: { loaded: false, loading: false, features: 0, error: null }
+    };
+    
+    var layerColors = {
+      tx_senate: { fill: '#4B79A1', stroke: '#4B79A1', fillOpacity: 0.15, weight: 3 },
+      tx_house: { fill: '#55BB69', stroke: '#55BB69', fillOpacity: 0.15, weight: 3 },
+      us_congress: { fill: '#8B4513', stroke: '#8B4513', fillOpacity: 0.15, weight: 3 }
+    };
+    
+    function postMessage(data) {
+      try {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(data));
+        } else if (window.parent !== window) {
+          // Use '*' to allow cross-origin communication since parent may be on different port
+          window.parent.postMessage(JSON.stringify(data), '*');
+        }
+      } catch (e) {
+        console.error('[Leaflet] postMessage error:', e);
+      }
+    }
+    
+    function createLayer(type, data, colors) {
+      var layer = L.geoJSON(data, {
+        style: {
+          color: colors.stroke,
+          weight: colors.weight || 3,
+          fillColor: colors.fill,
+          fillOpacity: colors.fillOpacity || 0.15,
+          opacity: 0.8
+        }
+      });
+      return layer;
+    }
+    
+    async function fetchAndSetGeoJSON(layerType) {
+      if (loadStatus[layerType].loaded || loadStatus[layerType].loading) {
+        console.log('[OVERLAY]', layerType, 'already loaded or loading');
+        return loadStatus[layerType].loaded;
+      }
+      
+      loadStatus[layerType].loading = true;
+      console.log('[OVERLAY]', layerType, 'fetching from /api/geojson/' + layerType);
+      
+      try {
+        var response = await fetch('/api/geojson/' + layerType);
+        console.log('[OVERLAY]', layerType, 'status=' + response.status);
+        
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+        
+        var data = await response.json();
+        var featureCount = data.features?.length || 0;
+        console.log('[OVERLAY]', layerType, 'features=' + featureCount);
+        
+        geoJSONData[layerType] = data;
+        loadStatus[layerType].loaded = true;
+        loadStatus[layerType].features = featureCount;
+        loadStatus[layerType].loading = false;
+        
+        var typeKey = layerType === 'tx_senate' ? 'senate' : 
+                      layerType === 'tx_house' ? 'house' : 'congress';
+        if (layers[typeKey]) {
+          map.removeLayer(layers[typeKey]);
+        }
+        layers[typeKey] = createLayer(typeKey, data, layerColors[layerType]);
+        
+        if (enabledLayers[typeKey] && layers[typeKey]) {
+          layers[typeKey].addTo(map);
+          layers[typeKey].bringToFront();
+          console.log('[OVERLAY]', layerType, 'auto-added to map (enabled)');
+        }
+        
+        postMessage({
+          type: 'geoJSONLoaded',
+          layerType: layerType,
+          features: featureCount,
+          success: true
+        });
+        
+        return true;
+      } catch (e) {
+        console.error('[OVERLAY]', layerType, 'error=' + e.message);
+        loadStatus[layerType].error = e.message;
+        loadStatus[layerType].loading = false;
+        
+        postMessage({
+          type: 'geoJSONLoaded',
+          layerType: layerType,
+          features: 0,
+          success: false,
+          error: e.message
+        });
+        
+        return false;
+      }
+    }
+    
+    window.toggleLayer = function(type, visible) {
+      console.log('[OVERLAY] toggleLayer:', type, 'visible=', visible);
+      enabledLayers[type] = visible;
+      var layerType = type === 'senate' ? 'tx_senate' : 
+                      type === 'house' ? 'tx_house' : 'us_congress';
+      var layer = layers[type];
+      
+      if (!layer && visible && geoJSONData[layerType]) {
+        layer = createLayer(type, geoJSONData[layerType], layerColors[layerType]);
+        layers[type] = layer;
+      }
+      
+      if (layer) {
+        if (visible) {
+          layer.addTo(map);
+          layer.bringToFront();
+          console.log('[OVERLAY]', type, 'added to map');
+        } else {
+          map.removeLayer(layer);
+          console.log('[OVERLAY]', type, 'removed from map');
+        }
+      } else {
+        console.log('[OVERLAY]', type, 'layer not found or not loaded');
+      }
+    };
+    
+    function pointInPolygon(lat, lng, polygon) {
+      var x = lng, y = lat;
+      var inside = false;
+      for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        var xi = polygon[i][0], yi = polygon[i][1];
+        var xj = polygon[j][0], yj = polygon[j][1];
+        var intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+    
+    function isPointInGeoJSONFeature(lat, lng, feature) {
+      if (!feature.geometry) return false;
+      if (feature.geometry.type === 'Polygon') {
+        var rings = feature.geometry.coordinates;
+        var inOuter = pointInPolygon(lat, lng, rings[0]);
+        if (!inOuter) return false;
+        for (var h = 1; h < rings.length; h++) {
+          if (pointInPolygon(lat, lng, rings[h])) return false;
+        }
+        return true;
+      } else if (feature.geometry.type === 'MultiPolygon') {
+        for (var p = 0; p < feature.geometry.coordinates.length; p++) {
+          var polyRings = feature.geometry.coordinates[p];
+          var inOuterPoly = pointInPolygon(lat, lng, polyRings[0]);
+          if (inOuterPoly) {
+            var inHole = false;
+            for (var hIdx = 1; hIdx < polyRings.length; hIdx++) {
+              if (pointInPolygon(lat, lng, polyRings[hIdx])) { inHole = true; break; }
+            }
+            if (!inHole) return true;
+          }
+        }
+        return false;
+      }
+      return false;
+    }
+    
+    map.on('click', function(e) {
+      console.log('[MAP_TAP] Click at', e.latlng.lat, e.latlng.lng);
+      console.log('[MAP_TAP] Enabled layers:', JSON.stringify(enabledLayers));
+      
+      var hits = [];
+      var layerMap = { senate: 'tx_senate', house: 'tx_house', congress: 'us_congress' };
+      
+      for (var key in enabledLayers) {
+        if (!enabledLayers[key]) continue;
+        var dataKey = layerMap[key];
+        var geojson = geoJSONData[dataKey];
+        if (!geojson || !geojson.features) {
+          console.log('[MAP_TAP]', dataKey, 'no data loaded');
+          continue;
+        }
+        
+        for (var i = 0; i < geojson.features.length; i++) {
+          var feat = geojson.features[i];
+          if (isPointInGeoJSONFeature(e.latlng.lat, e.latlng.lng, feat)) {
+            var distNum = feat.properties.DIST_NBR || feat.properties.district;
+            hits.push({
+              type: dataKey,
+              district: parseInt(distNum) || 0,
+              properties: feat.properties
+            });
+          }
+        }
+      }
+      
+      console.log('[MAP_TAP] Total hits:', hits.length);
+      postMessage({
+        type: 'mapTap',
+        lat: e.latlng.lat,
+        lng: e.latlng.lng,
+        hits: hits
+      });
+    });
+    
+    window.highlightDistricts = function(hits) {
+      for (var key in highlightLayers) {
+        if (highlightLayers[key]) {
+          map.removeLayer(highlightLayers[key]);
+          highlightLayers[key] = null;
+        }
+      }
+      
+      var layerMap = { senate: 'tx_senate', house: 'tx_house', congress: 'us_congress' };
+      for (var i = 0; i < hits.length; i++) {
+        var hit = hits[i];
+        var typeKey = hit.type === 'tx_senate' ? 'senate' : 
+                      hit.type === 'tx_house' ? 'house' : 'congress';
+        var dataKey = layerMap[typeKey];
+        var geojson = geoJSONData[dataKey];
+        if (!geojson) continue;
+        
+        for (var j = 0; j < geojson.features.length; j++) {
+          var feat = geojson.features[j];
+          var distNum = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
+          if (distNum === hit.district) {
+            var colors = layerColors[dataKey];
+            var highlightLayer = L.geoJSON(feat, {
+              style: {
+                color: colors.stroke,
+                weight: 5,
+                fillColor: colors.fill,
+                fillOpacity: 0.4,
+                opacity: 1
+              }
+            });
+            highlightLayer.addTo(map);
+            highlightLayers[typeKey] = highlightLayer;
+            break;
+          }
+        }
+      }
+    };
+    
+    window.clearHighlights = function() {
+      for (var key in highlightLayers) {
+        if (highlightLayers[key]) {
+          map.removeLayer(highlightLayers[key]);
+          highlightLayers[key] = null;
+        }
+      }
+    };
+    
+    window.setUserLocation = function(lat, lng) {
+      if (locationMarker) {
+        map.removeLayer(locationMarker);
+      }
+      var icon = L.divIcon({
+        className: 'user-location-marker',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+      locationMarker = L.marker([lat, lng], { icon: icon }).addTo(map);
+    };
+    
+    window.centerMap = function(lat, lng, zoom) {
+      map.setView([lat, lng], zoom || 10);
+    };
+    
+    window.focusDistrict = function(type, districtNum) {
+      var dataKey = type === 'senate' ? 'tx_senate' : 
+                    type === 'house' ? 'tx_house' : 'us_congress';
+      var geojson = geoJSONData[dataKey];
+      if (!geojson) return;
+      
+      for (var i = 0; i < geojson.features.length; i++) {
+        var feat = geojson.features[i];
+        var distNum = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
+        if (distNum === districtNum) {
+          var layer = L.geoJSON(feat);
+          var bounds = layer.getBounds();
+          map.fitBounds(bounds, { padding: [50, 50] });
+          
+          var colors = layerColors[dataKey];
+          window.clearHighlights();
+          var hl = L.geoJSON(feat, {
+            style: { color: colors.stroke, weight: 5, fillColor: colors.fill, fillOpacity: 0.4, opacity: 1 }
+          });
+          hl.addTo(map);
+          var typeKey = type;
+          highlightLayers[typeKey] = hl;
+          break;
+        }
+      }
+    };
+    
+    window.setAddressDots = function(dots) {
+      for (var i = 0; i < addressDotMarkers.length; i++) {
+        map.removeLayer(addressDotMarkers[i]);
+      }
+      addressDotMarkers = [];
+      addressDotsByCity = {};
+      
+      for (var j = 0; j < dots.length; j++) {
+        var dot = dots[j];
+        var cityKey = dot.lat.toFixed(2) + ',' + dot.lng.toFixed(2);
+        if (!addressDotsByCity[cityKey]) {
+          addressDotsByCity[cityKey] = [];
+        }
+        addressDotsByCity[cityKey].push(dot);
+      }
+      
+      for (var key in addressDotsByCity) {
+        var cluster = addressDotsByCity[key];
+        var first = cluster[0];
+        var icon;
+        if (cluster.length > 1) {
+          icon = L.divIcon({
+            className: 'cluster-badge',
+            html: '<span>' + cluster.length + '</span>',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11]
+          });
+        } else {
+          icon = L.divIcon({
+            className: 'address-dot-marker',
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+          });
+        }
+        var marker = L.marker([first.lat, first.lng], { icon: icon });
+        marker.clusterData = cluster;
+        marker.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          postMessage({
+            type: 'addressDotClick',
+            officials: this.clusterData
+          });
+        });
+        marker.addTo(map);
+        addressDotMarkers.push(marker);
+      }
+    };
+    
+    window.setActiveAddressDot = function(id) {
+      // Optional: highlight active dot
+    };
+    
+    window.receiveMessage = function(message) {
+      try {
+        var data = JSON.parse(message);
+        console.log('[Leaflet] Received message:', data.type);
+        
+        if (data.type === 'toggleLayer') {
+          window.toggleLayer(data.layer, data.visible);
+        } else if (data.type === 'setGeoJSON') {
+          var layerType = data.layerType;
+          var typeKey = layerType === 'tx_senate' ? 'senate' : 
+                        layerType === 'tx_house' ? 'house' : 'congress';
+          geoJSONData[layerType] = data.geojson;
+          loadStatus[layerType].loaded = true;
+          loadStatus[layerType].features = data.geojson.features?.length || 0;
+          if (layers[typeKey]) {
+            map.removeLayer(layers[typeKey]);
+          }
+          layers[typeKey] = createLayer(typeKey, data.geojson, layerColors[layerType]);
+          if (enabledLayers[typeKey]) {
+            layers[typeKey].addTo(map);
+            layers[typeKey].bringToFront();
+          }
+        } else if (data.type === 'SET_USER_LOCATION') {
+          window.setUserLocation(data.lat, data.lng);
+        } else if (data.type === 'CENTER_MAP') {
+          window.centerMap(data.lat, data.lng, data.zoom);
+        } else if (data.type === 'FOCUS_DISTRICT') {
+          window.focusDistrict(data.layer, data.district);
+        } else if (data.type === 'SET_ADDRESS_DOTS') {
+          window.setAddressDots(data.dots || []);
+        } else if (data.type === 'SET_ACTIVE_ADDRESS_DOT') {
+          window.setActiveAddressDot(data.officialId);
+        } else if (data.type === 'CLEAR_SELECTION') {
+          // Clear any selection UI
+        } else if (data.type === 'CLEAR_HIGHLIGHTS') {
+          window.clearHighlights();
+        } else if (data.type === 'HIGHLIGHT_DISTRICTS') {
+          window.highlightDistricts(data.hits || []);
+        }
+      } catch (e) {
+        console.error('[Leaflet] Error processing message:', e);
+      }
+    };
+    
+    window.addEventListener('message', function(e) {
+      if (e.data && typeof e.data === 'string') {
+        window.receiveMessage(e.data);
+      }
+    });
+    
+    document.addEventListener('message', function(e) {
+      window.receiveMessage(e.data);
+    });
+    
+    // Auto-load GeoJSON on page load
+    setTimeout(function() {
+      console.log('[Leaflet] Auto-loading GeoJSON...');
+      postMessage({ type: 'mapReady' });
+      
+      Promise.all([
+        fetchAndSetGeoJSON('tx_senate'),
+        fetchAndSetGeoJSON('tx_house'),
+        fetchAndSetGeoJSON('us_congress')
+      ]).then(function(results) {
+        console.log('[Leaflet] All GeoJSON loaded:', results);
+        postMessage({ type: 'allGeoJSONLoaded' });
+      }).catch(function(err) {
+        console.error('[Leaflet] GeoJSON load error:', err);
+      });
+    }, 100);
+  </script>
+</body>
+</html>`;
+}
+
 function createVacantOfficial(source: DistrictSourceType, district: number): MergedOfficial {
   const chamber = source === "TX_HOUSE" ? "TX House" 
     : source === "TX_SENATE" ? "TX Senate" 
@@ -157,6 +646,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/geojson/us_congress_full", (_req, res) => {
     res.json(usCongressGeoJSONFull);
+  });
+
+  // Serve the map HTML page for iframe embedding
+  app.get("/api/map.html", (_req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    res.send(getMapHtml());
   });
 
   app.get("/api/officials", async (req, res) => {
