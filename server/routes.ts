@@ -293,6 +293,8 @@ function getMapHtml(): string {
     });
     
     window.highlightDistricts = function(hits) {
+      console.log('[Leaflet] highlightDistricts called with', hits.length, 'hits:', JSON.stringify(hits));
+      
       for (var key in highlightLayers) {
         if (highlightLayers[key]) {
           map.removeLayer(highlightLayers[key]);
@@ -303,16 +305,23 @@ function getMapHtml(): string {
       var layerMap = { senate: 'tx_senate', house: 'tx_house', congress: 'us_congress' };
       for (var i = 0; i < hits.length; i++) {
         var hit = hits[i];
+        console.log('[Leaflet] Processing hit:', JSON.stringify(hit));
         var typeKey = hit.type === 'tx_senate' ? 'senate' : 
                       hit.type === 'tx_house' ? 'house' : 'congress';
         var dataKey = layerMap[typeKey];
         var geojson = geoJSONData[dataKey];
-        if (!geojson) continue;
+        if (!geojson) {
+          console.log('[Leaflet] No geojson for', dataKey);
+          continue;
+        }
         
+        console.log('[Leaflet] Searching', geojson.features.length, 'features in', dataKey, 'for district', hit.district);
+        var foundMatch = false;
         for (var j = 0; j < geojson.features.length; j++) {
           var feat = geojson.features[j];
           var distNum = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
           if (distNum === hit.district) {
+            console.log('[Leaflet] Found matching district', distNum, '- adding highlight layer');
             var colors = layerColors[dataKey];
             var highlightLayer = L.geoJSON(feat, {
               style: {
@@ -325,15 +334,21 @@ function getMapHtml(): string {
             });
             highlightLayer.addTo(map);
             highlightLayers[typeKey] = highlightLayer;
+            foundMatch = true;
             break;
           }
+        }
+        if (!foundMatch) {
+          console.log('[Leaflet] No matching district found for', hit.district, 'in', dataKey);
         }
       }
     };
     
     window.clearHighlights = function() {
+      console.log('[Leaflet] clearHighlights called, current layers:', Object.keys(highlightLayers).filter(k => highlightLayers[k]));
       for (var key in highlightLayers) {
         if (highlightLayers[key]) {
+          console.log('[Leaflet] Removing highlight layer:', key);
           map.removeLayer(highlightLayers[key]);
           highlightLayers[key] = null;
         }
@@ -470,8 +485,10 @@ function getMapHtml(): string {
         } else if (data.type === 'CLEAR_SELECTION') {
           // Clear any selection UI
         } else if (data.type === 'CLEAR_HIGHLIGHTS') {
+          console.log('[Leaflet] Received CLEAR_HIGHLIGHTS message');
           window.clearHighlights();
         } else if (data.type === 'HIGHLIGHT_DISTRICTS') {
+          console.log('[Leaflet] Received HIGHLIGHT_DISTRICTS, hits:', data.hits?.length);
           window.highlightDistricts(data.hits || []);
         }
       } catch (e) {

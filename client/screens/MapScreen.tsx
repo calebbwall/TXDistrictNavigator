@@ -1770,9 +1770,13 @@ export default function MapScreen() {
       
       // Highlight the tapped districts on the map
       const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits };
+      console.log('[MapScreen] Sending HIGHLIGHT_DISTRICTS:', JSON.stringify(highlightMsg));
       if (Platform.OS === 'web') {
         if (iframeRef.current?.contentWindow) {
+          console.log('[MapScreen] Posting to iframe contentWindow');
           iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+        } else {
+          console.log('[MapScreen] No iframe contentWindow available');
         }
       } else {
         sendToWebView(highlightMsg);
@@ -2148,7 +2152,7 @@ export default function MapScreen() {
           const data = JSON.parse(event.data);
           console.log('[MapScreen] Window message received:', data.type);
           if ((data.type === "MAP_TAP" || data.type === "mapTap") && Array.isArray(data.hits)) {
-            console.log('[MapScreen] Window MAP_TAP hits:', data.hits.length);
+            console.log('[MapScreen] Window MAP_TAP hits:', data.hits.length, 'raw hits:', JSON.stringify(data.hits));
             handleMapTap(data.hits);
           } else if (data.type === "mapReady") {
             console.log('[MapScreen] Map is ready (from window)!');
