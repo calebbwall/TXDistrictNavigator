@@ -1039,12 +1039,16 @@ const MAP_HTML = `
       currentHighlightLayers = [];
       
       hits.forEach(hit => {
-        const layerType = hit.source === 'TX_HOUSE' ? 'tx_house' : 
-                          hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
+        // Support both native schema (source/districtNumber) and web schema (type/district)
+        const source = hit.source || (hit.type === 'tx_house' ? 'TX_HOUSE' : 
+                                       hit.type === 'tx_senate' ? 'TX_SENATE' : 'US_HOUSE');
+        const layerType = source === 'TX_HOUSE' ? 'tx_house' : 
+                          source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
         const data = geoJSONData[layerType];
         if (!data || !data.features) return;
         
-        const districtNumber = hit.district;
+        // Support both districtNumber (native) and district (web) keys
+        const districtNumber = hit.districtNumber ?? hit.district;
         const feature = data.features.find(f => {
           const districtNum = f.properties.district || 
                              f.properties.TX_HOUSE_DIST_NBR ||
