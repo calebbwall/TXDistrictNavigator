@@ -1,0 +1,146 @@
+Here’s a **copy/paste Replit agent prompt** that fixes both problems you described by **making the web (Replit preview) + native (Expo Go) use the same hit schema and the same color palette**, and by making the **highlight function accept both schemas**.
+
+---
+
+## Replit Prompt: Fix district highlight + fix flipped TX House / US Congress colors
+
+**Goal**
+
+1. In **Expo Go (Android/iOS)**: tapping a district must apply a visible shaded highlight (fill) on the tapped district(s).
+2. In **Replit web preview**: overlay colors must match native (**TX Senate = blue, TX House = red, US Congress = green**).
+3. Standardize the “tap hit” payload so highlight works identically on web + native.
+
+**Root cause (what to fix)**
+
+* **Native (Expo Go)** uses `MAP_HTML` inside `client/screens/MapScreen.tsx`. That HTML sends tap hits like:
+
+  * `{ source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE", districtNumber: number }`
+  * But its `highlightDistricts()` currently reads `hit.district` (wrong key), so **no highlight**.
+* **Web preview** loads `server/routes.ts -> getMapHtml()` which uses a *different* hit schema:
+
+  * `{ type: "tx_house" | "tx_senate" | "us_congress", district: number }`
+  * And its `layerColors` palette doesn’t match native, so **colors look “flipped/wrong”**.
+
+---
+
+### A) Fix native highlight in `client/screens/MapScreen.tsx` (MAP_HTML)
+
+**File:** `client/screens/MapScreen.tsx`
+**Inside the embedded MAP_HTML string**, update the Leaflet function `highlightDistricts(hits)`:
+
+1. Accept both shapes:
+
+* district number key: `hit.districtNumber ?? hit.district`
+* layer identity key: use `hit.source` if present, else use `hit.type`
+
+2. Map the hit to `layerType` correctly:
+
+* If `hit.source`:
+
+  * `TX_HOUSE -> "tx_house"`
+  * `TX_SENATE -> "tx_senate"`
+  * `US_HOUSE -> "us_congress"`
+* Else if `hit.type`:
+
+  * `"tx_house" | "tx_senate" | "us_congress"` already usable
+
+3. Then find the matching feature using the existing property fallbacks (you already do this elsewhere):
+   `f.properties.district || TX_HOUSE_DIST_NBR || TX_SEN_DIST_NBR || TX_US_HOUSE_DIST_NBR || ...`
+
+4. Ensure highlight styling is clearly visible:
+
+* `fillOpacity` around `0.35–0.5`
+* `weight` around `5`
+* Use `colors.stroke` as outline
+* Use `colors.stroke` (or a slightly stronger fill) as fillColor
+
+**Acceptance test (native):**
+
+* In **Expo Go**, tap any district: you should see a shaded polygon highlight immediately.
+
+---
+
+### B) Fix web preview overlay colors in `server/routes.ts` (getMapHtml)
+
+**File:** `server/routes.ts`
+**Function:** `getMapHtml()`
+Update `var layerColors = { ... }` so it matches the native palette:
+
+* `tx_senate`: blue (match `#4A90E2` and low fill opacity)
+* `tx_house`: red (match `#E94B3C`)
+* `us_congress`: green (match `#50C878`)
+
+Use the same feel as native:
+
+* `fillOpacity: 0.15`
+* `weight: 3`
+
+**Acceptance test (web):**
+
+* In Replit preview, Senate overlays look **blue**, House overlays look **red**, Congress overlays look **green**.
+
+---
+
+### C) Make web highlight compatible with native hit schema too (optional but recommended)
+
+Still in `server/routes.ts` inside the `window.highlightDistricts = function(hits)`:
+
+1. Read district number as: `hit.districtNumber ?? hit.district`
+2. Determine layer type as:
+
+* If `hit.source` exists, map to `tx_house/tx_senate/us_congress`
+* Else if `hit.type` exists, use it
+
+3. Then use that layer type to pick the correct geojson collection and style.
+
+This makes highlight robust no matter which side produced the hits.
+
+---
+
+### D) Do not break existing message types
+
+Keep support for both:
+
+* `"MAP_TAP"` and `"mapTap"` inbound
+* `"HIGHLIGHT_DISTRICTS"` and `"CLEAR_HIGHLIGHTS"` inbound
+
+(Your RN side already listens for both `"MAP_TAP"` and `"mapTap"`, so just don’t regress it.)
+
+---
+
+### Deliverables
+
+* Commit the changes.
+* Verify:
+
+  1. **Expo Go:** tap highlight works.
+  2. **Web/Replit preview:** overlay colors match native.
+  3. **No console spam errors** about undefined hit keys.
+
+---
+
+## Next: importing Android contacts into the app (important reality check)
+
+You can absolutely add a contact import flow, but there’s a catch: **Android contact “Notes” are notoriously not exposed reliably through common RN/Expo contact libraries**. The Expo Contacts docs exist, but multiple reports show the **note field coming back empty on Android**. ([Expo Documentation][1])
+
+So the most dependable approach for your use case (single-user app for your dad) is usually one of these:
+
+1. **VCF (vCard) import** (recommended)
+
+* Export contacts on Android to a `.vcf` file (includes notes much more often than API reads).
+* In the app: “Tools → Import Contacts” → pick `.vcf` → parse → map into your app’s “private notes” fields.
+
+2. **Google Contacts API sync**
+
+* If the contacts are Google-synced, you can OAuth and pull contact notes from Google’s side (more setup, but very robust).
+
+If you want the “upload contact data from Android into the app” to be painless and reliable, **VCF import is the quickest win**. After you confirm you’re good with VCF-based import, I’ll give you a Replit prompt that adds:
+
+* a Document Picker
+* a vCard parser
+* a mapping UI (“match by name / phone / choose official”)
+* and writes into your existing private-note storage.
+
+(And yeah: it’s weird that reading notes from Android contacts is this annoying. Reality is a complicated little gremlin.)
+
+[1]: https://docs.expo.dev/versions/latest/sdk/contacts/?utm_source=chatgpt.com "Contacts"
