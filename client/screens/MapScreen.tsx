@@ -1198,6 +1198,11 @@ export default function MapScreen() {
   // Focus district state (for jump-to-district from official cards)
   const [highlightedDistrict, setHighlightedDistrict] = useState<{ source: string; district: number } | null>(null);
   
+  // Toggle highlight state - tracks currently highlighted districts by canonical key
+  // Key format: "layerType:districtNumber" e.g. "tx_house:1", "tx_senate:15"
+  const [highlightedDistrictsSet, setHighlightedDistrictsSet] = useState<Set<string>>(new Set());
+  const DEBUG_HIGHLIGHT = false; // Set to true for debugging highlight toggle
+  
   // Location state
   const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -1764,40 +1769,116 @@ export default function MapScreen() {
     [overlays, sendToWebView]
   );
 
+  // Helper to normalize a hit to canonical format
+  const normalizeHit = useCallback((hit: DistrictHit): { layerType: string; districtNumber: number } => {
+    // Handle source (native schema) or type (web schema)
+    let layerType: string;
+    if (hit.source) {
+      layerType = hit.source === 'TX_HOUSE' ? 'tx_house' : 
+                  hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
+    } else if (hit.type) {
+      layerType = hit.type;
+    } else {
+      layerType = 'unknown';
+    }
+    
+    // Handle districtNumber (native) or district (web)
+    const districtNumber = hit.districtNumber ?? hit.district ?? 0;
+    
+    return { layerType, districtNumber };
+  }, []);
+  
+  // Create canonical key from normalized hit
+  const getCanonicalKey = useCallback((layerType: string, districtNumber: number): string => {
+    return `${layerType}:${districtNumber}`;
+  }, []);
+  
+  // Convert normalized hits back to hit format for messaging
+  const normalizedToHit = useCallback((layerType: string, districtNumber: number): DistrictHit => {
+    return { type: layerType, district: districtNumber };
+  }, []);
+
   const handleMapTap = useCallback(
     async (hits: DistrictHit[]) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      console.log('[MapScreen] handleMapTap with', hits.length, 'hits:', JSON.stringify(hits));
+      if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] handleMapTap with', hits.length, 'hits');
       
       if (hits.length === 0) return;
       
-      // Highlight the tapped districts on the map
-      const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits };
-      console.log('[MapScreen] Sending HIGHLIGHT_DISTRICTS:', JSON.stringify(highlightMsg));
-      if (Platform.OS === 'web') {
-        if (iframeRef.current?.contentWindow) {
-          console.log('[MapScreen] Posting to iframe contentWindow');
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+      // Toggle logic: for each incoming hit, add if not present, remove if present
+      const newSet = new Set(highlightedDistrictsSet);
+      const toggledKeys: string[] = [];
+      
+      for (const hit of hits) {
+        const { layerType, districtNumber } = normalizeHit(hit);
+        const key = getCanonicalKey(layerType, districtNumber);
+        
+        if (newSet.has(key)) {
+          // Already highlighted - remove it
+          newSet.delete(key);
+          if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Removing:', key);
+          toggledKeys.push(`-${key}`);
         } else {
-          console.log('[MapScreen] No iframe contentWindow available');
+          // Not highlighted - add it
+          newSet.add(key);
+          if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Adding:', key);
+          toggledKeys.push(`+${key}`);
         }
-      } else {
-        sendToWebView(highlightMsg);
       }
       
-      const officials = await fetchOfficialsByDistricts(hits);
-      console.log('[MapScreen] Fetched', officials.length, 'officials');
+      if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Actions:', toggledKeys.join(', '), '| Total:', newSet.size);
       
-      setSelectedDistrict({
-        hits,
-        officials,
-      });
-      setShowResultsPanel(true);
+      // Update state
+      setHighlightedDistrictsSet(newSet);
+      
+      // Send message to WebView to update highlights
+      if (newSet.size === 0) {
+        // No highlights - send clear message
+        const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
+        if (Platform.OS === 'web') {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+          }
+        } else {
+          sendToWebView(clearMsg);
+        }
+        // Hide results panel when no highlights
+        setShowResultsPanel(false);
+        setSelectedDistrict(null);
+      } else {
+        // Convert Set back to hits array for highlighting
+        const highlightHits: DistrictHit[] = Array.from(newSet).map(key => {
+          const [layerType, districtStr] = key.split(':');
+          return normalizedToHit(layerType, parseInt(districtStr, 10));
+        });
+        
+        const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: highlightHits };
+        if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Sending HIGHLIGHT_DISTRICTS:', highlightHits.length, 'districts');
+        
+        if (Platform.OS === 'web') {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+          }
+        } else {
+          sendToWebView(highlightMsg);
+        }
+        
+        // Fetch officials for all highlighted districts
+        const officials = await fetchOfficialsByDistricts(highlightHits);
+        if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Fetched', officials.length, 'officials');
+        
+        setSelectedDistrict({
+          hits: highlightHits,
+          officials,
+        });
+        setShowResultsPanel(true);
+      }
+      
       // For tap-to-search, no stored polygon needed
       setStoredPolygon(null);
     },
-    [fetchOfficialsByDistricts, sendToWebView]
+    [fetchOfficialsByDistricts, sendToWebView, highlightedDistrictsSet, normalizeHit, getCanonicalKey, normalizedToHit, DEBUG_HIGHLIGHT]
   );
 
   const handleOfficialCardPress = useCallback((official: Official) => {
