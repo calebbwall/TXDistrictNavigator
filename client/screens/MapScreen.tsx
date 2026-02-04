@@ -40,6 +40,7 @@ import {
   type Official,
   type DistrictType,
   type DistrictHit,
+  type SourceType,
 } from "@/lib/officials";
 import type { MapStackParamList } from "@/navigation/MapStackNavigator";
 import { useDebugFlags, BUILD_MARKER } from "@/hooks/useDebugFlags";
@@ -1770,20 +1771,23 @@ export default function MapScreen() {
   );
 
   // Helper to normalize a hit to canonical format
-  const normalizeHit = useCallback((hit: DistrictHit): { layerType: string; districtNumber: number } => {
+  // Accepts either native schema (source/districtNumber) or web schema (type/district)
+  const normalizeHit = useCallback((hit: DistrictHit | { type?: string; district?: number }): { layerType: string; districtNumber: number } => {
     // Handle source (native schema) or type (web schema)
     let layerType: string;
-    if (hit.source) {
-      layerType = hit.source === 'TX_HOUSE' ? 'tx_house' : 
-                  hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
-    } else if (hit.type) {
-      layerType = hit.type;
+    const rawHit = hit as { source?: string; districtNumber?: number; type?: string; district?: number };
+    
+    if (rawHit.source) {
+      layerType = rawHit.source === 'TX_HOUSE' ? 'tx_house' : 
+                  rawHit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
+    } else if (rawHit.type) {
+      layerType = rawHit.type;
     } else {
       layerType = 'unknown';
     }
     
     // Handle districtNumber (native) or district (web)
-    const districtNumber = hit.districtNumber ?? hit.district ?? 0;
+    const districtNumber = rawHit.districtNumber ?? rawHit.district ?? 0;
     
     return { layerType, districtNumber };
   }, []);
@@ -1793,8 +1797,18 @@ export default function MapScreen() {
     return `${layerType}:${districtNumber}`;
   }, []);
   
-  // Convert normalized hits back to hit format for messaging
-  const normalizedToHit = useCallback((layerType: string, districtNumber: number): DistrictHit => {
+  // Convert canonical key back to DistrictHit format for API calls
+  const keyToDistrictHit = useCallback((key: string): DistrictHit => {
+    const [layerType, districtStr] = key.split(':');
+    const districtNumber = parseInt(districtStr, 10);
+    // Convert layerType back to source format
+    const source = layerType === 'tx_house' ? 'TX_HOUSE' : 
+                   layerType === 'tx_senate' ? 'TX_SENATE' : 'US_HOUSE';
+    return { source: source as SourceType, districtNumber };
+  }, []);
+  
+  // Convert normalized hits back to web schema for messaging
+  const normalizedToWebHit = useCallback((layerType: string, districtNumber: number): { type: string; district: number } => {
     return { type: layerType, district: districtNumber };
   }, []);
 
@@ -1847,14 +1861,14 @@ export default function MapScreen() {
         setShowResultsPanel(false);
         setSelectedDistrict(null);
       } else {
-        // Convert Set back to hits array for highlighting
-        const highlightHits: DistrictHit[] = Array.from(newSet).map(key => {
+        // Convert Set to web schema hits for WebView messaging
+        const webHits = Array.from(newSet).map(key => {
           const [layerType, districtStr] = key.split(':');
-          return normalizedToHit(layerType, parseInt(districtStr, 10));
+          return normalizedToWebHit(layerType, parseInt(districtStr, 10));
         });
         
-        const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: highlightHits };
-        if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Sending HIGHLIGHT_DISTRICTS:', highlightHits.length, 'districts');
+        const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
+        if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Sending HIGHLIGHT_DISTRICTS:', webHits.length, 'districts');
         
         if (Platform.OS === 'web') {
           if (iframeRef.current?.contentWindow) {
@@ -1864,12 +1878,15 @@ export default function MapScreen() {
           sendToWebView(highlightMsg);
         }
         
+        // Convert Set to DistrictHit format for API calls
+        const districtHits: DistrictHit[] = Array.from(newSet).map(key => keyToDistrictHit(key));
+        
         // Fetch officials for all highlighted districts
-        const officials = await fetchOfficialsByDistricts(highlightHits);
+        const officials = await fetchOfficialsByDistricts(districtHits);
         if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Fetched', officials.length, 'officials');
         
         setSelectedDistrict({
-          hits: highlightHits,
+          hits: districtHits,
           officials,
         });
         setShowResultsPanel(true);
@@ -1878,7 +1895,7 @@ export default function MapScreen() {
       // For tap-to-search, no stored polygon needed
       setStoredPolygon(null);
     },
-    [fetchOfficialsByDistricts, sendToWebView, highlightedDistrictsSet, normalizeHit, getCanonicalKey, normalizedToHit, DEBUG_HIGHLIGHT]
+    [fetchOfficialsByDistricts, sendToWebView, highlightedDistrictsSet, normalizeHit, getCanonicalKey, keyToDistrictHit, normalizedToWebHit, DEBUG_HIGHLIGHT]
   );
 
   const handleOfficialCardPress = useCallback((official: Official) => {
@@ -2123,10 +2140,14 @@ export default function MapScreen() {
   }, [sendToWebView]);
 
   const handleCloseDistrictCard = useCallback(() => {
-    // Only hide the results panel, keep data for restore
+    // Hide the results panel and clear all state
     setShowResultsPanel(false);
+    setSelectedDistrict(null);
     
-    // Clear district highlights when panel is closed
+    // Clear the highlighted districts set (for toggle feature)
+    setHighlightedDistrictsSet(new Set());
+    
+    // Clear district highlights on the map
     const clearHighlightsMsg = { type: 'CLEAR_HIGHLIGHTS' };
     if (Platform.OS === 'web') {
       if (iframeRef.current?.contentWindow) {
