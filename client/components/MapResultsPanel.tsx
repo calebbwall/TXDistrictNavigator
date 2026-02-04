@@ -172,12 +172,15 @@ export function MapResultsPanel({
     [theme]
   );
 
+  // Ensure minimum bottom margin even if insets.bottom is 0
+  const bottomMargin = Math.max(insets.bottom, Spacing.lg) + Spacing.md;
+  
   return (
     <Animated.View
       style={[
         styles.container,
         {
-          bottom: insets.bottom + Spacing.md,
+          bottom: bottomMargin,
           backgroundColor: theme.backgroundDefault,
         },
         Shadows.lg,
