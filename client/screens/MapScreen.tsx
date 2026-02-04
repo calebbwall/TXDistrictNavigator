@@ -1203,6 +1203,7 @@ export default function MapScreen() {
   // Key format: "layerType:districtNumber" e.g. "tx_house:1", "tx_senate:15"
   const [highlightedDistrictsSet, setHighlightedDistrictsSet] = useState<Set<string>>(new Set());
   const DEBUG_HIGHLIGHT = false; // Set to true for debugging highlight toggle
+  const DEBUG_MAP = false; // Set to true for debugging overlay/map state changes
   
   // Location state
   const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
@@ -1755,6 +1756,31 @@ export default function MapScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const newValue = !overlays[type];
       const newOverlays = { ...overlays, [type]: newValue };
+      
+      if (DEBUG_MAP) {
+        console.log(`[MapScreen] Overlay change: ${type} ${overlays[type]} -> ${newValue}`);
+        console.log(`[MapScreen] Overlays before:`, overlays, `after:`, newOverlays);
+      }
+      
+      // Clear all highlights when overlay changes to avoid stale selections
+      if (highlightedDistrictsSet.size > 0) {
+        if (DEBUG_MAP) {
+          console.log(`[MapScreen] Cleared ${highlightedDistrictsSet.size} highlights due to overlay change`);
+        }
+        setHighlightedDistrictsSet(new Set());
+        setSelectedDistrict(null);
+        
+        // Send CLEAR_HIGHLIGHTS to WebView
+        const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
+        if (Platform.OS === 'web') {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+          }
+        } else {
+          sendToWebView(clearMsg);
+        }
+      }
+      
       setOverlays(newOverlays);
       await saveOverlayPreferences(newOverlays);
       
@@ -1767,7 +1793,7 @@ export default function MapScreen() {
         sendToWebView(msg);
       }
     },
-    [overlays, sendToWebView]
+    [overlays, sendToWebView, highlightedDistrictsSet, DEBUG_MAP]
   );
 
   // Helper to normalize a hit to canonical format
