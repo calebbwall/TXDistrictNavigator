@@ -1199,9 +1199,14 @@ export default function MapScreen() {
   // Focus district state (for jump-to-district from official cards)
   const [highlightedDistrict, setHighlightedDistrict] = useState<{ source: string; district: number } | null>(null);
   
-  // Toggle highlight state - tracks currently highlighted districts by canonical key
-  // Key format: "layerType:districtNumber" e.g. "tx_house:1", "tx_senate:15"
-  const [highlightedDistrictsSet, setHighlightedDistrictsSet] = useState<Set<string>>(new Set());
+  // Single-select per overlay: max 1 district highlighted per layer
+  // Keys are overlay types, values are district numbers or null if no selection
+  type HighlightsByLayer = { tx_house: number | null; tx_senate: number | null; us_congress: number | null };
+  const [highlightsByLayer, setHighlightsByLayer] = useState<HighlightsByLayer>({
+    tx_house: null,
+    tx_senate: null,
+    us_congress: null,
+  });
   const DEBUG_HIGHLIGHT = false; // Set to true for debugging highlight toggle
   const DEBUG_MAP = false; // Set to true for debugging overlay/map state changes
   
@@ -1762,13 +1767,19 @@ export default function MapScreen() {
         console.log(`[MapScreen] Overlays before:`, overlays, `after:`, newOverlays);
       }
       
+      // Check if any highlights exist
+      const hasHighlights = highlightsByLayer.tx_house !== null || 
+                           highlightsByLayer.tx_senate !== null || 
+                           highlightsByLayer.us_congress !== null;
+      
       // Clear all highlights when overlay changes to avoid stale selections
-      if (highlightedDistrictsSet.size > 0) {
+      if (hasHighlights) {
         if (DEBUG_MAP) {
-          console.log(`[MapScreen] Cleared ${highlightedDistrictsSet.size} highlights due to overlay change`);
+          console.log(`[MapScreen] Cleared highlights due to overlay change:`, highlightsByLayer);
         }
-        setHighlightedDistrictsSet(new Set());
+        setHighlightsByLayer({ tx_house: null, tx_senate: null, us_congress: null });
         setSelectedDistrict(null);
+        setShowResultsPanel(false);
         
         // Send CLEAR_HIGHLIGHTS to WebView
         const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
@@ -1793,7 +1804,7 @@ export default function MapScreen() {
         sendToWebView(msg);
       }
     },
-    [overlays, sendToWebView, highlightedDistrictsSet, DEBUG_MAP]
+    [overlays, sendToWebView, highlightsByLayer, DEBUG_MAP]
   );
 
   // Helper to normalize a hit to canonical format
@@ -1818,62 +1829,96 @@ export default function MapScreen() {
     return { layerType, districtNumber };
   }, []);
   
-  // Create canonical key from normalized hit
-  const getCanonicalKey = useCallback((layerType: string, districtNumber: number): string => {
-    return `${layerType}:${districtNumber}`;
+
+  // Helper to convert highlightsByLayer to array of hits for API/WebView
+  const highlightsToHits = useCallback((highlights: HighlightsByLayer): DistrictHit[] => {
+    const hits: DistrictHit[] = [];
+    if (highlights.tx_house !== null) {
+      hits.push({ source: 'TX_HOUSE' as SourceType, districtNumber: highlights.tx_house });
+    }
+    if (highlights.tx_senate !== null) {
+      hits.push({ source: 'TX_SENATE' as SourceType, districtNumber: highlights.tx_senate });
+    }
+    if (highlights.us_congress !== null) {
+      hits.push({ source: 'US_HOUSE' as SourceType, districtNumber: highlights.us_congress });
+    }
+    return hits;
   }, []);
   
-  // Convert canonical key back to DistrictHit format for API calls
-  const keyToDistrictHit = useCallback((key: string): DistrictHit => {
-    const [layerType, districtStr] = key.split(':');
-    const districtNumber = parseInt(districtStr, 10);
-    // Convert layerType back to source format
-    const source = layerType === 'tx_house' ? 'TX_HOUSE' : 
-                   layerType === 'tx_senate' ? 'TX_SENATE' : 'US_HOUSE';
-    return { source: source as SourceType, districtNumber };
-  }, []);
-  
-  // Convert normalized hits back to web schema for messaging
-  const normalizedToWebHit = useCallback((layerType: string, districtNumber: number): { type: string; district: number } => {
-    return { type: layerType, district: districtNumber };
+  // Helper to convert highlightsByLayer to web schema for WebView messaging
+  const highlightsToWebHits = useCallback((highlights: HighlightsByLayer): { type: string; district: number }[] => {
+    const hits: { type: string; district: number }[] = [];
+    if (highlights.tx_house !== null) {
+      hits.push({ type: 'tx_house', district: highlights.tx_house });
+    }
+    if (highlights.tx_senate !== null) {
+      hits.push({ type: 'tx_senate', district: highlights.tx_senate });
+    }
+    if (highlights.us_congress !== null) {
+      hits.push({ type: 'us_congress', district: highlights.us_congress });
+    }
+    return hits;
   }, []);
 
   const handleMapTap = useCallback(
     async (hits: DistrictHit[]) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] handleMapTap with', hits.length, 'hits');
+      if (DEBUG_MAP) console.log('[MAP_TAP] handleMapTap with', hits.length, 'hits');
       
-      if (hits.length === 0) return;
+      // Tap on empty space - clear all highlights
+      if (hits.length === 0) {
+        if (DEBUG_MAP) console.log('[MAP_TAP] Empty tap, clearing all highlights');
+        setHighlightsByLayer({ tx_house: null, tx_senate: null, us_congress: null });
+        setSelectedDistrict(null);
+        setShowResultsPanel(false);
+        
+        const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
+        if (Platform.OS === 'web') {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+          }
+        } else {
+          sendToWebView(clearMsg);
+        }
+        setStoredPolygon(null);
+        return;
+      }
       
-      // Toggle logic: for each incoming hit, add if not present, remove if present
-      const newSet = new Set(highlightedDistrictsSet);
-      const toggledKeys: string[] = [];
+      // Single-select per overlay: process each hit
+      const newHighlights = { ...highlightsByLayer };
       
       for (const hit of hits) {
         const { layerType, districtNumber } = normalizeHit(hit);
-        const key = getCanonicalKey(layerType, districtNumber);
+        const overlayKey = layerType as keyof HighlightsByLayer;
         
-        if (newSet.has(key)) {
-          // Already highlighted - remove it
-          newSet.delete(key);
-          if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Removing:', key);
-          toggledKeys.push(`-${key}`);
+        if (DEBUG_MAP) {
+          console.log('[MAP_TAP] Normalized hit:', { layerType, districtNumber });
+          console.log('[MAP_TAP] Previous selection for', overlayKey, ':', highlightsByLayer[overlayKey]);
+        }
+        
+        if (highlightsByLayer[overlayKey] === districtNumber) {
+          // Same district tapped again - deselect
+          newHighlights[overlayKey] = null;
+          if (DEBUG_MAP) console.log('[MAP_TAP] Deselecting', overlayKey, districtNumber);
         } else {
-          // Not highlighted - add it
-          newSet.add(key);
-          if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Adding:', key);
-          toggledKeys.push(`+${key}`);
+          // Different district or first selection - select (replaces any previous)
+          newHighlights[overlayKey] = districtNumber;
+          if (DEBUG_MAP) console.log('[MAP_TAP] Selecting', overlayKey, districtNumber);
         }
       }
       
-      if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Actions:', toggledKeys.join(', '), '| Total:', newSet.size);
+      if (DEBUG_MAP) console.log('[MAP_TAP] New selection map:', newHighlights);
       
       // Update state
-      setHighlightedDistrictsSet(newSet);
+      setHighlightsByLayer(newHighlights);
       
-      // Send message to WebView to update highlights
-      if (newSet.size === 0) {
+      // Check if any highlights remain
+      const hasHighlights = newHighlights.tx_house !== null || 
+                           newHighlights.tx_senate !== null || 
+                           newHighlights.us_congress !== null;
+      
+      if (!hasHighlights) {
         // No highlights - send clear message
         const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
         if (Platform.OS === 'web') {
@@ -1883,18 +1928,14 @@ export default function MapScreen() {
         } else {
           sendToWebView(clearMsg);
         }
-        // Hide results panel when no highlights
         setShowResultsPanel(false);
         setSelectedDistrict(null);
       } else {
-        // Convert Set to web schema hits for WebView messaging
-        const webHits = Array.from(newSet).map(key => {
-          const [layerType, districtStr] = key.split(':');
-          return normalizedToWebHit(layerType, parseInt(districtStr, 10));
-        });
+        // Convert to web schema hits for WebView messaging
+        const webHits = highlightsToWebHits(newHighlights);
         
         const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
-        if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Sending HIGHLIGHT_DISTRICTS:', webHits.length, 'districts');
+        if (DEBUG_MAP) console.log('[MAP_TAP] Sending HIGHLIGHT_DISTRICTS:', webHits);
         
         if (Platform.OS === 'web') {
           if (iframeRef.current?.contentWindow) {
@@ -1904,12 +1945,12 @@ export default function MapScreen() {
           sendToWebView(highlightMsg);
         }
         
-        // Convert Set to DistrictHit format for API calls
-        const districtHits: DistrictHit[] = Array.from(newSet).map(key => keyToDistrictHit(key));
+        // Convert to DistrictHit format for API calls
+        const districtHits = highlightsToHits(newHighlights);
         
         // Fetch officials for all highlighted districts
         const officials = await fetchOfficialsByDistricts(districtHits);
-        if (DEBUG_HIGHLIGHT) console.log('[TOGGLE] Fetched', officials.length, 'officials');
+        if (DEBUG_MAP) console.log('[MAP_TAP] Fetched', officials.length, 'officials');
         
         setSelectedDistrict({
           hits: districtHits,
@@ -1921,7 +1962,7 @@ export default function MapScreen() {
       // For tap-to-search, no stored polygon needed
       setStoredPolygon(null);
     },
-    [fetchOfficialsByDistricts, sendToWebView, highlightedDistrictsSet, normalizeHit, getCanonicalKey, keyToDistrictHit, normalizedToWebHit, DEBUG_HIGHLIGHT]
+    [fetchOfficialsByDistricts, sendToWebView, highlightsByLayer, normalizeHit, highlightsToHits, highlightsToWebHits, DEBUG_MAP]
   );
 
   const handleOfficialCardPress = useCallback((official: Official) => {
@@ -2170,8 +2211,8 @@ export default function MapScreen() {
     setShowResultsPanel(false);
     setSelectedDistrict(null);
     
-    // Clear the highlighted districts set (for toggle feature)
-    setHighlightedDistrictsSet(new Set());
+    // Clear all highlights (single-select per overlay)
+    setHighlightsByLayer({ tx_house: null, tx_senate: null, us_congress: null });
     
     // Clear district highlights on the map
     const clearHighlightsMsg = { type: 'CLEAR_HIGHLIGHTS' };

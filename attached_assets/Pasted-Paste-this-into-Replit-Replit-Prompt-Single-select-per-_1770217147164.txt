@@ -1,0 +1,55 @@
+Paste this into Replit:
+
+⸻
+
+Replit Prompt: Single-select per overlay + clear previous highlight on new tap
+
+Update district highlighting so it behaves like single-select per overlay layer.
+
+Target behavior
+	1.	When the user taps a district in a given overlay (TX House / TX Senate / US Congress), that district becomes highlighted.
+	2.	If the user then taps a different district in the same overlay, the previously highlighted district for that overlay must unhighlight automatically.
+	3.	At most one district per overlay can be highlighted at any time:
+	•	max 1 TX House highlight
+	•	max 1 TX Senate highlight
+	•	max 1 US Congress highlight
+	4.	Tapping empty map space (no district hit) should clear all highlights (or at minimum do nothing if that’s safer—choose the best UX and implement consistently on web + native).
+
+Implementation details (must-do)
+	1.	Canonical hit normalization:
+	•	Convert any hit payload into { layerType, districtNumber } where layerType ∈ tx_house, tx_senate, us_congress and districtNumber is a number.
+	•	Support both schemas:
+	•	districtNumber ?? district
+	•	source mapping: TX_HOUSE→tx_house, TX_SENATE→tx_senate, US_HOUSE→us_congress
+	•	type mapping already in canonical form
+	2.	Store highlight state as a map/dictionary keyed by overlay, e.g.:
+	•	highlightedByLayer = { tx_house: number|null, tx_senate: number|null, us_congress: number|null }
+	•	or equivalent structure (not a Set of many keys).
+	3.	On a valid district tap:
+	•	Update only that overlay’s selected district:
+	•	If the same district is tapped again, deselect it (set to null) OR keep it selected (choose one and be consistent; preferred: tap again deselects).
+	•	If a different district is tapped in that overlay, replace the prior value.
+	•	Then send a single redraw message to the map: either CLEAR_HIGHLIGHTS or HIGHLIGHT_DISTRICTS with up to 3 hits (one per overlay).
+	4.	Map-side rendering:
+	•	Ensure highlightDistricts(hits) always clears old highlight layers before applying new ones.
+	•	Ensure highlight is visible in Expo Go (fillOpacity/weight).
+	5.	Apply to both environments:
+	•	Native: client/screens/MapScreen.tsx embedded MAP_HTML
+	•	Web preview: server/routes.ts getMapHtml() highlight logic (if present)
+	6.	Add debug logging behind DEBUG_MAP:
+	•	normalized tap hit
+	•	previous selection for that overlay
+	•	new selection map
+	•	final hits list sent to highlight function
+
+Acceptance tests
+	•	Tap TX House district 10 → highlights. Tap TX House district 11 → only 11 is highlighted (10 unhighlights).
+	•	Tap TX Senate district 5 → Senate highlight appears while House highlight remains (since different overlay).
+	•	Tap US Congress district 24 → Congress highlight appears; still only one per overlay.
+	•	Tap the same district again → it deselects (no highlight for that overlay).
+	•	Tap outside any district → clears all highlights (or no-op if you implement that instead; document which you chose).
+	•	Works identically in Expo Go and Replit preview.
+
+Deliver as a clean commit with minimal refactor.
+
+⸻
