@@ -1959,8 +1959,7 @@ export default function MapScreen() {
         setShowResultsPanel(true);
       }
       
-      // For tap-to-search, no stored polygon needed
-      setStoredPolygon(null);
+      // Note: Don't clear storedPolygon on tap - let it persist so user can restore polygon results
     },
     [fetchOfficialsByDistricts, sendToWebView, highlightsByLayer, normalizeHit, highlightsToHits, highlightsToWebHits, DEBUG_MAP]
   );
@@ -2566,21 +2565,23 @@ export default function MapScreen() {
         </View>
       ) : null}
       
-      {/* Restore results chip - show when polygon exists but panel is hidden */}
-      {storedPolygon && !showResultsPanel && selectedDistrict ? (
+      {/* Restore results chip - show when there's a stored polygon AND panel is hidden */}
+      {storedPolygon && storedPolygon.officials.length > 0 && !showResultsPanel ? (
         <Pressable
-          onPress={() => setShowResultsPanel(true)}
+          onPress={handleRestorePolygonResults}
           style={[
             styles.restoreChip,
             {
-              top: headerHeight + Spacing.sm + 156,
+              top: headerHeight + Spacing.sm + 52, // Below locate button
               backgroundColor: theme.primary,
             },
             Shadows.md,
           ]}
         >
-          <Feather name="refresh-cw" size={14} color="#FFFFFF" />
-          <ThemedText style={styles.restoreChipText}>Restore</ThemedText>
+          <Feather name="map-pin" size={14} color="#FFFFFF" />
+          <ThemedText style={styles.restoreChipText}>
+            {storedPolygon.officials.length} Officials
+          </ThemedText>
         </Pressable>
       ) : null}
 
@@ -2812,15 +2813,15 @@ const styles = StyleSheet.create({
   },
   restoreChip: {
     position: "absolute",
-    right: Spacing.lg,
+    left: Spacing.lg,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.full,
     gap: 4,
-    zIndex: 1000,
-    elevation: 100,
+    zIndex: 2000,
+    elevation: 200,
   },
   restoreChipText: {
     color: "#FFFFFF",
