@@ -14,7 +14,7 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 
 ### UI/UX Decisions
 - **Color Scheme**: Uses Texas-themed colors with specific hues for parties and district overlays (Senate, House, Congress).
-- **Interactive Map**: Features a WebView-based Leaflet map with tappable GeoJSON polygon overlays for Texas Senate, House, and US Congress districts, including color-coded layers and toggle controls.
+- **Interactive Map**: Features a WebView-based Leaflet map with tappable GeoJSON polygon overlays for Texas Senate, House, and US Congress districts, including color-coded layers and toggle controls. Tap-to-toggle highlighting: first tap highlights a district (darker shading), second tap on the same district removes the highlight. Multi-select supported.
 - **Draw-to-Search**: Enables continuous freehand polygon drawing on the map for spatial searches, with real-time polyline preview and haptic feedback.
 - **Offline-First**: Implements network detection, a cache-first loading strategy, and an `OfflineBanner` component.
 - **Vacancy Display**: Vacant seats are clearly indicated with distinct styling and labels.
