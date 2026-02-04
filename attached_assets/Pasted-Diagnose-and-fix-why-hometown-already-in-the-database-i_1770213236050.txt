@@ -1,0 +1,38 @@
+Diagnose and fix why “hometown” (already in the database) is not auto-populating in the currently installed APK, and implement a safe non-destructive data fill.
+
+Assumptions from user: The hometown exists in the database now, but dad’s app doesn’t show it (or doesn’t populate it).
+
+Goals
+	1.	Ensure the API response for officials includes a hometown field (or the correct existing field name).
+	2.	Ensure the client reads that field and displays it in the official card/detail, and uses it to auto-fill the editable hometown field.
+	3.	Do not overwrite any manually-entered hometown already saved on the client. Only auto-fill if the local value is blank/null.
+
+Steps
+A) Backend/API verification
+	•	Find the endpoint the app uses to fetch officials.
+	•	Confirm if hometown exists in the returned JSON.
+	•	If missing, update the server query/serializer to include it.
+	•	Add a temporary GET /health/data-shape debug route (or server log) that prints one sample official including hometown so we can confirm payload shape without guessing.
+
+B) Client mapping and display
+	•	Locate where officials JSON is mapped into the app model/state.
+	•	Ensure official.hometown is being saved into state and passed through to the components.
+	•	Update UI components to render hometown (where appropriate).
+
+C) Non-destructive autofill logic
+	•	Wherever the “editable hometown field” lives, apply this rule:
+	•	if localHometown is empty AND official.hometown exists → set localHometown = official.hometown
+	•	else do nothing
+	•	Apply this once on load (avoid infinite loops).
+
+D) Make it reach dad’s installed app
+	•	Check if the project is configured with expo-updates (Expo Updates) and that the app was built with it enabled.
+	•	If enabled: provide the exact command(s) to publish an OTA update so dad’s installed APK receives the hometown fix without reinstall.
+	•	If not enabled: explicitly state that an OTA update is not possible and a rebuild/reinstall is required, and provide the minimal rebuild steps.
+
+Acceptance tests
+	•	Fetch officials: confirm hometown appears in JSON payload.
+	•	In app: official shows hometown.
+	•	If user manually edited hometown previously, it is NOT overwritten.
+	•	If hometown was blank locally, it autofills from the API.
+	•	Confirm whether OTA update is possible; if possible, list the publish steps; if not, list rebuild steps.
