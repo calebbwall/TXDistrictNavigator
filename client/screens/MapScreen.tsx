@@ -2059,12 +2059,29 @@ export default function MapScreen() {
       setStoredPolygon({ geometry, hits, officials });
       setSelectedDistrict({ hits, officials });
       setShowResultsPanel(true);
+      
+      // Highlight ALL districts in the polygon (multi-select for draw mode)
+      const webHits = hits.map((hit: { source: string; districtNumber: number }) => ({
+        type: hit.source === 'TX_HOUSE' ? 'tx_house' : 
+              hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress',
+        district: hit.districtNumber,
+      }));
+      const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
+      console.log('[MapScreen] Highlighting', webHits.length, 'districts from polygon');
+      
+      if (Platform.OS === 'web') {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+        }
+      } else {
+        sendToWebView(highlightMsg);
+      }
     } catch (error) {
       console.error('[MapScreen] Draw search error:', error);
     } finally {
       setDrawLoading(false);
     }
-  }, [overlays, fetchOfficialsByDistricts]);
+  }, [overlays, fetchOfficialsByDistricts, sendToWebView]);
 
   // Location handlers
   const handleLocateMe = useCallback(async () => {
@@ -2233,8 +2250,24 @@ export default function MapScreen() {
         officials: storedPolygon.officials,
       });
       setShowResultsPanel(true);
+      
+      // Re-highlight all districts from the stored polygon
+      const webHits = storedPolygon.hits.map((hit: { source: string; districtNumber: number }) => ({
+        type: hit.source === 'TX_HOUSE' ? 'tx_house' : 
+              hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress',
+        district: hit.districtNumber,
+      }));
+      const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
+      
+      if (Platform.OS === 'web') {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+        }
+      } else {
+        sendToWebView(highlightMsg);
+      }
     }
-  }, [storedPolygon]);
+  }, [storedPolygon, sendToWebView]);
 
   const handleLayerButtonPressIn = () => {
     layerButtonScale.value = withSpring(0.9, springConfig);
