@@ -247,6 +247,14 @@ export default function OfficialProfileScreen() {
     if (official) {
       const notes = await getPrivateNotes(official.id);
       if (notes) {
+        // Non-destructive auto-fill: if local personalAddress is empty but server has one, use server's
+        const localAddressEmpty = !notes.personalAddress || notes.personalAddress.trim() === '';
+        const serverAddress = official.privateNotes?.personalAddress;
+        const serverHasAddress = serverAddress && serverAddress.trim() !== '';
+        if (localAddressEmpty && serverHasAddress) {
+          console.log('[OfficialProfile] Auto-filling personalAddress from server:', serverAddress);
+          notes.personalAddress = serverAddress;
+        }
         setPrivateNotes(notes);
       } else if (official.privateNotes) {
         // Fallback to server data when no local data exists (e.g., hometown auto-fill)
