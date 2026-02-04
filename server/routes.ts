@@ -77,7 +77,7 @@ function getMapHtml(): string {
     }).addTo(map);
     
     var layers = { senate: null, house: null, congress: null };
-    var highlightLayers = { senate: null, house: null, congress: null };
+    var highlightLayers = []; // Array of all highlight layers for multi-select support
     var geoJSONData = { tx_senate: null, tx_house: null, us_congress: null };
     var enabledLayers = { senate: true, house: true, congress: false };
     var locationMarker = null;
@@ -293,37 +293,38 @@ function getMapHtml(): string {
     });
     
     window.highlightDistricts = function(hits) {
-      console.log('[Leaflet] highlightDistricts called with', hits.length, 'hits:', JSON.stringify(hits));
+      console.log('[Leaflet] highlightDistricts called with', hits.length, 'hits');
       
-      for (var key in highlightLayers) {
-        if (highlightLayers[key]) {
-          map.removeLayer(highlightLayers[key]);
-          highlightLayers[key] = null;
-        }
+      // Clear all existing highlight layers
+      for (var k = 0; k < highlightLayers.length; k++) {
+        map.removeLayer(highlightLayers[k]);
       }
+      highlightLayers = [];
       
       var layerMap = { senate: 'tx_senate', house: 'tx_house', congress: 'us_congress' };
       for (var i = 0; i < hits.length; i++) {
         var hit = hits[i];
-        console.log('[Leaflet] Processing hit:', JSON.stringify(hit));
-        var typeKey = hit.type === 'tx_senate' ? 'senate' : 
-                      hit.type === 'tx_house' ? 'house' : 'congress';
-        var dataKey = layerMap[typeKey];
-        var geojson = geoJSONData[dataKey];
-        if (!geojson) {
-          console.log('[Leaflet] No geojson for', dataKey);
-          continue;
+        // Support both districtNumber (native) and district (web) keys
+        var districtNumber = hit.districtNumber !== undefined ? hit.districtNumber : hit.district;
+        // Support both source (native) and type (web) keys
+        var layerType = hit.type;
+        if (hit.source) {
+          layerType = hit.source === 'TX_HOUSE' ? 'tx_house' : 
+                      hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
         }
         
-        console.log('[Leaflet] Searching', geojson.features.length, 'features in', dataKey, 'for district', hit.district);
-        var foundMatch = false;
+        var typeKey = layerType === 'tx_senate' ? 'senate' : 
+                      layerType === 'tx_house' ? 'house' : 'congress';
+        var dataKey = layerMap[typeKey];
+        var geojson = geoJSONData[dataKey];
+        if (!geojson) continue;
+        
         for (var j = 0; j < geojson.features.length; j++) {
           var feat = geojson.features[j];
           var distNum = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
-          if (distNum === hit.district) {
-            console.log('[Leaflet] Found matching district', distNum, '- adding highlight layer');
+          if (distNum === districtNumber) {
             var colors = layerColors[dataKey];
-            var highlightLayer = L.geoJSON(feat, {
+            var hl = L.geoJSON(feat, {
               style: {
                 color: colors.stroke,
                 weight: 5,
@@ -332,27 +333,21 @@ function getMapHtml(): string {
                 opacity: 1
               }
             });
-            highlightLayer.addTo(map);
-            highlightLayers[typeKey] = highlightLayer;
-            foundMatch = true;
+            hl.addTo(map);
+            highlightLayers.push(hl);
             break;
           }
         }
-        if (!foundMatch) {
-          console.log('[Leaflet] No matching district found for', hit.district, 'in', dataKey);
-        }
       }
+      console.log('[Leaflet] Highlighted', highlightLayers.length, 'districts');
     };
     
     window.clearHighlights = function() {
-      console.log('[Leaflet] clearHighlights called, current layers:', Object.keys(highlightLayers).filter(k => highlightLayers[k]));
-      for (var key in highlightLayers) {
-        if (highlightLayers[key]) {
-          console.log('[Leaflet] Removing highlight layer:', key);
-          map.removeLayer(highlightLayers[key]);
-          highlightLayers[key] = null;
-        }
+      console.log('[Leaflet] clearHighlights called, current layers:', highlightLayers.length);
+      for (var k = 0; k < highlightLayers.length; k++) {
+        map.removeLayer(highlightLayers[k]);
       }
+      highlightLayers = [];
     };
     
     window.setUserLocation = function(lat, lng) {
@@ -391,8 +386,7 @@ function getMapHtml(): string {
             style: { color: colors.stroke, weight: 5, fillColor: colors.fill, fillOpacity: 0.4, opacity: 1 }
           });
           hl.addTo(map);
-          var typeKey = type;
-          highlightLayers[typeKey] = hl;
+          highlightLayers.push(hl);
           break;
         }
       }
