@@ -60,6 +60,75 @@ function getMapHtml(): string {
       border-radius: 50%;
       box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
+    .headshot-marker {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: auto;
+    }
+    .headshot-bubble {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: white;
+      border: 2.5px solid rgba(0,0,0,0.15);
+      overflow: hidden;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+    }
+    .headshot-bubble img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .headshot-initials {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      color: #555;
+      background: #e8e8e8;
+    }
+    .headshot-tail {
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid white;
+      margin-top: -2px;
+      filter: drop-shadow(0 2px 2px rgba(0,0,0,0.15));
+    }
+    .headshot-overflow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .headshot-overflow-bubble {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(74, 144, 226, 0.9);
+      border: 2.5px solid white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: white;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    .headshot-overflow-tail {
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid rgba(74, 144, 226, 0.9);
+      margin-top: -2px;
+    }
   </style>
 </head>
 <body>
@@ -444,6 +513,138 @@ function getMapHtml(): string {
       // Optional: highlight active dot
     };
     
+    var headshotMarkers = [];
+    var centroidCache = {};
+    
+    function computeCentroid(feature) {
+      if (!feature || !feature.geometry) return null;
+      var coords = [];
+      function extractCoords(geom) {
+        if (geom.type === 'Polygon') {
+          for (var i = 0; i < geom.coordinates[0].length; i++) {
+            coords.push(geom.coordinates[0][i]);
+          }
+        } else if (geom.type === 'MultiPolygon') {
+          var bestArea = 0;
+          var bestIdx = 0;
+          for (var p = 0; p < geom.coordinates.length; p++) {
+            var ring = geom.coordinates[p][0];
+            var area = 0;
+            for (var a = 0; a < ring.length - 1; a++) {
+              area += ring[a][0] * ring[a+1][1] - ring[a+1][0] * ring[a][1];
+            }
+            area = Math.abs(area) / 2;
+            if (area > bestArea) { bestArea = area; bestIdx = p; }
+          }
+          var best = geom.coordinates[bestIdx][0];
+          for (var b = 0; b < best.length; b++) {
+            coords.push(best[b]);
+          }
+        }
+      }
+      extractCoords(feature.geometry);
+      if (coords.length === 0) return null;
+      var sumLat = 0, sumLng = 0;
+      for (var c = 0; c < coords.length; c++) {
+        sumLng += coords[c][0];
+        sumLat += coords[c][1];
+      }
+      return [sumLat / coords.length, sumLng / coords.length];
+    }
+    
+    function getDistrictCentroid(layerType, districtNum) {
+      var key = layerType + '_' + districtNum;
+      if (centroidCache[key]) return centroidCache[key];
+      var geojson = geoJSONData[layerType];
+      if (!geojson || !geojson.features) return null;
+      for (var i = 0; i < geojson.features.length; i++) {
+        var feat = geojson.features[i];
+        var dn = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
+        if (dn === districtNum) {
+          var c = computeCentroid(feat);
+          if (c) centroidCache[key] = c;
+          return c;
+        }
+      }
+      return null;
+    }
+    
+    function getInitials(name) {
+      if (!name) return '?';
+      var parts = name.trim().split(/\\s+/);
+      if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+      return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+    
+    window.setHeadshotMarkers = function(markers) {
+      window.clearHeadshotMarkers();
+      var MAX_VISIBLE = 10;
+      var visible = markers.slice(0, MAX_VISIBLE);
+      var overflow = markers.length - MAX_VISIBLE;
+      
+      for (var i = 0; i < visible.length; i++) {
+        var m = visible[i];
+        var centroid = getDistrictCentroid(m.layerType, m.districtNumber);
+        if (!centroid) continue;
+        
+        var innerHtml;
+        if (m.photoUrl) {
+          innerHtml = '<img src="' + m.photoUrl + '" onerror="this.style.display=\\'none\\';this.nextSibling.style.display=\\'flex\\'" /><div class="headshot-initials" style="display:none">' + getInitials(m.name) + '</div>';
+        } else {
+          innerHtml = '<div class="headshot-initials">' + getInitials(m.name) + '</div>';
+        }
+        
+        var html = '<div class="headshot-marker"><div class="headshot-bubble">' + innerHtml + '</div><div class="headshot-tail"></div></div>';
+        var icon = L.divIcon({
+          className: '',
+          html: html,
+          iconSize: [48, 62],
+          iconAnchor: [24, 62]
+        });
+        var marker = L.marker(centroid, { icon: icon, interactive: true, zIndexOffset: 1000 });
+        marker._officialId = m.officialId;
+        marker.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          postMessage({ type: 'headshotMarkerClicked', officialId: this._officialId });
+        });
+        marker.addTo(map);
+        headshotMarkers.push(marker);
+      }
+      
+      if (overflow > 0) {
+        var sumLat = 0, sumLng = 0, cnt = 0;
+        for (var j = 0; j < visible.length; j++) {
+          var c = getDistrictCentroid(visible[j].layerType, visible[j].districtNumber);
+          if (c) { sumLat += c[0]; sumLng += c[1]; cnt++; }
+        }
+        if (cnt > 0) {
+          var avgLat = sumLat / cnt;
+          var avgLng = sumLng / cnt;
+          var oHtml = '<div class="headshot-overflow"><div class="headshot-overflow-bubble">+' + overflow + '</div><div class="headshot-overflow-tail"></div></div>';
+          var oIcon = L.divIcon({
+            className: '',
+            html: oHtml,
+            iconSize: [48, 62],
+            iconAnchor: [24, 62]
+          });
+          var oMarker = L.marker([avgLat, avgLng], { icon: oIcon, interactive: true, zIndexOffset: 1001 });
+          oMarker.on('click', function(e) {
+            L.DomEvent.stopPropagation(e);
+            postMessage({ type: 'headshotOverflowClicked' });
+          });
+          oMarker.addTo(map);
+          headshotMarkers.push(oMarker);
+        }
+      }
+    };
+    
+    window.clearHeadshotMarkers = function() {
+      for (var i = 0; i < headshotMarkers.length; i++) {
+        map.removeLayer(headshotMarkers[i]);
+      }
+      headshotMarkers = [];
+    };
+    
     window.receiveMessage = function(message) {
       try {
         var data = JSON.parse(message);
@@ -484,6 +685,12 @@ function getMapHtml(): string {
         } else if (data.type === 'HIGHLIGHT_DISTRICTS') {
           console.log('[Leaflet] Received HIGHLIGHT_DISTRICTS, hits:', data.hits?.length);
           window.highlightDistricts(data.hits || []);
+        } else if (data.type === 'SET_HEADSHOT_MARKERS') {
+          console.log('[Leaflet] Received SET_HEADSHOT_MARKERS, count:', data.markers?.length);
+          window.setHeadshotMarkers(data.markers || []);
+        } else if (data.type === 'CLEAR_HEADSHOT_MARKERS') {
+          console.log('[Leaflet] Received CLEAR_HEADSHOT_MARKERS');
+          window.clearHeadshotMarkers();
         }
       } catch (e) {
         console.error('[Leaflet] Error processing message:', e);

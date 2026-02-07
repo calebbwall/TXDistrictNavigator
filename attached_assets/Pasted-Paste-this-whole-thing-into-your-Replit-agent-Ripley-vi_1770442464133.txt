@@ -1,0 +1,205 @@
+Paste this whole thing into your Replit agent (Ripley / vibe coder). It’s “all-in-one” and tells it exactly what to build.
+
+⸻
+
+FULL REPLIT PROMPT — Official headshot markers that “point” to selected district(s)
+
+Goal
+
+Add a map feature: when a district is highlighted/selected (either by tap or by draw-to-search polygon), show the official’s headshot on the map as a custom marker that visually “points” to where their district is.
+
+Definition of “selected”
+
+A district is selected when it is currently highlighted in the map overlays (what we already do today). This must work for:
+	1.	Tap a district overlay
+	2.	Draw-to-search polygon selection that highlights district(s)
+
+User experience
+	•	If one district is selected → show one photo marker (headshot) on the map, pointing to the district anchor point.
+	•	If multiple districts are selected → show photo markers for each selected district, capped at 10 markers for performance and clutter.
+	•	If more than 10 selected → show a single “+X” marker (where X = number over 10). Tapping that opens a modal/bottom sheet listing the selected officials (with photos); tapping a list item zooms to that district and sets selection to just that district.
+
+Non-negotiable implementation rules
+	1.	Single source of truth for selection:
+	•	Create/standardize selectedDistrictIds: string[] (or equivalent) in the Map screen state/store.
+	•	Update BOTH the tap-selection path and draw-selection path so they write to this same state.
+	•	The overlay highlighting must derive from the same state so we don’t get out of sync.
+	2.	Marker placement requires an anchor point:
+	•	Compute a stable anchor point for each district polygon in GeoJSON:
+	•	Prefer point-on-feature (a point guaranteed inside the polygon) or center-of-mass.
+	•	Must handle Polygon and MultiPolygon.
+	•	Cache the computed anchor points in memory keyed by district id so we don’t recompute.
+	•	Fallback logic:
+	•	If point-on-feature fails, use bbox center.
+	•	If bbox center is outside polygon, pick the best candidate from a few sampled points OR use turf’s point-on-feature.
+	3.	Marker visuals
+	•	Use a custom Marker view in react-native-maps:
+	•	Circular photo bubble (44–56px)
+	•	White background + subtle border + shadow/elevation
+	•	A small triangle “tail” under the circle so it looks like it’s pointing to the district
+	•	Use anchor={{ x: 0.5, y: 1 }} so the bottom of the marker tail pins to the coordinate.
+	•	Use a placeholder if image missing or fails (initials or silhouette).
+	•	Do not cover the district label: marker UI should float above its pin point (spacing between bubble and tail).
+	4.	Performance
+	•	Markers should update instantly when selection changes.
+	•	Memoize anchor points and avoid re-rendering overlays unnecessarily.
+	•	Use tracksViewChanges={false} on markers by default (if images load late and don’t render, toggle true temporarily then false after load).
+
+Data requirements
+	•	Each official must have a photoUrl (or equivalent field).
+	•	If the backend/data doesn’t already contain headshot URLs, add a safe field and wire it into the official model.
+	•	Do not break existing data loading; just add the optional field.
+
+Concrete build steps you must implement
+
+Step A — unify selection state
+	•	Find where tap-to-select currently sets the selected district.
+	•	Find where draw-to-search currently returns/sets selected districts.
+	•	Implement a single state: selectedDistrictIds and (optional) selectedOfficials.
+	•	Ensure overlays highlight based on selectedDistrictIds.
+
+Step B — anchor point utility + caching
+	•	Add a helper: getDistrictAnchorPoint(feature) -> { latitude, longitude }
+	•	Use Turf (preferred):
+	•	Add dependency (choose smallest practical): @turf/point-on-feature plus any needed turf helpers, OR @turf/turf.
+	•	Implement:
+	•	pointOnFeature(feature) → get lon/lat
+	•	Cache in Map<string, {latitude:number, longitude:number}>
+	•	Must support:
+	•	GeoJSON Feature with geometry type Polygon / MultiPolygon
+	•	Defensive handling for invalid geometry
+
+Step C — custom marker component (photo + pointer tail)
+Create a component like OfficialPhotoMarker that renders:
+	•	Marker at coordinate with anchor={{x:0.5,y:1}}
+	•	Inside marker:
+	•	A circular headshot bubble (Image) lifted slightly above the coordinate
+	•	A small triangle tail pointing down to the coordinate
+	•	Placeholder if missing photo
+
+Use styling compatible with both Android and iOS (shadow + elevation).
+
+Here is the exact marker UI you should implement (can be adjusted slightly, but keep the structure):
+
+import React from "react";
+import { View, Image, Text } from "react-native";
+import { Marker } from "react-native-maps";
+
+export function OfficialPhotoMarker({
+  coordinate,
+  photoUrl,
+  initials,
+  onPress,
+}: {
+  coordinate: { latitude: number; longitude: number };
+  photoUrl?: string | null;
+  initials: string;
+  onPress?: () => void;
+}) {
+  return (
+    <Marker
+      coordinate={coordinate}
+      anchor={{ x: 0.5, y: 1 }}
+      tracksViewChanges={false}
+      onPress={onPress}
+    >
+      <View style={{ alignItems: "center" }}>
+        <View
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: "white",
+            borderWidth: 2,
+            borderColor: "rgba(0,0,0,0.15)",
+            overflow: "hidden",
+            shadowColor: "#000",
+            shadowOpacity: 0.25,
+            shadowRadius: 6,
+            shadowOffset: { width: 0, height: 3 },
+            elevation: 6,
+            marginBottom: 6,
+          }}
+        >
+          {photoUrl ? (
+            <Image
+              source={{ uri: photoUrl }}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ fontWeight: "700" }}>{initials}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Triangle tail */}
+        <View
+          style={{
+            width: 0,
+            height: 0,
+            borderLeftWidth: 7,
+            borderRightWidth: 7,
+            borderTopWidth: 10,
+            borderLeftColor: "transparent",
+            borderRightColor: "transparent",
+            borderTopColor: "white",
+            transform: [{ translateY: -2 }],
+          }}
+        />
+        {/* Tail border */}
+        <View
+          style={{
+            position: "absolute",
+            bottom: 0,
+            width: 0,
+            height: 0,
+            borderLeftWidth: 8,
+            borderRightWidth: 8,
+            borderTopWidth: 11,
+            borderLeftColor: "transparent",
+            borderRightColor: "transparent",
+            borderTopColor: "rgba(0,0,0,0.15)",
+            zIndex: -1,
+          }}
+        />
+      </View>
+    </Marker>
+  );
+}
+
+Step D — render markers for current selection
+	•	In the Map screen render function, derive selected officials from selectedDistrictIds.
+	•	For each selected district (up to 10), compute anchor point (using cached helper) and render OfficialPhotoMarker.
+	•	Ensure markers are above overlays (use zIndex where supported or render order).
+
+Step E — overflow behavior for >10 selections
+	•	If selected districts > 10:
+	•	Render a single marker with “+X” badge at the center of the selected anchor points.
+	•	Implement a simple modal/bottom sheet listing selected officials with photo + name + district.
+	•	Tapping one list entry:
+	•	sets selectedDistrictIds = [thatDistrictId]
+	•	animates map to that district bounds/anchor
+
+Step F — camera behavior (optional but recommended)
+	•	When a single district is selected:
+	•	animate camera to fit that district bounds (or center on anchor with a reasonable zoom).
+	•	When multiple districts selected:
+	•	fit camera to show all selected anchors (or bbox of selected districts).
+
+Testing checklist (must pass)
+	•	Tap a district: overlay highlights AND photo marker appears on first tap (no “second tap required” issue).
+	•	Draw polygon: returned district(s) highlight AND photo marker(s) appear.
+	•	Switching selections removes old marker(s) and shows new marker(s).
+	•	Missing/bad photo URLs show placeholder.
+	•	Works on Android device.
+
+Deliverables
+	•	Commit-ready code changes implementing all the above
+	•	Any necessary package.json dependency updates for Turf
+	•	Minimal, clean UI for the overflow modal/bottom sheet
+
+⸻
+
+That should be enough for the agent to implement cleanly without “inventing” a weird architecture. It forces: unified selection state, proper anchor computation, and the exact marker UI that gives the “pointing” illusion.

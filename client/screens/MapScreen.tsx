@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking, Alert } from "react-native";
+import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking, Alert, Modal, FlatList, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -94,6 +94,75 @@ const MAP_HTML = `
       border: 3px solid white;
       border-radius: 50%;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .headshot-marker {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: auto;
+    }
+    .headshot-bubble {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: white;
+      border: 2.5px solid rgba(0,0,0,0.15);
+      overflow: hidden;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+    }
+    .headshot-bubble img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .headshot-initials {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      color: #555;
+      background: #e8e8e8;
+    }
+    .headshot-tail {
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid white;
+      margin-top: -2px;
+      filter: drop-shadow(0 2px 2px rgba(0,0,0,0.15));
+    }
+    .headshot-overflow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .headshot-overflow-bubble {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(74, 144, 226, 0.9);
+      border: 2.5px solid white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: white;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    .headshot-overflow-tail {
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid rgba(74, 144, 226, 0.9);
+      margin-top: -2px;
     }
     .address-dot {
       width: 12px;
@@ -957,6 +1026,10 @@ const MAP_HTML = `
           highlightDistricts(data.hits);
         } else if (data.type === 'CLEAR_HIGHLIGHTS') {
           clearHighlights();
+        } else if (data.type === 'SET_HEADSHOT_MARKERS') {
+          setHeadshotMarkers(data.markers);
+        } else if (data.type === 'CLEAR_HEADSHOT_MARKERS') {
+          clearHeadshotMarkers();
         }
       } catch (e) {
         console.error('[Leaflet] Error processing message:', e);
@@ -1088,6 +1161,154 @@ const MAP_HTML = `
       currentHighlightLayers = [];
     }
 
+    // Headshot markers layer
+    const headshotMarkersLayer = new L.FeatureGroup();
+    map.addLayer(headshotMarkersLayer);
+    const anchorPointCache = {};
+
+    function getDistrictCentroid(layerType, districtNumber) {
+      const cacheKey = layerType + '_' + districtNumber;
+      if (anchorPointCache[cacheKey]) return anchorPointCache[cacheKey];
+
+      const data = geoJSONData[layerType];
+      if (!data || !data.features) return null;
+
+      const feature = data.features.find(function(f) {
+        const districtNum = f.properties.district ||
+          f.properties.TX_HOUSE_DIST_NBR ||
+          f.properties.TX_SEN_DIST_NBR ||
+          f.properties.TX_US_HOUSE_DIST_NBR ||
+          f.properties.TX_REP_DIST_NBR ||
+          f.properties.SLDUST ||
+          f.properties.SLDLST ||
+          f.properties.CD ||
+          f.properties.CONG_DIST ||
+          f.properties.DIST_NBR;
+        return parseInt(districtNum) === districtNumber;
+      });
+
+      if (!feature) return null;
+
+      var coords;
+      if (feature.geometry.type === 'Polygon') {
+        coords = feature.geometry.coordinates[0];
+      } else if (feature.geometry.type === 'MultiPolygon') {
+        var biggest = feature.geometry.coordinates[0];
+        var biggestArea = 0;
+        feature.geometry.coordinates.forEach(function(poly) {
+          var a = calculatePolygonArea(poly);
+          if (a > biggestArea) { biggestArea = a; biggest = poly; }
+        });
+        coords = biggest[0];
+      } else {
+        return null;
+      }
+
+      // Compute centroid using average of all coordinates
+      var sumLat = 0, sumLng = 0;
+      for (var i = 0; i < coords.length; i++) {
+        sumLng += coords[i][0];
+        sumLat += coords[i][1];
+      }
+      var result = { lat: sumLat / coords.length, lng: sumLng / coords.length };
+      anchorPointCache[cacheKey] = result;
+      return result;
+    }
+
+    function getInitials(name) {
+      if (!name) return '?';
+      var parts = name.trim().split(/\\s+/);
+      if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      return parts[0][0].toUpperCase();
+    }
+
+    function setHeadshotMarkers(markers) {
+      headshotMarkersLayer.clearLayers();
+
+      if (!markers || markers.length === 0) {
+        console.log('[HEADSHOTS] Cleared all headshot markers');
+        return;
+      }
+
+      var MAX_MARKERS = 10;
+      var displayed = markers.slice(0, MAX_MARKERS);
+      var overflow = markers.length > MAX_MARKERS ? markers.length - MAX_MARKERS : 0;
+
+      displayed.forEach(function(m) {
+        var layerType = m.source === 'TX_HOUSE' ? 'tx_house' :
+                        m.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
+        var centroid = getDistrictCentroid(layerType, m.districtNumber);
+        if (!centroid) return;
+
+        var initials = getInitials(m.name);
+        var photoHtml = m.photoUrl
+          ? '<img src="' + m.photoUrl + '" onerror="this.parentElement.innerHTML=\\'<div class=headshot-initials>' + initials + '</div>\\'" />'
+          : '<div class="headshot-initials">' + initials + '</div>';
+
+        var html = '<div class="headshot-marker">' +
+          '<div class="headshot-bubble">' + photoHtml + '</div>' +
+          '<div class="headshot-tail"></div>' +
+          '</div>';
+
+        var icon = L.divIcon({
+          className: '',
+          html: html,
+          iconSize: [48, 62],
+          iconAnchor: [24, 62]
+        });
+
+        var marker = L.marker([centroid.lat, centroid.lng], {
+          icon: icon,
+          zIndexOffset: 2000
+        });
+
+        marker.on('click', function() {
+          postMessage({ type: 'headshotMarkerClicked', officialId: m.officialId });
+        });
+
+        marker.addTo(headshotMarkersLayer);
+      });
+
+      // Overflow marker
+      if (overflow > 0) {
+        var sumLat = 0, sumLng = 0, count = 0;
+        markers.forEach(function(m) {
+          var lt = m.source === 'TX_HOUSE' ? 'tx_house' :
+                   m.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
+          var c = getDistrictCentroid(lt, m.districtNumber);
+          if (c) { sumLat += c.lat; sumLng += c.lng; count++; }
+        });
+        if (count > 0) {
+          var overflowCenter = { lat: sumLat / count, lng: sumLng / count };
+          var overflowHtml = '<div class="headshot-overflow">' +
+            '<div class="headshot-overflow-bubble">+' + overflow + '</div>' +
+            '<div class="headshot-overflow-tail"></div>' +
+            '</div>';
+          var overflowIcon = L.divIcon({
+            className: '',
+            html: overflowHtml,
+            iconSize: [48, 62],
+            iconAnchor: [24, 62]
+          });
+          var overflowMarker = L.marker([overflowCenter.lat, overflowCenter.lng], {
+            icon: overflowIcon,
+            zIndexOffset: 2100
+          });
+          overflowMarker.on('click', function() {
+            postMessage({ type: 'headshotOverflowClicked' });
+          });
+          overflowMarker.addTo(headshotMarkersLayer);
+        }
+      }
+
+      console.log('[HEADSHOTS] Set', displayed.length, 'headshot markers' + (overflow > 0 ? ' (+' + overflow + ' overflow)' : ''));
+    }
+
+    function clearHeadshotMarkers() {
+      headshotMarkersLayer.clearLayers();
+      console.log('[HEADSHOTS] Cleared headshot markers');
+    }
+
     document.addEventListener('message', function(e) {
       window.receiveMessage(e.data);
     });
@@ -1198,6 +1419,9 @@ export default function MapScreen() {
   
   // Focus district state (for jump-to-district from official cards)
   const [highlightedDistrict, setHighlightedDistrict] = useState<{ source: string; district: number } | null>(null);
+  
+  // Overflow modal state for >10 headshot markers
+  const [showOverflowModal, setShowOverflowModal] = useState(false);
   
   // Single-select per overlay: max 1 district highlighted per layer
   // Keys are overlay types, values are district numbers or null if no selection
@@ -1569,6 +1793,48 @@ export default function MapScreen() {
     }
   }, []);
 
+  // Send headshot markers to the map for currently selected officials
+  const sendHeadshotMarkers = useCallback((officials: Official[], hits: DistrictHit[]) => {
+    if (!officials || officials.length === 0 || !hits || hits.length === 0) {
+      const clearMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
+      if (Platform.OS === 'web') {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+        }
+      } else {
+        sendToWebView(clearMsg);
+      }
+      return;
+    }
+
+    // Build marker data: match officials to their district hits
+    const markers = officials.map(official => {
+      const sourceType = official.source || (official.officeType === 'tx_house' ? 'TX_HOUSE' : 
+                                              official.officeType === 'tx_senate' ? 'TX_SENATE' : 'US_HOUSE');
+      const districtHit = hits.find(h => {
+        const hitSource = h.source;
+        return hitSource === sourceType;
+      });
+      return {
+        officialId: official.id,
+        name: official.fullName,
+        photoUrl: official.photoUrl || null,
+        source: sourceType,
+        districtNumber: official.districtNumber || districtHit?.districtNumber || 0,
+      };
+    }).filter(m => m.districtNumber > 0);
+
+    const msg = { type: 'SET_HEADSHOT_MARKERS', markers };
+    console.log('[MapScreen] Sending', markers.length, 'headshot markers');
+    if (Platform.OS === 'web') {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+      }
+    } else {
+      sendToWebView(msg);
+    }
+  }, [sendToWebView]);
+
   const geoJSONLoadedRef = useRef(false);
   const initialOverlaysRef = useRef(overlays);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -1781,14 +2047,17 @@ export default function MapScreen() {
         setSelectedDistrict(null);
         setShowResultsPanel(false);
         
-        // Send CLEAR_HIGHLIGHTS to WebView
+        // Send CLEAR_HIGHLIGHTS and CLEAR_HEADSHOT_MARKERS to WebView
         const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
+        const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
         if (Platform.OS === 'web') {
           if (iframeRef.current?.contentWindow) {
             iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
           }
         } else {
           sendToWebView(clearMsg);
+          sendToWebView(clearHeadshotsMsg);
         }
       }
       
@@ -1874,12 +2143,15 @@ export default function MapScreen() {
         setShowResultsPanel(false);
         
         const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
+        const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
         if (Platform.OS === 'web') {
           if (iframeRef.current?.contentWindow) {
             iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
           }
         } else {
           sendToWebView(clearMsg);
+          sendToWebView(clearHeadshotsMsg);
         }
         setStoredPolygon(null);
         return;
@@ -1921,12 +2193,15 @@ export default function MapScreen() {
       if (!hasHighlights) {
         // No highlights - send clear message
         const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
+        const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
         if (Platform.OS === 'web') {
           if (iframeRef.current?.contentWindow) {
             iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
           }
         } else {
           sendToWebView(clearMsg);
+          sendToWebView(clearHeadshotsMsg);
         }
         setShowResultsPanel(false);
         setSelectedDistrict(null);
@@ -1957,11 +2232,14 @@ export default function MapScreen() {
           officials,
         });
         setShowResultsPanel(true);
+        
+        // Send headshot markers to map
+        sendHeadshotMarkers(officials, districtHits);
       }
       
       // Note: Don't clear storedPolygon on tap - let it persist so user can restore polygon results
     },
-    [fetchOfficialsByDistricts, sendToWebView, highlightsByLayer, normalizeHit, highlightsToHits, highlightsToWebHits, DEBUG_MAP]
+    [fetchOfficialsByDistricts, sendToWebView, highlightsByLayer, normalizeHit, highlightsToHits, highlightsToWebHits, sendHeadshotMarkers, DEBUG_MAP]
   );
 
   const handleOfficialCardPress = useCallback((official: Official) => {
@@ -1997,14 +2275,17 @@ export default function MapScreen() {
     
     const msg = { type: 'CLEAR_DRAWING' };
     const clearHighlightsMsg = { type: 'CLEAR_HIGHLIGHTS' };
+    const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
     if (Platform.OS === 'web') {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
         iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHighlightsMsg), '*');
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
       }
     } else {
       sendToWebView(msg);
       sendToWebView(clearHighlightsMsg);
+      sendToWebView(clearHeadshotsMsg);
     }
     console.log('[MapScreen] Drawing cleared');
   }, [sendToWebView]);
@@ -2059,6 +2340,9 @@ export default function MapScreen() {
       setStoredPolygon({ geometry, hits, officials });
       setSelectedDistrict({ hits, officials });
       setShowResultsPanel(true);
+      
+      // Send headshot markers to map
+      sendHeadshotMarkers(officials, hits);
       
       // Highlight ALL districts in the polygon (multi-select for draw mode)
       const webHits = hits.map((hit: { source: string; districtNumber: number }) => ({
@@ -2230,14 +2514,17 @@ export default function MapScreen() {
     // Clear all highlights (single-select per overlay)
     setHighlightsByLayer({ tx_house: null, tx_senate: null, us_congress: null });
     
-    // Clear district highlights on the map
+    // Clear district highlights and headshot markers on the map
     const clearHighlightsMsg = { type: 'CLEAR_HIGHLIGHTS' };
+    const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
     if (Platform.OS === 'web') {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHighlightsMsg), '*');
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
       }
     } else {
       sendToWebView(clearHighlightsMsg);
+      sendToWebView(clearHeadshotsMsg);
     }
   }, [sendToWebView]);
   
@@ -2266,8 +2553,11 @@ export default function MapScreen() {
       } else {
         sendToWebView(highlightMsg);
       }
+      
+      // Restore headshot markers
+      sendHeadshotMarkers(storedPolygon.officials, storedPolygon.hits);
     }
-  }, [storedPolygon, sendToWebView]);
+  }, [storedPolygon, sendToWebView, sendHeadshotMarkers]);
 
   const handleLayerButtonPressIn = () => {
     layerButtonScale.value = withSpring(0.9, springConfig);
@@ -2320,11 +2610,16 @@ export default function MapScreen() {
         setSelectedDistrict(null);
       } else if (data.type === "addressDotClicked" && data.officialId) {
         console.log('[MapScreen] Address dot clicked:', data.officialId);
-        // Navigate to the official's profile, PRIVATE tab
         navigation.navigate("OfficialProfile", { 
           officialId: data.officialId,
           initialTab: "private"
         });
+      } else if (data.type === "headshotMarkerClicked" && data.officialId) {
+        console.log('[MapScreen] Headshot marker clicked:', data.officialId);
+        navigation.navigate("OfficialProfile", { officialId: data.officialId });
+      } else if (data.type === "headshotOverflowClicked") {
+        console.log('[MapScreen] Headshot overflow clicked');
+        setShowOverflowModal(true);
       }
     } catch (error) {
       console.error("[MapScreen] Error parsing WebView message:", error);
@@ -2379,6 +2674,12 @@ export default function MapScreen() {
               officialId: data.officialId,
               initialTab: "private"
             });
+          } else if (data.type === "headshotMarkerClicked" && data.officialId) {
+            console.log('[MapScreen] Window Headshot marker clicked:', data.officialId);
+            navigation.navigate("OfficialProfile", { officialId: data.officialId });
+          } else if (data.type === "headshotOverflowClicked") {
+            console.log('[MapScreen] Window Headshot overflow clicked');
+            setShowOverflowModal(true);
           }
         } catch (e) {
           // Not JSON, ignore
@@ -2730,6 +3031,98 @@ export default function MapScreen() {
           onClearDrawing={selectedDistrict.hits.length > 1 ? handleClearDrawing : undefined}
         />
       ) : null}
+
+      {/* Overflow modal for >10 selected officials */}
+      <Modal
+        visible={showOverflowModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowOverflowModal(false)}
+      >
+        <Pressable
+          style={styles.overflowBackdrop}
+          onPress={() => setShowOverflowModal(false)}
+        >
+          <View style={[styles.overflowSheet, { backgroundColor: theme.cardBackground }]}>
+            <View style={styles.overflowHeader}>
+              <ThemedText type="h3">Selected Officials</ThemedText>
+              <Pressable onPress={() => setShowOverflowModal(false)} style={styles.overflowClose}>
+                <Feather name="x" size={22} color={theme.text} />
+              </Pressable>
+            </View>
+            <FlatList
+              data={selectedDistrict?.officials || []}
+              keyExtractor={(item) => item.id}
+              style={{ maxHeight: 400 }}
+              renderItem={({ item: official }) => (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.overflowItem,
+                    { opacity: pressed ? 0.7 : 1, borderBottomColor: theme.border },
+                  ]}
+                  onPress={() => {
+                    setShowOverflowModal(false);
+                    // Zoom to the official's district and set single selection
+                    const sourceType = official.source || (official.officeType === 'tx_house' ? 'TX_HOUSE' : 
+                                                            official.officeType === 'tx_senate' ? 'TX_SENATE' : 'US_HOUSE');
+                    const districtHit: DistrictHit = {
+                      source: sourceType as SourceType,
+                      districtNumber: official.districtNumber || 0,
+                    };
+                    
+                    // Focus on the district
+                    const focusMsg = { type: 'FOCUS_DISTRICT', source: sourceType, districtNumber: official.districtNumber };
+                    if (Platform.OS === 'web') {
+                      if (iframeRef.current?.contentWindow) {
+                        iframeRef.current.contentWindow.postMessage(JSON.stringify(focusMsg), '*');
+                      }
+                    } else {
+                      sendToWebView(focusMsg);
+                    }
+                    
+                    // Set single selection
+                    const singleHits = [districtHit];
+                    const singleOfficials = [official];
+                    setSelectedDistrict({ hits: singleHits, officials: singleOfficials });
+                    setShowResultsPanel(true);
+                    sendHeadshotMarkers(singleOfficials, singleHits);
+                    
+                    // Update highlight
+                    const webHits = [{ type: sourceType === 'TX_HOUSE' ? 'tx_house' : sourceType === 'TX_SENATE' ? 'tx_senate' : 'us_congress', district: official.districtNumber || 0 }];
+                    const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
+                    if (Platform.OS === 'web') {
+                      if (iframeRef.current?.contentWindow) {
+                        iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+                      }
+                    } else {
+                      sendToWebView(highlightMsg);
+                    }
+                  }}
+                >
+                  <View style={styles.overflowItemPhoto}>
+                    {official.photoUrl ? (
+                      <Image source={{ uri: official.photoUrl }} style={styles.overflowItemImage} />
+                    ) : (
+                      <View style={[styles.overflowItemImage, styles.overflowItemPlaceholder]}>
+                        <ThemedText style={{ fontWeight: '700', color: theme.secondaryText }}>
+                          {official.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        </ThemedText>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText type="body" style={{ fontWeight: '600' }}>{official.fullName}</ThemedText>
+                    <ThemedText type="small" style={{ color: theme.secondaryText }}>
+                      {getOfficeTypeLabel(official.officeType, undefined)} District {official.districtNumber}
+                    </ThemedText>
+                  </View>
+                  <Feather name="chevron-right" size={18} color={theme.secondaryText} />
+                </Pressable>
+              )}
+            />
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -2888,5 +3281,52 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
     zIndex: 999,
     maxWidth: 280,
+  },
+  overflowBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  overflowSheet: {
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
+    paddingBottom: Spacing.xl,
+    maxHeight: "70%",
+  },
+  overflowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  overflowClose: {
+    padding: Spacing.xs,
+  },
+  overflowItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    gap: Spacing.sm,
+  },
+  overflowItemPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  overflowItemImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  overflowItemPlaceholder: {
+    backgroundColor: "#e8e8e8",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
