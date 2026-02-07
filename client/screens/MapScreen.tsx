@@ -2329,6 +2329,18 @@ export default function MapScreen() {
     setDrawLoading(true);
     setDrawModeActive(false);
     
+    // Compute center of the drawn polygon for selectionOrigin
+    let drawCenter: { lat: number; lng: number } | null = null;
+    if (geometry.coordinates[0] && geometry.coordinates[0].length > 0) {
+      const ring = geometry.coordinates[0];
+      let sumLng = 0, sumLat = 0;
+      for (let i = 0; i < ring.length; i++) {
+        sumLng += ring[i][0];
+        sumLat += ring[i][1];
+      }
+      drawCenter = { lat: sumLat / ring.length, lng: sumLng / ring.length };
+    }
+    
     try {
       // Call /api/map/area-hits to get intersecting districts
       const areaHitsUrl = new URL("/api/map/area-hits", getApiUrl());
@@ -2371,8 +2383,8 @@ export default function MapScreen() {
       setSelectedDistrict({ hits, officials });
       setShowResultsPanel(true);
       
-      // Send headshot markers to map
-      sendHeadshotMarkers(officials, hits);
+      // Send headshot markers to map with draw center for proximity blend
+      sendHeadshotMarkers(officials, hits, drawCenter);
       
       // Highlight ALL districts in the polygon (multi-select for draw mode)
       const webHits = hits.map((hit: { source: string; districtNumber: number }) => ({
