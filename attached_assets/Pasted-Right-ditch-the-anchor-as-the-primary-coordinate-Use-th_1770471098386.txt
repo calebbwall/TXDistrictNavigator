@@ -1,0 +1,162 @@
+Right—ditch the anchor as the primary coordinate. Use the tap/draw point as the marker location, but clamp it so it’s guaranteed to land inside the selected district polygon. That gives you “very close to my finger” and “always in the district,” which is exactly your constraint.
+
+The correct rule set
+
+For each selected district:
+	1.	If the tap/draw point is inside the district polygon → use it directly (this will be very close to where you tapped).
+	2.	If it’s outside (edge cases, imprecise hit testing, multipolygons, etc.) → compute the nearest point on the district boundary to the tap, then nudge slightly inward so it becomes inside.
+
+No anchor needed except as a fallback direction for the “nudge inward” step.
+
+Below is a full Replit prompt that implements this cleanly.
+
+⸻
+
+REPLIT PROMPT — Place official photo markers near tap/draw point, guaranteed inside district
+
+We already highlight/choose districts by tap and by draw-to-search. Change the photo marker placement logic so that the headshot marker appears as close as possible to the user’s tap/draw point, but must always be inside the selected district polygon.
+
+New marker coordinate rule
+
+For each selected district polygon feature:
+	•	Let origin be:
+	•	Tap selection: the tap lat/lng
+	•	Draw selection: the draw center (or the “finger up” coordinate)
+	•	Compute markerCoord = closestPointInsidePolygon(origin, districtFeature)
+	•	Render the headshot marker at markerCoord (not at centroid/anchor).
+
+Requirements
+	1.	Selection origin state
+	•	Store the most recent selection origin in Map screen state:
+	•	selectionOrigin?: { latitude: number; longitude: number }
+	•	Tap selection must set selectionOrigin to the tap coordinate.
+	•	Draw selection must set selectionOrigin to the draw center coordinate.
+	2.	Guaranteed-in-polygon placement
+Implement helper:
+
+	•	If origin is inside the polygon → return origin.
+	•	Else:
+	•	Find the nearest point on the polygon boundary to the origin.
+	•	Nudge that boundary point slightly toward the polygon interior until it is inside.
+	•	Return that nudged point.
+
+	3.	Support Polygon and MultiPolygon
+This must work for both.
+	4.	Performance
+
+	•	Cache per-district boundary line(s) to avoid recomputing.
+	•	Only compute marker points for currently selected districts.
+
+Turf dependencies (use these; they make this reliable)
+
+Add/install (choose either the small modules or full turf; small is preferred):
+	•	@turf/boolean-point-in-polygon
+	•	@turf/polygon-to-line
+	•	@turf/nearest-point-on-line
+	•	@turf/centroid (only for fallback direction)
+	•	@turf/helpers
+
+Implementation details (do this exactly)
+
+A) Utility: convert {lat,lng} ↔ GeoJSON point
+
+import { point } from "@turf/helpers";
+
+type LatLng = { latitude: number; longitude: number };
+
+function toTurfPoint(ll: LatLng) {
+  return point([ll.longitude, ll.latitude]);
+}
+
+function fromTurfPoint(p: any): LatLng {
+  const [lng, lat] = p.geometry.coordinates;
+  return { latitude: lat, longitude: lng };
+}
+
+B) Utility: closestPointInsidePolygon(origin, feature)
+
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import polygonToLine from "@turf/polygon-to-line";
+import nearestPointOnLine from "@turf/nearest-point-on-line";
+import centroid from "@turf/centroid";
+
+function stepToward(a: LatLng, b: LatLng, step: number): LatLng {
+  // move from a toward b by "step" degrees (tiny)
+  const dx = b.longitude - a.longitude;
+  const dy = b.latitude - a.latitude;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  return {
+    latitude: a.latitude + (dy / len) * step,
+    longitude: a.longitude + (dx / len) * step,
+  };
+}
+
+/**
+ * Returns a point that is inside the polygon and as close as possible to origin.
+ * If origin is already inside, returns origin.
+ */
+export function closestPointInsidePolygon(
+  origin: LatLng,
+  feature: any,
+  cachedBoundaryLine: any | null,
+): LatLng {
+  const originPt = toTurfPoint(origin);
+
+  // 1) If inside, use origin directly.
+  if (booleanPointInPolygon(originPt, feature)) return origin;
+
+  // 2) Nearest point on boundary.
+  const boundaryLine = cachedBoundaryLine ?? polygonToLine(feature);
+  const nearest = nearestPointOnLine(boundaryLine, originPt);
+  let candidate = fromTurfPoint(nearest);
+
+  // 3) Nudge inward.
+  // Use centroid as an interior direction (only for direction, not placement).
+  const c = centroid(feature);
+  const centroidLL = fromTurfPoint(c);
+
+  // Nudge amount: tiny degrees. We'll iterate until inside or max tries.
+  // (0.00015 deg ~ ~15-20 meters depending on latitude; adjust if needed)
+  const step = 0.00015;
+
+  // Try stepping inward multiple times.
+  for (let i = 0; i < 25; i++) {
+    candidate = stepToward(candidate, centroidLL, step);
+    if (booleanPointInPolygon(toTurfPoint(candidate), feature)) return candidate;
+  }
+
+  // Fallback: if something is weird with geometry, return centroid as last resort.
+  return centroidLL;
+}
+
+C) Caching boundary lines
+	•	Create a cache: const districtBoundaryCache = new Map<string, any>();
+	•	When you need the boundary line for a district:
+	•	if not cached, compute polygonToLine(feature) and store it.
+	•	Pass cached boundary into closestPointInsidePolygon.
+
+D) Marker rendering
+Where you currently render photo markers at anchor/centroid, change to:
+	•	origin = selectionOrigin
+	•	markerCoord = closestPointInsidePolygon(origin, districtFeature, cachedBoundaryLine)
+	•	<Marker coordinate={markerCoord} ...>
+
+If selectionOrigin is missing, use centroid/anchor as fallback.
+
+E) Draw selection behavior (multiple districts)
+	•	Use the same selectionOrigin (draw center) for each district.
+	•	This will place all faces close to the drawn area, while still forcing them inside each district polygon.
+
+F) Keep marker UI the same
+Do not change the photo marker appearance (circle + pointer tail). Only change the coordinate placement.
+
+Acceptance tests
+	•	Tap inside a district: photo appears very close to the tap location and remains inside district.
+	•	Tap near an edge: photo still appears near edge but is clamped inside.
+	•	Draw selection: photos appear near the draw center but inside each district.
+	•	Works for Polygon and MultiPolygon districts.
+	•	No noticeable performance regression.
+
+⸻
+
+This approach is the “no lies” solution: the face goes where the finger indicates unless that point would be outside the district, in which case it snaps to the nearest legal point just inside the boundary. That’s exactly how a picky GIS engineer would do it.

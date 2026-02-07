@@ -1164,15 +1164,15 @@ const MAP_HTML = `
     // Headshot markers layer
     const headshotMarkersLayer = new L.FeatureGroup();
     map.addLayer(headshotMarkersLayer);
-    const anchorPointCache = {};
+    const centroidCache = {};
+    const featureCache = {};
+    const boundaryCache = {};
 
-    function getDistrictCentroid(layerType, districtNumber) {
+    function getDistrictFeature(layerType, districtNumber) {
       const cacheKey = layerType + '_' + districtNumber;
-      if (anchorPointCache[cacheKey]) return anchorPointCache[cacheKey];
-
+      if (featureCache[cacheKey]) return featureCache[cacheKey];
       const data = geoJSONData[layerType];
       if (!data || !data.features) return null;
-
       const feature = data.features.find(function(f) {
         const districtNum = f.properties.district ||
           f.properties.TX_HOUSE_DIST_NBR ||
@@ -1186,9 +1186,15 @@ const MAP_HTML = `
           f.properties.DIST_NBR;
         return parseInt(districtNum) === districtNumber;
       });
+      if (feature) featureCache[cacheKey] = feature;
+      return feature || null;
+    }
 
+    function getDistrictCentroid(layerType, districtNumber) {
+      const cacheKey = layerType + '_' + districtNumber;
+      if (centroidCache[cacheKey]) return centroidCache[cacheKey];
+      const feature = getDistrictFeature(layerType, districtNumber);
       if (!feature) return null;
-
       var coords;
       if (feature.geometry.type === 'Polygon') {
         coords = feature.geometry.coordinates[0];
@@ -1203,16 +1209,115 @@ const MAP_HTML = `
       } else {
         return null;
       }
-
-      // Compute centroid using average of all coordinates
       var sumLat = 0, sumLng = 0;
       for (var i = 0; i < coords.length; i++) {
         sumLng += coords[i][0];
         sumLat += coords[i][1];
       }
       var result = { lat: sumLat / coords.length, lng: sumLng / coords.length };
-      anchorPointCache[cacheKey] = result;
+      centroidCache[cacheKey] = result;
       return result;
+    }
+
+    function getBoundaryRings(feature) {
+      var rings = [];
+      if (feature.geometry.type === 'Polygon') {
+        rings.push(feature.geometry.coordinates[0]);
+      } else if (feature.geometry.type === 'MultiPolygon') {
+        for (var p = 0; p < feature.geometry.coordinates.length; p++) {
+          rings.push(feature.geometry.coordinates[p][0]);
+        }
+      }
+      return rings;
+    }
+
+    function nearestPointOnSegment(px, py, ax, ay, bx, by) {
+      var dx = bx - ax, dy = by - ay;
+      var lenSq = dx * dx + dy * dy;
+      if (lenSq === 0) return { x: ax, y: ay, dist: Math.sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay)) };
+      var t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      var nx = ax + t * dx, ny = ay + t * dy;
+      var d = Math.sqrt((px - nx) * (px - nx) + (py - ny) * (py - ny));
+      return { x: nx, y: ny, dist: d };
+    }
+
+    function nearestPointOnBoundary(latlng, feature) {
+      var cacheKey = feature.properties.district || feature.properties.DIST_NBR || '';
+      var rings = boundaryCache[cacheKey] || getBoundaryRings(feature);
+      if (!boundaryCache[cacheKey]) boundaryCache[cacheKey] = rings;
+      var bestDist = Infinity, bestX = 0, bestY = 0;
+      for (var r = 0; r < rings.length; r++) {
+        var ring = rings[r];
+        for (var i = 0; i < ring.length - 1; i++) {
+          var res = nearestPointOnSegment(latlng.lng, latlng.lat, ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+          if (res.dist < bestDist) {
+            bestDist = res.dist;
+            bestX = res.x;
+            bestY = res.y;
+          }
+        }
+      }
+      return { lat: bestY, lng: bestX };
+    }
+
+    function isPointInsideFeature(latlng, feature) {
+      var point = [latlng.lng, latlng.lat];
+      if (feature.geometry.type === 'Polygon') {
+        return pointInPolygonWithHoles(point, feature.geometry.coordinates);
+      } else if (feature.geometry.type === 'MultiPolygon') {
+        return pointInMultiPolygon(point, feature.geometry.coordinates);
+      }
+      return false;
+    }
+
+    function closestPointInsidePolygon(origin, feature) {
+      if (isPointInsideFeature(origin, feature)) return origin;
+      var nearest = nearestPointOnBoundary(origin, feature);
+      var centroid = getDistrictCentroid(
+        feature.geometry.type === 'Polygon' ? 'tx_house' : 'tx_house',
+        0
+      );
+      var c = { lat: 0, lng: 0 };
+      var coords;
+      if (feature.geometry.type === 'Polygon') {
+        coords = feature.geometry.coordinates[0];
+      } else {
+        var biggest = feature.geometry.coordinates[0];
+        var biggestArea = 0;
+        feature.geometry.coordinates.forEach(function(poly) {
+          var a = calculatePolygonArea(poly);
+          if (a > biggestArea) { biggestArea = a; biggest = poly; }
+        });
+        coords = biggest[0];
+      }
+      var sumLat = 0, sumLng = 0;
+      for (var i = 0; i < coords.length; i++) {
+        sumLng += coords[i][0];
+        sumLat += coords[i][1];
+      }
+      c = { lat: sumLat / coords.length, lng: sumLng / coords.length };
+
+      var step = 0.00015;
+      var candidate = { lat: nearest.lat, lng: nearest.lng };
+      for (var j = 0; j < 25; j++) {
+        var dx = c.lng - candidate.lng;
+        var dy = c.lat - candidate.lat;
+        var len = Math.sqrt(dx * dx + dy * dy) || 1;
+        candidate = {
+          lat: candidate.lat + (dy / len) * step,
+          lng: candidate.lng + (dx / len) * step
+        };
+        if (isPointInsideFeature(candidate, feature)) return candidate;
+      }
+      return c;
+    }
+
+    function getMarkerPosition(origin, layerType, districtNumber) {
+      if (!origin) return getDistrictCentroid(layerType, districtNumber);
+      var feature = getDistrictFeature(layerType, districtNumber);
+      if (!feature) return getDistrictCentroid(layerType, districtNumber);
+      return closestPointInsidePolygon(origin, feature);
     }
 
     function getInitials(name) {
@@ -1220,26 +1325,6 @@ const MAP_HTML = `
       var parts = name.trim().split(/\\s+/);
       if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
       return parts[0][0].toUpperCase();
-    }
-
-    function haversineDistance(lat1, lng1, lat2, lng2) {
-      var R = 6371;
-      var dLat = (lat2 - lat1) * Math.PI / 180;
-      var dLng = (lng2 - lng1) * Math.PI / 180;
-      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLng/2) * Math.sin(dLng/2);
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    function blendCoord(origin, anchor, wTap) {
-      if (!origin) return anchor;
-      var dist = haversineDistance(origin.lat, origin.lng, anchor.lat, anchor.lng);
-      if (dist > 25) return anchor;
-      return {
-        lat: origin.lat * wTap + anchor.lat * (1 - wTap),
-        lng: origin.lng * wTap + anchor.lng * (1 - wTap)
-      };
     }
 
     function setHeadshotMarkers(markers, selectionOrigin) {
@@ -1250,7 +1335,6 @@ const MAP_HTML = `
         return;
       }
 
-      var wTap = 0.7;
       var MAX_MARKERS = 10;
       var displayed = markers.slice(0, MAX_MARKERS);
       var overflow = markers.length > MAX_MARKERS ? markers.length - MAX_MARKERS : 0;
@@ -1258,10 +1342,9 @@ const MAP_HTML = `
       displayed.forEach(function(m) {
         var layerType = m.source === 'TX_HOUSE' ? 'tx_house' :
                         m.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
-        var centroid = getDistrictCentroid(layerType, m.districtNumber);
-        if (!centroid) return;
 
-        var pos = blendCoord(selectionOrigin, centroid, wTap);
+        var pos = getMarkerPosition(selectionOrigin, layerType, m.districtNumber);
+        if (!pos) return;
 
         var initials = getInitials(m.name);
         var photoHtml = m.photoUrl
@@ -1328,7 +1411,7 @@ const MAP_HTML = `
         }
       }
 
-      console.log('[HEADSHOTS] Set', displayed.length, 'headshot markers' + (overflow > 0 ? ' (+' + overflow + ' overflow)' : '') + (selectionOrigin ? ' (blended w/ origin)' : ''));
+      console.log('[HEADSHOTS] Set', displayed.length, 'headshot markers' + (overflow > 0 ? ' (+' + overflow + ' overflow)' : '') + (selectionOrigin ? ' (clamped to polygon near origin)' : ''));
     }
 
     function clearHeadshotMarkers() {
