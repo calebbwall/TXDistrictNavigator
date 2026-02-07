@@ -1,0 +1,101 @@
+Here’s the updated, complete Replit prompt, with the tap-to-expand (“blow up”) photo behavior added cleanly and without introducing native complexity.
+
+You can paste this as-is.
+
+⸻
+
+Replit Prompt: Auto-populate Texas Tribune headshots + tap to expand photo on profile page
+
+Goal:
+Use the same Texas Tribune directory source already used for hometowns to automatically pull, store, and display headshots for all TX House and TX Senate members, and allow users to tap the photo on the profile page to view it full-screen.
+
+Source of truth:
+The Texas Tribune Elected Officials Directory (https://directory.texastribune.org).
+Each official’s directory page includes a canonical headshot image hosted at:
+https://directory.texastribune.org/static/images/headshots/...
+Do not guess filenames—always extract the image URL from the official’s directory page HTML.
+
+⸻
+
+Backend / Data Layer
+
+1) Data model
+	•	Add a nullable photoUrl field to the official record (same storage layer used for hometowns).
+
+2) One-time backfill
+	•	Create a one-time server-side backfill routine that:
+	•	Iterates all TX House and TX Senate officials already in the database.
+	•	For each official missing photoUrl:
+	•	Fetches their Tribune directory page using the same slug logic already used for hometowns.
+	•	Parses the HTML to locate the headshot URL that points to /static/images/headshots/.
+	•	Saves the resolved absolute image URL to photoUrl.
+	•	Never overwrite an existing photoUrl.
+	•	Rate limit requests to ≤ 1 request/second.
+	•	Log failures and continue (do not crash the job).
+	•	Ensure the backfill can be run manually (script or protected route) and does not re-run automatically on every server start.
+
+3) Incremental behavior
+	•	When a new TX House or TX Senate official is added in the future:
+	•	Pull photoUrl once using the same logic.
+	•	Never overwrite an existing value.
+
+4) API
+	•	Ensure the officials API response includes photoUrl.
+
+⸻
+
+Client / UI
+
+5) Profile card display
+	•	On TX House and TX Senate profile cards:
+	•	If photoUrl exists, render it as an avatar (circle or rounded square).
+	•	If missing, show a neutral placeholder (initials).
+	•	Do not refetch images repeatedly—allow native image caching.
+
+6) Tap-to-expand (“blow up”) photo
+	•	On the official profile page:
+	•	Make the photo tappable.
+	•	When tapped:
+	•	Open a full-screen modal/lightbox.
+	•	Display the photo centered, scaled to fit screen width while preserving aspect ratio.
+	•	Darken the background (black or near-black).
+	•	Allow dismiss by:
+	•	tapping outside the image
+	•	or a clear close (✕) button.
+	•	Use a simple React Native Modal or equivalent (no native Android/iOS code).
+	•	Ensure this works in Expo Go and production APK.
+
+⸻
+
+Guardrails
+	•	Only apply to TX House and TX Senate (do not affect US Congress).
+	•	Do not break hometown logic.
+	•	Do not overwrite user-entered data.
+	•	No third-party image viewer dependency unless absolutely necessary.
+
+⸻
+
+Acceptance tests
+	•	Pick 3 known officials:
+	•	Verify photoUrl is populated and stored.
+	•	Verify the image URL resolves to directory.texastribune.org/static/images/headshots/....
+	•	Profile cards display photos correctly.
+	•	Tapping a photo opens a full-screen view.
+	•	Dismiss works reliably.
+	•	No repeated scraping on app reload.
+
+Deliver as a clean commit with minimal refactor.
+
+⸻
+
+Why this is the right UX choice
+
+This gives your dad:
+	•	quick visual recognition on cards
+	•	a readable, full-resolution headshot when needed
+	•	zero accidental overwrites
+	•	no dependency on fragile Android contact or media APIs
+
+It’s exactly the kind of “small polish, high trust” feature that makes the app feel finished rather than experimental.
+
+When you’re ready, the natural next step is pinch-to-zoom inside the modal—but this version is intentionally simple and stable first.

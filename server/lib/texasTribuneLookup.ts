@@ -56,6 +56,14 @@ function parseHometownFromHtml(html: string): string | null {
   return null;
 }
 
+function parseHeadshotFromHtml(html: string): string | null {
+  const imgMatch = html.match(/src="(\/static\/images\/headshots\/[^"]+)"/i);
+  if (imgMatch && imgMatch[1]) {
+    return `https://directory.texastribune.org${imgMatch[1]}`;
+  }
+  return null;
+}
+
 export async function lookupHometownFromTexasTribune(fullName: string): Promise<HometownResult> {
   const slugs = generateSlugVariants(fullName);
   
@@ -109,4 +117,43 @@ export async function lookupHometownFromTexasTribune(fullName: string): Promise<
     success: false,
     error: "Official not found in Texas Tribune directory",
   };
+}
+
+interface HeadshotResult {
+  photoUrl: string | null;
+  success: boolean;
+  error?: string;
+}
+
+export async function lookupHeadshotFromTexasTribune(fullName: string): Promise<HeadshotResult> {
+  const slugs = generateSlugVariants(fullName);
+  
+  for (const slug of slugs) {
+    const url = `https://directory.texastribune.org/${slug}/`;
+    
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "TXDistrictNavigator/1.0 (civic-engagement-app)",
+          "Accept": "text/html",
+        },
+        redirect: "follow",
+      });
+      
+      if (!response.ok) continue;
+      
+      const html = await response.text();
+      if (html.includes("Page not found") || html.includes("404")) continue;
+      
+      const photoUrl = parseHeadshotFromHtml(html);
+      if (photoUrl) {
+        console.log(`[TexasTribune] Found headshot for "${fullName}": ${photoUrl}`);
+        return { photoUrl, success: true };
+      }
+    } catch (error) {
+      console.log(`[TexasTribune] Error fetching headshot ${slug}:`, error);
+    }
+  }
+  
+  return { photoUrl: null, success: false, error: "Headshot not found" };
 }
