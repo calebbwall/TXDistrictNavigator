@@ -515,6 +515,8 @@ function getMapHtml(): string {
     
     var headshotMarkers = [];
     var centroidCache = {};
+    var featureCache = {};
+    var boundaryCache = {};
     
     function computeCentroid(feature) {
       if (!feature || !feature.geometry) return null;
@@ -552,21 +554,30 @@ function getMapHtml(): string {
       return [sumLat / coords.length, sumLng / coords.length];
     }
     
-    function getDistrictCentroid(layerType, districtNum) {
+    function getDistrictFeature(layerType, districtNum) {
       var key = layerType + '_' + districtNum;
-      if (centroidCache[key]) return centroidCache[key];
+      if (featureCache[key]) return featureCache[key];
       var geojson = geoJSONData[layerType];
       if (!geojson || !geojson.features) return null;
       for (var i = 0; i < geojson.features.length; i++) {
         var feat = geojson.features[i];
         var dn = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
         if (dn === districtNum) {
-          var c = computeCentroid(feat);
-          if (c) centroidCache[key] = c;
-          return c;
+          featureCache[key] = feat;
+          return feat;
         }
       }
       return null;
+    }
+    
+    function getDistrictCentroid(layerType, districtNum) {
+      var key = layerType + '_' + districtNum;
+      if (centroidCache[key]) return centroidCache[key];
+      var feat = getDistrictFeature(layerType, districtNum);
+      if (!feat) return null;
+      var c = computeCentroid(feat);
+      if (c) centroidCache[key] = c;
+      return c;
     }
     
     function getInitials(name) {
@@ -576,24 +587,70 @@ function getMapHtml(): string {
       return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
     }
     
-    function haversineDistanceKm(lat1, lng1, lat2, lng2) {
-      var R = 6371;
-      var dLat = (lat2 - lat1) * Math.PI / 180;
-      var dLng = (lng2 - lng1) * Math.PI / 180;
-      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLng/2) * Math.sin(dLng/2);
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    function getBoundaryRings(feature) {
+      var rings = [];
+      if (feature.geometry.type === 'Polygon') {
+        rings.push(feature.geometry.coordinates[0]);
+      } else if (feature.geometry.type === 'MultiPolygon') {
+        for (var p = 0; p < feature.geometry.coordinates.length; p++) {
+          rings.push(feature.geometry.coordinates[p][0]);
+        }
+      }
+      return rings;
     }
     
-    function blendCoord(origin, anchor, wTap) {
-      if (!origin) return anchor;
-      var dist = haversineDistanceKm(origin[0], origin[1], anchor[0], anchor[1]);
-      if (dist > 25) return anchor;
-      return [
-        origin[0] * wTap + anchor[0] * (1 - wTap),
-        origin[1] * wTap + anchor[1] * (1 - wTap)
-      ];
+    function nearestPointOnSegment(px, py, ax, ay, bx, by) {
+      var dx = bx - ax, dy = by - ay;
+      var lenSq = dx * dx + dy * dy;
+      if (lenSq === 0) return { x: ax, y: ay, dist: Math.sqrt((px-ax)*(px-ax)+(py-ay)*(py-ay)) };
+      var t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      var nx = ax + t * dx, ny = ay + t * dy;
+      var d = Math.sqrt((px-nx)*(px-nx)+(py-ny)*(py-ny));
+      return { x: nx, y: ny, dist: d };
+    }
+    
+    function nearestPointOnBoundary(lat, lng, feature) {
+      var cacheKey = (feature.properties.DIST_NBR || feature.properties.district || '') + '_' + feature.geometry.type;
+      var rings = boundaryCache[cacheKey] || getBoundaryRings(feature);
+      if (!boundaryCache[cacheKey]) boundaryCache[cacheKey] = rings;
+      var bestDist = Infinity, bestX = 0, bestY = 0;
+      for (var r = 0; r < rings.length; r++) {
+        var ring = rings[r];
+        for (var i = 0; i < ring.length - 1; i++) {
+          var res = nearestPointOnSegment(lng, lat, ring[i][0], ring[i][1], ring[i+1][0], ring[i+1][1]);
+          if (res.dist < bestDist) {
+            bestDist = res.dist;
+            bestX = res.x;
+            bestY = res.y;
+          }
+        }
+      }
+      return [bestY, bestX];
+    }
+    
+    function closestPointInsidePolygon(lat, lng, feature) {
+      if (isPointInGeoJSONFeature(lat, lng, feature)) return [lat, lng];
+      var nearest = nearestPointOnBoundary(lat, lng, feature);
+      var c = computeCentroid(feature);
+      if (!c) return nearest;
+      var step = 0.00015;
+      var candLat = nearest[0], candLng = nearest[1];
+      for (var j = 0; j < 25; j++) {
+        var dx = c[1] - candLng;
+        var dy = c[0] - candLat;
+        var len = Math.sqrt(dx * dx + dy * dy) || 1;
+        candLat = candLat + (dy / len) * step;
+        candLng = candLng + (dx / len) * step;
+        if (isPointInGeoJSONFeature(candLat, candLng, feature)) return [candLat, candLng];
+      }
+      return c;
+    }
+    
+    function getMarkerPosition(originLat, originLng, layerType, districtNum) {
+      var feature = getDistrictFeature(layerType, districtNum);
+      if (!feature) return getDistrictCentroid(layerType, districtNum);
+      return closestPointInsidePolygon(originLat, originLng, feature);
     }
     
     window.setHeadshotMarkers = function(markers, selectionOrigin) {
@@ -601,15 +658,17 @@ function getMapHtml(): string {
       var MAX_VISIBLE = 10;
       var visible = markers.slice(0, MAX_VISIBLE);
       var overflow = markers.length - MAX_VISIBLE;
-      var wTap = 0.7;
-      var originArr = selectionOrigin ? [selectionOrigin.lat, selectionOrigin.lng] : null;
+      var hasOrigin = selectionOrigin && typeof selectionOrigin.lat === 'number';
       
       for (var i = 0; i < visible.length; i++) {
         var m = visible[i];
-        var centroid = getDistrictCentroid(m.layerType, m.districtNumber);
-        if (!centroid) continue;
-        
-        var pos = blendCoord(originArr, centroid, wTap);
+        var pos;
+        if (hasOrigin) {
+          pos = getMarkerPosition(selectionOrigin.lat, selectionOrigin.lng, m.layerType, m.districtNumber);
+        } else {
+          pos = getDistrictCentroid(m.layerType, m.districtNumber);
+        }
+        if (!pos) continue;
         
         var innerHtml;
         if (m.photoUrl) {
@@ -637,8 +696,8 @@ function getMapHtml(): string {
       
       if (overflow > 0) {
         var overflowPos;
-        if (originArr) {
-          overflowPos = originArr;
+        if (hasOrigin) {
+          overflowPos = [selectionOrigin.lat, selectionOrigin.lng];
         } else {
           var sumLat = 0, sumLng = 0, cnt = 0;
           for (var j = 0; j < visible.length; j++) {
