@@ -1027,7 +1027,7 @@ const MAP_HTML = `
         } else if (data.type === 'CLEAR_HIGHLIGHTS') {
           clearHighlights();
         } else if (data.type === 'SET_HEADSHOT_MARKERS') {
-          setHeadshotMarkers(data.markers);
+          setHeadshotMarkers(data.markers, data.selectionOrigin);
         } else if (data.type === 'CLEAR_HEADSHOT_MARKERS') {
           clearHeadshotMarkers();
         }
@@ -1222,7 +1222,27 @@ const MAP_HTML = `
       return parts[0][0].toUpperCase();
     }
 
-    function setHeadshotMarkers(markers) {
+    function haversineDistance(lat1, lng1, lat2, lng2) {
+      var R = 6371;
+      var dLat = (lat2 - lat1) * Math.PI / 180;
+      var dLng = (lng2 - lng1) * Math.PI / 180;
+      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function blendCoord(origin, anchor, wTap) {
+      if (!origin) return anchor;
+      var dist = haversineDistance(origin.lat, origin.lng, anchor.lat, anchor.lng);
+      if (dist > 25) return anchor;
+      return {
+        lat: origin.lat * wTap + anchor.lat * (1 - wTap),
+        lng: origin.lng * wTap + anchor.lng * (1 - wTap)
+      };
+    }
+
+    function setHeadshotMarkers(markers, selectionOrigin) {
       headshotMarkersLayer.clearLayers();
 
       if (!markers || markers.length === 0) {
@@ -1230,6 +1250,7 @@ const MAP_HTML = `
         return;
       }
 
+      var wTap = 0.7;
       var MAX_MARKERS = 10;
       var displayed = markers.slice(0, MAX_MARKERS);
       var overflow = markers.length > MAX_MARKERS ? markers.length - MAX_MARKERS : 0;
@@ -1239,6 +1260,8 @@ const MAP_HTML = `
                         m.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
         var centroid = getDistrictCentroid(layerType, m.districtNumber);
         if (!centroid) return;
+
+        var pos = blendCoord(selectionOrigin, centroid, wTap);
 
         var initials = getInitials(m.name);
         var photoHtml = m.photoUrl
@@ -1257,7 +1280,7 @@ const MAP_HTML = `
           iconAnchor: [24, 62]
         });
 
-        var marker = L.marker([centroid.lat, centroid.lng], {
+        var marker = L.marker([pos.lat, pos.lng], {
           icon: icon,
           zIndexOffset: 2000
         });
@@ -1271,15 +1294,19 @@ const MAP_HTML = `
 
       // Overflow marker
       if (overflow > 0) {
-        var sumLat = 0, sumLng = 0, count = 0;
-        markers.forEach(function(m) {
-          var lt = m.source === 'TX_HOUSE' ? 'tx_house' :
-                   m.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
-          var c = getDistrictCentroid(lt, m.districtNumber);
-          if (c) { sumLat += c.lat; sumLng += c.lng; count++; }
-        });
-        if (count > 0) {
-          var overflowCenter = { lat: sumLat / count, lng: sumLng / count };
+        if (selectionOrigin) {
+          var overflowCenter = selectionOrigin;
+        } else {
+          var sumLat = 0, sumLng = 0, count = 0;
+          markers.forEach(function(m) {
+            var lt = m.source === 'TX_HOUSE' ? 'tx_house' :
+                     m.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
+            var c = getDistrictCentroid(lt, m.districtNumber);
+            if (c) { sumLat += c.lat; sumLng += c.lng; count++; }
+          });
+          var overflowCenter = count > 0 ? { lat: sumLat / count, lng: sumLng / count } : null;
+        }
+        if (overflowCenter) {
           var overflowHtml = '<div class="headshot-overflow">' +
             '<div class="headshot-overflow-bubble">+' + overflow + '</div>' +
             '<div class="headshot-overflow-tail"></div>' +
@@ -1301,7 +1328,7 @@ const MAP_HTML = `
         }
       }
 
-      console.log('[HEADSHOTS] Set', displayed.length, 'headshot markers' + (overflow > 0 ? ' (+' + overflow + ' overflow)' : ''));
+      console.log('[HEADSHOTS] Set', displayed.length, 'headshot markers' + (overflow > 0 ? ' (+' + overflow + ' overflow)' : '') + (selectionOrigin ? ' (blended w/ origin)' : ''));
     }
 
     function clearHeadshotMarkers() {
@@ -1794,7 +1821,7 @@ export default function MapScreen() {
   }, []);
 
   // Send headshot markers to the map for currently selected officials
-  const sendHeadshotMarkers = useCallback((officials: Official[], hits: DistrictHit[]) => {
+  const sendHeadshotMarkers = useCallback((officials: Official[], hits: DistrictHit[], selectionOrigin?: { lat: number; lng: number } | null) => {
     if (!officials || officials.length === 0 || !hits || hits.length === 0) {
       const clearMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
       if (Platform.OS === 'web') {
@@ -1824,8 +1851,11 @@ export default function MapScreen() {
       };
     }).filter(m => m.districtNumber > 0);
 
-    const msg = { type: 'SET_HEADSHOT_MARKERS', markers };
-    console.log('[MapScreen] Sending', markers.length, 'headshot markers');
+    const msg: any = { type: 'SET_HEADSHOT_MARKERS', markers };
+    if (selectionOrigin) {
+      msg.selectionOrigin = selectionOrigin;
+    }
+    console.log('[MapScreen] Sending', markers.length, 'headshot markers', selectionOrigin ? '(with origin)' : '');
     if (Platform.OS === 'web') {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
@@ -2130,10 +2160,10 @@ export default function MapScreen() {
   }, []);
 
   const handleMapTap = useCallback(
-    async (hits: DistrictHit[]) => {
+    async (hits: DistrictHit[], tapLatLng?: { lat: number; lng: number } | null) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      if (DEBUG_MAP) console.log('[MAP_TAP] handleMapTap with', hits.length, 'hits');
+      if (DEBUG_MAP) console.log('[MAP_TAP] handleMapTap with', hits.length, 'hits', tapLatLng ? `at (${tapLatLng.lat.toFixed(4)}, ${tapLatLng.lng.toFixed(4)})` : '');
       
       // Tap on empty space - clear all highlights
       if (hits.length === 0) {
@@ -2233,8 +2263,8 @@ export default function MapScreen() {
         });
         setShowResultsPanel(true);
         
-        // Send headshot markers to map
-        sendHeadshotMarkers(officials, districtHits);
+        // Send headshot markers to map with tap origin for proximity blend
+        sendHeadshotMarkers(officials, districtHits, tapLatLng);
       }
       
       // Note: Don't clear storedPolygon on tap - let it persist so user can restore polygon results
@@ -2595,7 +2625,8 @@ export default function MapScreen() {
       console.log('[MapScreen] WebView message received:', data.type);
       if (data.type === "MAP_TAP" && Array.isArray(data.hits)) {
         console.log('[MapScreen] MAP_TAP hits:', data.hits.length, JSON.stringify(data.hits));
-        await handleMapTap(data.hits);
+        const tapCoord = (data.lat != null && data.lng != null) ? { lat: data.lat, lng: data.lng } : null;
+        await handleMapTap(data.hits, tapCoord);
       } else if (data.type === "mapReady") {
         console.log('[MapScreen] Map is ready!');
         setMapReady(true);
@@ -2653,7 +2684,8 @@ export default function MapScreen() {
           console.log('[MapScreen] Window message received:', data.type);
           if ((data.type === "MAP_TAP" || data.type === "mapTap") && Array.isArray(data.hits)) {
             console.log('[MapScreen] Window MAP_TAP hits:', data.hits.length, 'raw hits:', JSON.stringify(data.hits));
-            handleMapTap(data.hits);
+            const tapCoord = (data.lat != null && data.lng != null) ? { lat: data.lat, lng: data.lng } : null;
+            handleMapTap(data.hits, tapCoord);
           } else if (data.type === "mapReady") {
             console.log('[MapScreen] Map is ready (from window)!');
             setMapReady(true);

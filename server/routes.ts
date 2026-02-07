@@ -576,16 +576,40 @@ function getMapHtml(): string {
       return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
     }
     
-    window.setHeadshotMarkers = function(markers) {
+    function haversineDistanceKm(lat1, lng1, lat2, lng2) {
+      var R = 6371;
+      var dLat = (lat2 - lat1) * Math.PI / 180;
+      var dLng = (lng2 - lng1) * Math.PI / 180;
+      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    
+    function blendCoord(origin, anchor, wTap) {
+      if (!origin) return anchor;
+      var dist = haversineDistanceKm(origin[0], origin[1], anchor[0], anchor[1]);
+      if (dist > 25) return anchor;
+      return [
+        origin[0] * wTap + anchor[0] * (1 - wTap),
+        origin[1] * wTap + anchor[1] * (1 - wTap)
+      ];
+    }
+    
+    window.setHeadshotMarkers = function(markers, selectionOrigin) {
       window.clearHeadshotMarkers();
       var MAX_VISIBLE = 10;
       var visible = markers.slice(0, MAX_VISIBLE);
       var overflow = markers.length - MAX_VISIBLE;
+      var wTap = 0.7;
+      var originArr = selectionOrigin ? [selectionOrigin.lat, selectionOrigin.lng] : null;
       
       for (var i = 0; i < visible.length; i++) {
         var m = visible[i];
         var centroid = getDistrictCentroid(m.layerType, m.districtNumber);
         if (!centroid) continue;
+        
+        var pos = blendCoord(originArr, centroid, wTap);
         
         var innerHtml;
         if (m.photoUrl) {
@@ -601,7 +625,7 @@ function getMapHtml(): string {
           iconSize: [48, 62],
           iconAnchor: [24, 62]
         });
-        var marker = L.marker(centroid, { icon: icon, interactive: true, zIndexOffset: 1000 });
+        var marker = L.marker(pos, { icon: icon, interactive: true, zIndexOffset: 1000 });
         marker._officialId = m.officialId;
         marker.on('click', function(e) {
           L.DomEvent.stopPropagation(e);
@@ -612,14 +636,18 @@ function getMapHtml(): string {
       }
       
       if (overflow > 0) {
-        var sumLat = 0, sumLng = 0, cnt = 0;
-        for (var j = 0; j < visible.length; j++) {
-          var c = getDistrictCentroid(visible[j].layerType, visible[j].districtNumber);
-          if (c) { sumLat += c[0]; sumLng += c[1]; cnt++; }
+        var overflowPos;
+        if (originArr) {
+          overflowPos = originArr;
+        } else {
+          var sumLat = 0, sumLng = 0, cnt = 0;
+          for (var j = 0; j < visible.length; j++) {
+            var c = getDistrictCentroid(visible[j].layerType, visible[j].districtNumber);
+            if (c) { sumLat += c[0]; sumLng += c[1]; cnt++; }
+          }
+          overflowPos = cnt > 0 ? [sumLat / cnt, sumLng / cnt] : null;
         }
-        if (cnt > 0) {
-          var avgLat = sumLat / cnt;
-          var avgLng = sumLng / cnt;
+        if (overflowPos) {
           var oHtml = '<div class="headshot-overflow"><div class="headshot-overflow-bubble">+' + overflow + '</div><div class="headshot-overflow-tail"></div></div>';
           var oIcon = L.divIcon({
             className: '',
@@ -627,7 +655,7 @@ function getMapHtml(): string {
             iconSize: [48, 62],
             iconAnchor: [24, 62]
           });
-          var oMarker = L.marker([avgLat, avgLng], { icon: oIcon, interactive: true, zIndexOffset: 1001 });
+          var oMarker = L.marker(overflowPos, { icon: oIcon, interactive: true, zIndexOffset: 1001 });
           oMarker.on('click', function(e) {
             L.DomEvent.stopPropagation(e);
             postMessage({ type: 'headshotOverflowClicked' });
@@ -687,7 +715,7 @@ function getMapHtml(): string {
           window.highlightDistricts(data.hits || []);
         } else if (data.type === 'SET_HEADSHOT_MARKERS') {
           console.log('[Leaflet] Received SET_HEADSHOT_MARKERS, count:', data.markers?.length);
-          window.setHeadshotMarkers(data.markers || []);
+          window.setHeadshotMarkers(data.markers || [], data.selectionOrigin || null);
         } else if (data.type === 'CLEAR_HEADSHOT_MARKERS') {
           console.log('[Leaflet] Received CLEAR_HEADSHOT_MARKERS');
           window.clearHeadshotMarkers();
