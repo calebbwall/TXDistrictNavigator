@@ -612,22 +612,26 @@ export default function OfficialProfileScreen() {
         scrollIndicatorInsets={{ bottom: insets.bottom }}
       >
         <View style={styles.header}>
-          <Pressable 
-            style={styles.avatarContainer}
-            onPress={() => {
-              if (official.photoUrl) setShowPhotoModal(true);
-            }}
-            disabled={!official.photoUrl}
-          >
-            {official.photoUrl ? (
+          {official.photoUrl ? (
+            <Pressable 
+              onPress={() => setShowPhotoModal(true)}
+              style={({ pressed }) => [
+                styles.avatarContainer,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="View photo"
+            >
               <Image source={{ uri: official.photoUrl }} style={styles.avatar} />
-            ) : (
+            </Pressable>
+          ) : (
+            <View style={styles.avatarContainer}>
               <Image
                 source={require("../../assets/images/default-avatar.png")}
                 style={styles.avatar}
               />
-            )}
-          </Pressable>
+            </View>
+          )}
           <View style={styles.headerInfo}>
             <ThemedText type="h2">{official.fullName}</ThemedText>
             <ThemedText type="body" style={{ color: theme.secondaryText }}>
