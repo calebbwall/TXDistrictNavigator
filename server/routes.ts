@@ -652,31 +652,208 @@ function getMapHtml(): string {
       if (!feature) return getDistrictCentroid(layerType, districtNum);
       return closestPointInsidePolygon(originLat, originLng, feature);
     }
+
+    var anchorCache = {};
+
+    function calculateFeatureArea(feature) {
+      var totalArea = 0;
+      if (feature.geometry.type === 'Polygon') {
+        totalArea = calculatePolygonArea(feature.geometry.coordinates);
+      } else if (feature.geometry.type === 'MultiPolygon') {
+        for (var i = 0; i < feature.geometry.coordinates.length; i++) {
+          totalArea += calculatePolygonArea(feature.geometry.coordinates[i]);
+        }
+      }
+      return totalArea;
+    }
+
+    function getFeatureBbox(feature) {
+      var minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+      var rings = getBoundaryRings(feature);
+      for (var r = 0; r < rings.length; r++) {
+        for (var i = 0; i < rings[r].length; i++) {
+          var coord = rings[r][i];
+          if (coord[0] < minLng) minLng = coord[0];
+          if (coord[0] > maxLng) maxLng = coord[0];
+          if (coord[1] < minLat) minLat = coord[1];
+          if (coord[1] > maxLat) maxLat = coord[1];
+        }
+      }
+      return [minLng, minLat, maxLng, maxLat];
+    }
+
+    function getDistrictAnchors(layerType, districtNum) {
+      var cacheKey = layerType + '_' + districtNum;
+      if (anchorCache[cacheKey]) return anchorCache[cacheKey];
+
+      var feature = getDistrictFeature(layerType, districtNum);
+      if (!feature) {
+        var c = getDistrictCentroid(layerType, districtNum);
+        return c ? [c] : [];
+      }
+
+      var a = calculateFeatureArea(feature);
+      var n = Math.max(1, Math.min(6, Math.ceil(a / 0.25)));
+
+      var centroid = getDistrictCentroid(layerType, districtNum);
+      if (!centroid) { anchorCache[cacheKey] = []; return []; }
+
+      var anchors = [centroid];
+      if (n === 1) { anchorCache[cacheKey] = anchors; return anchors; }
+
+      var bb = getFeatureBbox(feature);
+      var gridSize = n <= 3 ? 5 : 7;
+      var pts = [];
+      for (var gi = 0; gi < gridSize; gi++) {
+        for (var gj = 0; gj < gridSize; gj++) {
+          var lng = bb[0] + ((gi + 0.5) / gridSize) * (bb[2] - bb[0]);
+          var lat = bb[1] + ((gj + 0.5) / gridSize) * (bb[3] - bb[1]);
+          if (isPointInGeoJSONFeature(lat, lng, feature)) pts.push([lat, lng]);
+        }
+      }
+
+      function dist2(p, q) {
+        var dx = p[1] - q[1], dy = p[0] - q[0];
+        return dx * dx + dy * dy;
+      }
+
+      var selected = [];
+      if (pts.length > 0) {
+        pts.sort(function(p, q) { return dist2(q, centroid) - dist2(p, centroid); });
+        selected.push(pts[0]);
+        while (selected.length < (n - 1) && selected.length < pts.length) {
+          var best = null, bestScore = -1;
+          for (var pi = 0; pi < pts.length; pi++) {
+            var alreadyUsed = false;
+            for (var si = 0; si < selected.length; si++) {
+              if (pts[pi] === selected[si]) { alreadyUsed = true; break; }
+            }
+            if (alreadyUsed) continue;
+            var minD = Infinity;
+            for (var si2 = 0; si2 < selected.length; si2++) {
+              var d = dist2(pts[pi], selected[si2]);
+              if (d < minD) minD = d;
+            }
+            if (minD > bestScore) { bestScore = minD; best = pts[pi]; }
+          }
+          if (best) selected.push(best);
+          else break;
+        }
+      }
+
+      for (var k = 0; k < selected.length && anchors.length < n; k++) {
+        anchors.push(selected[k]);
+      }
+
+      anchorCache[cacheKey] = anchors;
+      return anchors;
+    }
+
+    function getNearestAnchor(originLat, originLng, layerType, districtNum) {
+      var anchors = getDistrictAnchors(layerType, districtNum);
+      if (anchors.length === 0) return getDistrictCentroid(layerType, districtNum);
+      if (anchors.length === 1) return anchors[0];
+      var bestDist = Infinity, bestAnchor = anchors[0];
+      for (var i = 0; i < anchors.length; i++) {
+        var dx = anchors[i][1] - originLng;
+        var dy = anchors[i][0] - originLat;
+        var d = dx * dx + dy * dy;
+        if (d < bestDist) { bestDist = d; bestAnchor = anchors[i]; }
+      }
+      return bestAnchor;
+    }
+
+    function simpleHash(str) {
+      var hash = 0;
+      for (var i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return Math.abs(hash);
+    }
+
+    function resolveCollisions(entries) {
+      var threshold = 0.0005;
+      var thresholdSq = threshold * threshold;
+      var angles = [0, 60, 120, 180, 240, 300];
+      var radii = [0.00015, 0.00025, 0.00035, 0.00050, 0.00075, 0.0010];
+
+      for (var i = 0; i < entries.length; i++) {
+        for (var j = i + 1; j < entries.length; j++) {
+          var dx = entries[i].pos[1] - entries[j].pos[1];
+          var dy = entries[i].pos[0] - entries[j].pos[0];
+          if (dx * dx + dy * dy < thresholdSq) {
+            var feature = entries[j].feature;
+            if (!feature) continue;
+            var angleOffset = simpleHash(entries[j].key) % 360;
+            var found = false;
+            for (var ri = 0; ri < radii.length && !found; ri++) {
+              for (var ai = 0; ai < angles.length && !found; ai++) {
+                var angle = (angles[ai] + angleOffset) * Math.PI / 180;
+                var candLat = entries[j].pos[0] + radii[ri] * Math.sin(angle);
+                var candLng = entries[j].pos[1] + radii[ri] * Math.cos(angle);
+                if (isPointInGeoJSONFeature(candLat, candLng, feature)) {
+                  var tooClose = false;
+                  for (var k = 0; k < entries.length; k++) {
+                    if (k === j) continue;
+                    var dk = candLng - entries[k].pos[1];
+                    var dl = candLat - entries[k].pos[0];
+                    if (dk * dk + dl * dl < thresholdSq) { tooClose = true; break; }
+                  }
+                  if (!tooClose) { entries[j].pos = [candLat, candLng]; found = true; }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
     
-    window.setHeadshotMarkers = function(markers, selectionOrigin) {
+    window.setHeadshotMarkers = function(markers, selectionOrigin, selectionMode) {
       window.clearHeadshotMarkers();
+      var mode = selectionMode || null;
       var MAX_VISIBLE = 10;
       var visible = markers.slice(0, MAX_VISIBLE);
       var overflow = markers.length - MAX_VISIBLE;
       var hasOrigin = selectionOrigin && typeof selectionOrigin.lat === 'number';
-      
+
+      var entries = [];
       for (var i = 0; i < visible.length; i++) {
         var m = visible[i];
         var pos;
-        if (hasOrigin) {
+        if (mode === 'draw' && hasOrigin) {
+          pos = getNearestAnchor(selectionOrigin.lat, selectionOrigin.lng, m.layerType, m.districtNumber);
+        } else if (hasOrigin) {
           pos = getMarkerPosition(selectionOrigin.lat, selectionOrigin.lng, m.layerType, m.districtNumber);
         } else {
           pos = getDistrictCentroid(m.layerType, m.districtNumber);
         }
         if (!pos) continue;
-        
+
+        var feature = getDistrictFeature(m.layerType, m.districtNumber);
+        entries.push({
+          m: m,
+          pos: [pos[0], pos[1]],
+          feature: feature,
+          key: m.layerType + '_' + m.districtNumber
+        });
+      }
+
+      if (entries.length > 1) {
+        resolveCollisions(entries);
+      }
+
+      for (var ei = 0; ei < entries.length; ei++) {
+        var entry = entries[ei];
+        var em = entry.m;
+
         var innerHtml;
-        if (m.photoUrl) {
-          innerHtml = '<img src="' + m.photoUrl + '" onerror="this.style.display=\\'none\\';this.nextSibling.style.display=\\'flex\\'" /><div class="headshot-initials" style="display:none">' + getInitials(m.name) + '</div>';
+        if (em.photoUrl) {
+          innerHtml = '<img src="' + em.photoUrl + '" onerror="this.style.display=\\'none\\';this.nextSibling.style.display=\\'flex\\'" /><div class="headshot-initials" style="display:none">' + getInitials(em.name) + '</div>';
         } else {
-          innerHtml = '<div class="headshot-initials">' + getInitials(m.name) + '</div>';
+          innerHtml = '<div class="headshot-initials">' + getInitials(em.name) + '</div>';
         }
-        
+
         var html = '<div class="headshot-marker"><div class="headshot-bubble">' + innerHtml + '</div><div class="headshot-tail"></div></div>';
         var icon = L.divIcon({
           className: '',
@@ -684,8 +861,8 @@ function getMapHtml(): string {
           iconSize: [48, 62],
           iconAnchor: [24, 62]
         });
-        var marker = L.marker(pos, { icon: icon, interactive: true, zIndexOffset: 1000 });
-        marker._officialId = m.officialId;
+        var marker = L.marker(entry.pos, { icon: icon, interactive: true, zIndexOffset: 1000 });
+        marker._officialId = em.officialId;
         marker.on('click', function(e) {
           L.DomEvent.stopPropagation(e);
           postMessage({ type: 'headshotMarkerClicked', officialId: this._officialId });
@@ -774,7 +951,7 @@ function getMapHtml(): string {
           window.highlightDistricts(data.hits || []);
         } else if (data.type === 'SET_HEADSHOT_MARKERS') {
           console.log('[Leaflet] Received SET_HEADSHOT_MARKERS, count:', data.markers?.length);
-          window.setHeadshotMarkers(data.markers || [], data.selectionOrigin || null);
+          window.setHeadshotMarkers(data.markers || [], data.selectionOrigin || null, data.selectionMode || null);
         } else if (data.type === 'CLEAR_HEADSHOT_MARKERS') {
           console.log('[Leaflet] Received CLEAR_HEADSHOT_MARKERS');
           window.clearHeadshotMarkers();
