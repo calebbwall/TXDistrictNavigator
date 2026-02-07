@@ -1,0 +1,221 @@
+Yes. You can have multiple interior anchor points per large district (for draw-to-search), while still using “where I tap” for tap-select. And you can stop the “House pictures stacking” by adding collision-avoidance that nudges markers apart but keeps them inside their districts.
+
+What you’re seeing now with draw-to-search (“all clumping at borders”) is a classic symptom of:
+origin point is outside most districts → “closest point inside” becomes the nearest boundary point → everything piles up along edges.
+Using precomputed interior anchors fixes that cleanly.
+
+Below is an all-in-one Replit prompt that implements:
+	•	Tap-select: marker goes at the tap (clamped inside the selected district).
+	•	Draw-to-search: marker goes to the nearest precomputed anchor inside each district (so no border clumping).
+	•	Multi-marker overlap: separate markers that would cover each other, but ensure the final position is still inside each district.
+
+⸻
+
+REPLIT PROMPT — Multi-anchors for large districts + tap stays at finger + no marker overlap + draw uses nearest anchor
+
+We currently show official photo markers for selected districts. Update placement rules:
+
+Placement rules
+	1.	Tap-select (single district highlight)
+
+	•	Place the official photo marker as close as possible to the tap location.
+	•	Must be inside the tapped district polygon.
+	•	Use closestPointInsidePolygon(tapPoint, district) (already implemented) so if user taps near edge/outside, it clamps inside.
+
+	2.	Draw-to-search (multiple districts selected)
+
+	•	Do NOT use draw center clamped-to-polygon (this causes border clumping).
+	•	Instead, each district must have a list of precomputed interior anchors.
+	•	For each selected district, choose the anchor point closest to the draw center and place the marker there.
+
+	3.	Avoid overlap
+
+	•	When multiple photo markers would overlap on screen (especially TX House), apply a deterministic “spread” algorithm:
+	•	Detect marker collisions using geographic distance between marker coords.
+	•	For colliding markers, shift each marker slightly in a spiral/ring pattern around its intended point.
+	•	Each shifted point must still be inside the district polygon (use booleanPointInPolygon check; if outside, try next offset).
+	•	Keep shifts small (meters-to-tens-of-meters equivalent).
+
+Dependencies (Turf)
+
+Add these turf modules (small packages preferred):
+	•	@turf/boolean-point-in-polygon
+	•	@turf/polygon-to-line
+	•	@turf/nearest-point-on-line
+	•	@turf/centroid
+	•	@turf/area
+	•	@turf/bbox
+	•	@turf/helpers
+
+Optional but helpful:
+	•	@turf/random-point (if you want random sampling inside bbox) OR implement deterministic grid sampling.
+
+Step A — store selection origins
+
+In map state:
+	•	tapOrigin?: LatLng (set on tap-select)
+	•	drawOrigin?: LatLng (set when draw selection completes; use polygon center or finger-up coordinate)
+	•	selectionMode: "tap" | "draw" | null (or infer from which origin was set most recently)
+
+Step B — build multi-anchor cache per district
+
+Create districtAnchorCache: Map<districtId, LatLng[]>.
+
+Implement getDistrictAnchors(feature, districtId) -> LatLng[]:
+	•	Always include a “safe” anchor (centroid or point-on-feature if you already have it).
+	•	Add more anchors for large districts based on polygon area.
+
+Anchor count rule (tuneable):
+	•	n = clamp(1, 6, Math.ceil(areaSqMeters / 2.5e9))
+	•	This roughly increases anchors as districts get large. Cap at 6.
+
+Generate anchors deterministically (preferred: grid sampling inside bbox):
+	1.	Compute bbox of district.
+	2.	Make a grid of candidate points (e.g., 5x5 or 7x7 depending on n).
+	3.	Keep points that are inside polygon.
+	4.	Pick a diverse subset spaced apart (simple: take first n points sorted by distance from centroid; or greedy farthest-point selection).
+	5.	If not enough inside points, fall back to centroid only.
+
+Example implementation outline:
+
+import bbox from "@turf/bbox";
+import area from "@turf/area";
+import centroid from "@turf/centroid";
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import { point } from "@turf/helpers";
+
+type LatLng = { latitude: number; longitude: number };
+
+const anchorCache = new Map<string, LatLng[]>();
+
+function fromCoords([lng, lat]: number[]): LatLng {
+  return { latitude: lat, longitude: lng };
+}
+
+function toPoint(ll: LatLng) {
+  return point([ll.longitude, ll.latitude]);
+}
+
+function clamp(min: number, max: number, v: number) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function getDistrictAnchors(districtId: string, feature: any): LatLng[] {
+  const cached = anchorCache.get(districtId);
+  if (cached) return cached;
+
+  const a = area(feature); // m^2
+  const n = clamp(1, 6, Math.ceil(a / 2.5e9)); // tune threshold as needed
+
+  const c = centroid(feature).geometry.coordinates; // [lng, lat]
+  const centroidLL = fromCoords(c);
+
+  const anchors: LatLng[] = [centroidLL];
+
+  if (n === 1) {
+    anchorCache.set(districtId, anchors);
+    return anchors;
+  }
+
+  const [minLng, minLat, maxLng, maxLat] = bbox(feature);
+
+  // Build a deterministic grid; increase resolution with n
+  const gridSize = n <= 3 ? 5 : 7;
+  const pts: LatLng[] = [];
+
+  for (let i = 0; i < gridSize; i++) {
+    for (let j = 0; j < gridSize; j++) {
+      const lng = minLng + ((i + 0.5) / gridSize) * (maxLng - minLng);
+      const lat = minLat + ((j + 0.5) / gridSize) * (maxLat - minLat);
+      const ll = { latitude: lat, longitude: lng };
+      if (booleanPointInPolygon(toPoint(ll), feature)) pts.push(ll);
+    }
+  }
+
+  // Greedy farthest-point selection to spread anchors
+  function dist2(p: LatLng, q: LatLng) {
+    const dx = p.longitude - q.longitude;
+    const dy = p.latitude - q.latitude;
+    return dx*dx + dy*dy;
+  }
+
+  const selected: LatLng[] = [];
+  if (pts.length) {
+    // seed with point farthest from centroid
+    pts.sort((p, q) => dist2(q, centroidLL) - dist2(p, centroidLL));
+    selected.push(pts[0]);
+
+    while (selected.length < (n - 1) && selected.length < pts.length) {
+      let best = pts[0];
+      let bestScore = -1;
+      for (const candidate of pts) {
+        let minD = Infinity;
+        for (const s of selected) minD = Math.min(minD, dist2(candidate, s));
+        if (minD > bestScore) {
+          bestScore = minD;
+          best = candidate;
+        }
+      }
+      selected.push(best);
+    }
+  }
+
+  anchors.push(...selected.slice(0, n - 1));
+  anchorCache.set(districtId, anchors);
+  return anchors;
+}
+
+Step C — Draw selection uses nearest anchor
+
+When selectionMode === "draw":
+	•	For each selected district:
+	•	anchors = getDistrictAnchors(districtId, districtFeature)
+	•	Choose anchor minimizing distance to drawOrigin
+	•	Marker coordinate = that anchor (no border clamping)
+
+Step D — Tap selection stays at tap point (inside district)
+
+When selectionMode === "tap":
+	•	For the selected district:
+	•	Marker coordinate = closestPointInsidePolygon(tapOrigin, districtFeature) (your current “must be inside” clamp)
+	•	If tap selection ever results in multiple districts selected, apply per-district clamp the same way.
+
+Step E — Collision avoidance (stop faces covering each other)
+
+After you compute “intended marker coordinates” for all selected districts, run a pass that adjusts overlapping markers.
+	1.	Convert “overlap” threshold in meters-ish to degrees:
+
+	•	Start with thresholdDeg = 0.002? (too big)
+Better: thresholdDeg = 0.0005 (~50m). Tune for your map scale.
+
+	2.	For any pair closer than threshold:
+
+	•	Offset one marker by small increments in a spiral around its intended point:
+	•	radii: 0, 0.00015, 0.00025, 0.00035 …
+	•	angles: 0°, 60°, 120°, 180°, 240°, 300° …
+	•	For each candidate offset point:
+	•	Must be inside that district polygon (booleanPointInPolygon)
+	•	Must be not too close to already-placed markers
+	•	Choose first valid candidate.
+
+Make this deterministic so markers don’t “jump”:
+	•	Use a stable hash of districtId to choose the order/angle start.
+
+Step F — Keep marker UI unchanged
+
+Do not change the headshot marker component UI (circle + pointer tail). Only update coordinate placement.
+
+Acceptance criteria
+	•	Tap inside district: face appears close to finger and inside district.
+	•	Draw-to-search: faces distribute to interior anchors closest to draw origin (no border clumping).
+	•	When selecting many House districts: faces no longer stack; they spread slightly but remain inside their districts.
+	•	Works for Polygon and MultiPolygon.
+
+⸻
+
+This design gives you exactly what you described:
+	•	Tap: “show me the face right where I tapped” (but legally inside the district).
+	•	Draw: “place each face at the closest sensible interior spot” (anchors) rather than snapping everyone to borders.
+	•	No stacking: small inside-district nudges so the UI stays readable.
+
+If your current draw selection returns 20–50 districts at once, the overlap logic becomes important; otherwise, you’ll get a little pile of faces even with anchors just because some districts are geographically close.

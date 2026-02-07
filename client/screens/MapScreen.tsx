@@ -1904,7 +1904,7 @@ export default function MapScreen() {
   }, []);
 
   // Send headshot markers to the map for currently selected officials
-  const sendHeadshotMarkers = useCallback((officials: Official[], hits: DistrictHit[], selectionOrigin?: { lat: number; lng: number } | null) => {
+  const sendHeadshotMarkers = useCallback((officials: Official[], hits: DistrictHit[], selectionOrigin?: { lat: number; lng: number } | null, selectionMode?: 'tap' | 'draw' | null) => {
     if (!officials || officials.length === 0 || !hits || hits.length === 0) {
       const clearMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
       if (Platform.OS === 'web') {
@@ -1938,7 +1938,10 @@ export default function MapScreen() {
     if (selectionOrigin) {
       msg.selectionOrigin = selectionOrigin;
     }
-    console.log('[MapScreen] Sending', markers.length, 'headshot markers', selectionOrigin ? '(with origin)' : '');
+    if (selectionMode) {
+      msg.selectionMode = selectionMode;
+    }
+    console.log('[MapScreen] Sending', markers.length, 'headshot markers', selectionOrigin ? '(with origin, mode=' + (selectionMode || 'none') + ')' : '');
     if (Platform.OS === 'web') {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
@@ -2346,8 +2349,7 @@ export default function MapScreen() {
         });
         setShowResultsPanel(true);
         
-        // Send headshot markers to map with tap origin for proximity blend
-        sendHeadshotMarkers(officials, districtHits, tapLatLng);
+        sendHeadshotMarkers(officials, districtHits, tapLatLng, 'tap');
       }
       
       // Note: Don't clear storedPolygon on tap - let it persist so user can restore polygon results
@@ -2466,8 +2468,7 @@ export default function MapScreen() {
       setSelectedDistrict({ hits, officials });
       setShowResultsPanel(true);
       
-      // Send headshot markers to map with draw center for proximity blend
-      sendHeadshotMarkers(officials, hits, drawCenter);
+      sendHeadshotMarkers(officials, hits, drawCenter, 'draw');
       
       // Highlight ALL districts in the polygon (multi-select for draw mode)
       const webHits = hits.map((hit: { source: string; districtNumber: number }) => ({
