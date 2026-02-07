@@ -12,6 +12,8 @@ import {
   LayoutChangeEvent,
   ActionSheetIOS,
   ActivityIndicator,
+  Modal,
+  Dimensions,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
@@ -197,6 +199,7 @@ export default function OfficialProfileScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const [notesSectionY, setNotesSectionY] = useState<number | null>(null);
   const [hasScrolledToNotes, setHasScrolledToNotes] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
 
   const district = official ? getDistrictById(official.districtId) : undefined;
 
@@ -609,7 +612,13 @@ export default function OfficialProfileScreen() {
         scrollIndicatorInsets={{ bottom: insets.bottom }}
       >
         <View style={styles.header}>
-          <View style={styles.avatarContainer}>
+          <Pressable 
+            style={styles.avatarContainer}
+            onPress={() => {
+              if (official.photoUrl) setShowPhotoModal(true);
+            }}
+            disabled={!official.photoUrl}
+          >
             {official.photoUrl ? (
               <Image source={{ uri: official.photoUrl }} style={styles.avatar} />
             ) : (
@@ -618,7 +627,7 @@ export default function OfficialProfileScreen() {
                 style={styles.avatar}
               />
             )}
-          </View>
+          </Pressable>
           <View style={styles.headerInfo}>
             <ThemedText type="h2">{official.fullName}</ThemedText>
             <ThemedText type="body" style={{ color: theme.secondaryText }}>
@@ -1417,6 +1426,35 @@ export default function OfficialProfileScreen() {
           </Animated.View>
         )}
       </KeyboardAwareScrollViewCompat>
+
+      {official.photoUrl ? (
+        <Modal
+          visible={showPhotoModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowPhotoModal(false)}
+        >
+          <Pressable
+            style={styles.photoModalOverlay}
+            onPress={() => setShowPhotoModal(false)}
+          >
+            <View style={styles.photoModalContent}>
+              <Image
+                source={{ uri: official.photoUrl }}
+                style={styles.photoModalImage}
+                resizeMode="contain"
+              />
+            </View>
+            <Pressable
+              style={styles.photoModalClose}
+              onPress={() => setShowPhotoModal(false)}
+              hitSlop={16}
+            >
+              <Feather name="x" size={28} color="#FFFFFF" />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -1713,5 +1751,33 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: BorderRadius.xs,
     alignSelf: "flex-start",
+  },
+  photoModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoModalContent: {
+    width: Dimensions.get("window").width - 32,
+    height: Dimensions.get("window").width - 32,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoModalImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: BorderRadius.md,
+  },
+  photoModalClose: {
+    position: "absolute",
+    top: 60,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
