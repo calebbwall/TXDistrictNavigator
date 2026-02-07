@@ -1,0 +1,71 @@
+Got it — Option A (tap-proximity blend) is the right move.
+
+Here’s a drop-in Replit prompt that assumes you already have: (1) district selection working, (2) anchor-point calculation working, (3) photo markers rendering. This prompt only adds “faces appear close to where I tap / draw” by blending the tap/draw coordinate with the district anchor.
+
+⸻
+
+REPLIT PROMPT — Move headshot markers near the tap/draw point (Option A blend)
+
+We already render official headshot markers at each selected district’s anchor point (point-on-feature/centroid). Update this so when a district is selected via tap or draw, the headshot marker appears close to the tap/draw location, while still logically tied to the district.
+
+High-level behavior
+	•	On tap-select:
+	•	Capture the tap coordinate {lat,lng}.
+	•	For the selected district, compute the marker coordinate as a blend of tap point and district anchor:
+	•	markerCoord = wTap * tapCoord + (1 - wTap) * anchorCoord
+	•	Use wTap = 0.7 default (70% tap, 30% anchor).
+	•	Result: the face pops up near where the user touched, but still “belongs” to the district.
+	•	On draw-to-search:
+	•	Capture the draw shape “finish” coordinate OR the center of the drawn polygon/circle (whichever we already have).
+	•	For each selected district (up to 10), compute the marker coordinate as the same blend of drawCenter and the district’s anchor point.
+	•	If we use an overflow “+X” marker, place that overflow marker at drawCenter (or blended center).
+
+Requirements / constraints
+	1.	Add a state field to Map screen:
+	•	selectionOrigin?: { latitude: number; longitude: number }
+	•	This stores the most recent tap coordinate OR draw center coordinate.
+	2.	Update both selection paths to set selectionOrigin
+	•	Tap handler: selectionOrigin = tapLatLng
+	•	Draw handler: selectionOrigin = drawCenterLatLng (or finger-up lat/lng)
+	3.	Marker coordinate computation (core)
+Create a utility:
+
+type LatLng = { latitude: number; longitude: number };
+
+function blendLatLng(origin: LatLng, anchor: LatLng, wTap = 0.7): LatLng {
+  return {
+    latitude: origin.latitude * wTap + anchor.latitude * (1 - wTap),
+    longitude: origin.longitude * wTap + anchor.longitude * (1 - wTap),
+  };
+}
+
+Then when rendering markers:
+	•	If selectionOrigin exists, place marker at blendLatLng(selectionOrigin, anchor, 0.7)
+	•	If no origin (fallback), place marker at anchor
+
+	4.	Clamp distance (avoid weird far-away cases)
+If the tap is far from the selected district anchor (ex: user taps outside overlays, edge cases), clamp by distance:
+
+	•	If distance between origin and anchor > threshold (ex: 25km), ignore origin and use anchor.
+
+Implement a lightweight haversine distance function (no extra deps), or use turf distance if turf is already installed.
+	5.	Optional “inside polygon” safety (only if easy with existing turf)
+If we already have turf, add an optional clamp to keep marker inside district polygon:
+
+	•	After blending, if point is outside polygon, fall back to anchor (or use pointOnFeature).
+
+	6.	Keep existing marker UI
+Do NOT change the custom marker appearance. Only change what coordinate we pass into <Marker coordinate={...} />.
+
+Deliverable
+	•	Headshot marker(s) appear near tap/draw location for selected district(s), updating whenever selection changes.
+	•	Works for both tap selection and draw selection.
+	•	Performance unchanged (keep anchor caching; only blend at render time).
+
+Notes
+	•	Keep wTap as a constant at first (0.7). If it feels too “sticky” to the tap point, reduce to 0.6; if not close enough, increase to 0.8.
+	•	For multi-select draw, use the same selectionOrigin for all selected districts so markers cluster near the draw region (that’s desired).
+
+⸻
+
+If you want it to feel extra clean: also clear selectionOrigin when the user “clears selection” so markers revert to anchors on any non-origin selection state.
