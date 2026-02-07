@@ -538,13 +538,25 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
         };
         
         if (existing.length > 0) {
+          const updateData = { ...insertData, id: undefined };
+          if (existing[0].photoUrl && !updateData.photoUrl) {
+            updateData.photoUrl = existing[0].photoUrl;
+          }
           await db.update(officialPublic)
-            .set({
-              ...insertData,
-              id: undefined,
-            })
+            .set(updateData)
             .where(eq(officialPublic.id, existing[0].id));
         } else {
+          if (!insertData.photoUrl) {
+            try {
+              const { lookupHeadshotFromTexasTribune } = await import("../lib/texasTribuneLookup");
+              const headshot = await lookupHeadshotFromTexasTribune(record.fullName);
+              if (headshot.success && headshot.photoUrl) {
+                insertData.photoUrl = headshot.photoUrl;
+              }
+            } catch (err) {
+              console.log(`[RefreshOfficials] Headshot lookup failed for ${record.fullName}`);
+            }
+          }
           await db.insert(officialPublic).values(insertData);
         }
         

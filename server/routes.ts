@@ -13,7 +13,7 @@ import {
   type OfficialPrivate 
 } from "@shared/schema";
 import { desc } from "drizzle-orm";
-import { eq, and, sql, or, ilike } from "drizzle-orm";
+import { eq, and, sql, or, ilike, inArray, isNull } from "drizzle-orm";
 import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
@@ -1757,6 +1757,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("[Admin] Other TX Officials refresh error:", err);
       res.status(500).json({ error: "Other TX Officials refresh failed" });
+    }
+  });
+
+  // Admin endpoint: Backfill headshots from Texas Tribune for TX House/Senate
+  app.post("/admin/backfill/headshots", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+      
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      
+      const { lookupHeadshotFromTexasTribune } = await import("./lib/texasTribuneLookup");
+      
+      const officials = await db.select({
+        id: officialPublic.id,
+        fullName: officialPublic.fullName,
+        source: officialPublic.source,
+        photoUrl: officialPublic.photoUrl,
+      })
+      .from(officialPublic)
+      .where(and(
+        eq(officialPublic.active, true),
+        inArray(officialPublic.source, ["TX_HOUSE", "TX_SENATE"]),
+        or(
+          isNull(officialPublic.photoUrl),
+          eq(officialPublic.photoUrl, "")
+        )
+      ));
+      
+      console.log(`[Admin] Headshot backfill: ${officials.length} officials missing photos`);
+      
+      res.json({ 
+        message: "Headshot backfill started",
+        totalToProcess: officials.length,
+      });
+      
+      let found = 0;
+      let failed = 0;
+      
+      for (const official of officials) {
+        try {
+          const result = await lookupHeadshotFromTexasTribune(official.fullName);
+          if (result.success && result.photoUrl) {
+            await db.update(officialPublic)
+              .set({ photoUrl: result.photoUrl })
+              .where(eq(officialPublic.id, official.id));
+            found++;
+            console.log(`[Headshot] ${found}/${officials.length} Found: ${official.fullName}`);
+          } else {
+            failed++;
+            console.log(`[Headshot] Not found: ${official.fullName}`);
+          }
+        } catch (err) {
+          failed++;
+          console.error(`[Headshot] Error for ${official.fullName}:`, err);
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      
+      console.log(`[Admin] Headshot backfill complete: ${found} found, ${failed} not found`);
+    } catch (err) {
+      console.error("[Admin] Headshot backfill error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Headshot backfill failed" });
+      }
     }
   });
 
