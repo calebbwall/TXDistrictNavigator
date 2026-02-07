@@ -1027,7 +1027,7 @@ const MAP_HTML = `
         } else if (data.type === 'CLEAR_HIGHLIGHTS') {
           clearHighlights();
         } else if (data.type === 'SET_HEADSHOT_MARKERS') {
-          setHeadshotMarkers(data.markers, data.selectionOrigin);
+          setHeadshotMarkers(data.markers, data.selectionOrigin, data.selectionMode);
         } else if (data.type === 'CLEAR_HEADSHOT_MARKERS') {
           clearHeadshotMarkers();
         }
@@ -1320,6 +1320,164 @@ const MAP_HTML = `
       return closestPointInsidePolygon(origin, feature);
     }
 
+    var anchorCache = {};
+
+    function calculateFeatureArea(feature) {
+      var totalArea = 0;
+      if (feature.geometry.type === 'Polygon') {
+        totalArea = calculatePolygonArea(feature.geometry.coordinates);
+      } else if (feature.geometry.type === 'MultiPolygon') {
+        for (var i = 0; i < feature.geometry.coordinates.length; i++) {
+          totalArea += calculatePolygonArea(feature.geometry.coordinates[i]);
+        }
+      }
+      return totalArea;
+    }
+
+    function getFeatureBbox(feature) {
+      var minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+      var rings = getBoundaryRings(feature);
+      for (var r = 0; r < rings.length; r++) {
+        for (var i = 0; i < rings[r].length; i++) {
+          var coord = rings[r][i];
+          if (coord[0] < minLng) minLng = coord[0];
+          if (coord[0] > maxLng) maxLng = coord[0];
+          if (coord[1] < minLat) minLat = coord[1];
+          if (coord[1] > maxLat) maxLat = coord[1];
+        }
+      }
+      return { minLng: minLng, minLat: minLat, maxLng: maxLng, maxLat: maxLat };
+    }
+
+    function getDistrictAnchors(layerType, districtNumber) {
+      var cacheKey = layerType + '_' + districtNumber;
+      if (anchorCache[cacheKey]) return anchorCache[cacheKey];
+
+      var feature = getDistrictFeature(layerType, districtNumber);
+      if (!feature) {
+        var c = getDistrictCentroid(layerType, districtNumber);
+        return c ? [c] : [];
+      }
+
+      var a = calculateFeatureArea(feature);
+      var n = Math.max(1, Math.min(6, Math.ceil(a / 0.25)));
+
+      var centroid = getDistrictCentroid(layerType, districtNumber);
+      if (!centroid) { anchorCache[cacheKey] = []; return []; }
+
+      var anchors = [centroid];
+      if (n === 1) { anchorCache[cacheKey] = anchors; return anchors; }
+
+      var bb = getFeatureBbox(feature);
+      var gridSize = n <= 3 ? 5 : 7;
+      var pts = [];
+      for (var gi = 0; gi < gridSize; gi++) {
+        for (var gj = 0; gj < gridSize; gj++) {
+          var lng = bb.minLng + ((gi + 0.5) / gridSize) * (bb.maxLng - bb.minLng);
+          var lat = bb.minLat + ((gj + 0.5) / gridSize) * (bb.maxLat - bb.minLat);
+          var candidate = { lat: lat, lng: lng };
+          if (isPointInsideFeature(candidate, feature)) pts.push(candidate);
+        }
+      }
+
+      function dist2(p, q) {
+        var dx = p.lng - q.lng, dy = p.lat - q.lat;
+        return dx * dx + dy * dy;
+      }
+
+      var selected = [];
+      if (pts.length > 0) {
+        pts.sort(function(p, q) { return dist2(q, centroid) - dist2(p, centroid); });
+        selected.push(pts[0]);
+        while (selected.length < (n - 1) && selected.length < pts.length) {
+          var best = null, bestScore = -1;
+          for (var pi = 0; pi < pts.length; pi++) {
+            var alreadyUsed = false;
+            for (var si = 0; si < selected.length; si++) {
+              if (pts[pi] === selected[si]) { alreadyUsed = true; break; }
+            }
+            if (alreadyUsed) continue;
+            var minD = Infinity;
+            for (var si2 = 0; si2 < selected.length; si2++) {
+              var d = dist2(pts[pi], selected[si2]);
+              if (d < minD) minD = d;
+            }
+            if (minD > bestScore) { bestScore = minD; best = pts[pi]; }
+          }
+          if (best) selected.push(best);
+          else break;
+        }
+      }
+
+      for (var k = 0; k < selected.length && anchors.length < n; k++) {
+        anchors.push(selected[k]);
+      }
+
+      anchorCache[cacheKey] = anchors;
+      return anchors;
+    }
+
+    function getNearestAnchor(origin, layerType, districtNumber) {
+      var anchors = getDistrictAnchors(layerType, districtNumber);
+      if (anchors.length === 0) return getDistrictCentroid(layerType, districtNumber);
+      if (anchors.length === 1 || !origin) return anchors[0];
+      var bestDist = Infinity, bestAnchor = anchors[0];
+      for (var i = 0; i < anchors.length; i++) {
+        var dx = anchors[i].lng - origin.lng;
+        var dy = anchors[i].lat - origin.lat;
+        var d = dx * dx + dy * dy;
+        if (d < bestDist) { bestDist = d; bestAnchor = anchors[i]; }
+      }
+      return bestAnchor;
+    }
+
+    function simpleHash(str) {
+      var hash = 0;
+      for (var i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return Math.abs(hash);
+    }
+
+    function resolveCollisions(entries) {
+      var threshold = 0.0005;
+      var thresholdSq = threshold * threshold;
+      var angles = [0, 60, 120, 180, 240, 300];
+      var radii = [0.00015, 0.00025, 0.00035, 0.00050, 0.00075, 0.0010];
+
+      for (var i = 0; i < entries.length; i++) {
+        for (var j = i + 1; j < entries.length; j++) {
+          var dx = entries[i].pos.lng - entries[j].pos.lng;
+          var dy = entries[i].pos.lat - entries[j].pos.lat;
+          if (dx * dx + dy * dy < thresholdSq) {
+            var feature = entries[j].feature;
+            if (!feature) continue;
+            var angleOffset = simpleHash(entries[j].key) % 360;
+            var found = false;
+            for (var ri = 0; ri < radii.length && !found; ri++) {
+              for (var ai = 0; ai < angles.length && !found; ai++) {
+                var angle = (angles[ai] + angleOffset) * Math.PI / 180;
+                var candLat = entries[j].pos.lat + radii[ri] * Math.sin(angle);
+                var candLng = entries[j].pos.lng + radii[ri] * Math.cos(angle);
+                var cand = { lat: candLat, lng: candLng };
+                if (isPointInsideFeature(cand, feature)) {
+                  var tooClose = false;
+                  for (var k = 0; k < entries.length; k++) {
+                    if (k === j) continue;
+                    var dk = cand.lng - entries[k].pos.lng;
+                    var dl = cand.lat - entries[k].pos.lat;
+                    if (dk * dk + dl * dl < thresholdSq) { tooClose = true; break; }
+                  }
+                  if (!tooClose) { entries[j].pos = cand; found = true; }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     function getInitials(name) {
       if (!name) return '?';
       var parts = name.trim().split(/\\s+/);
@@ -1327,7 +1485,7 @@ const MAP_HTML = `
       return parts[0][0].toUpperCase();
     }
 
-    function setHeadshotMarkers(markers, selectionOrigin) {
+    function setHeadshotMarkers(markers, selectionOrigin, selectionMode) {
       headshotMarkersLayer.clearLayers();
 
       if (!markers || markers.length === 0) {
@@ -1335,16 +1493,43 @@ const MAP_HTML = `
         return;
       }
 
+      var mode = selectionMode || null;
       var MAX_MARKERS = 10;
       var displayed = markers.slice(0, MAX_MARKERS);
       var overflow = markers.length > MAX_MARKERS ? markers.length - MAX_MARKERS : 0;
 
+      var entries = [];
       displayed.forEach(function(m) {
         var layerType = m.source === 'TX_HOUSE' ? 'tx_house' :
                         m.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
 
-        var pos = getMarkerPosition(selectionOrigin, layerType, m.districtNumber);
+        var pos;
+        if (mode === 'draw' && selectionOrigin) {
+          pos = getNearestAnchor(selectionOrigin, layerType, m.districtNumber);
+        } else if (mode === 'tap' && selectionOrigin) {
+          pos = getMarkerPosition(selectionOrigin, layerType, m.districtNumber);
+        } else {
+          pos = getMarkerPosition(selectionOrigin, layerType, m.districtNumber);
+        }
         if (!pos) return;
+
+        var feature = getDistrictFeature(layerType, m.districtNumber);
+        entries.push({
+          m: m,
+          pos: { lat: pos.lat, lng: pos.lng },
+          feature: feature,
+          key: layerType + '_' + m.districtNumber,
+          layerType: layerType
+        });
+      });
+
+      if (entries.length > 1) {
+        resolveCollisions(entries);
+      }
+
+      entries.forEach(function(entry) {
+        var m = entry.m;
+        var pos = entry.pos;
 
         var initials = getInitials(m.name);
         var photoHtml = m.photoUrl
