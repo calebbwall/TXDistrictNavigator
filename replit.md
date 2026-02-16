@@ -33,6 +33,7 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Hit Schema Compatibility**: The `highlightDistricts` function supports both native schema (`{ source: 'TX_HOUSE', districtNumber: 1 }`) and web schema (`{ type: 'tx_house', district: 1 }`), ensuring highlighting works identically on both platforms.
 - **Platform-Specific Colors**: Web uses green (#55BB69) for TX House and brown (#8B4513) for US Congress; Native Expo Go uses red (#E94B3C) for TX House and green (#50C878) for US Congress. TX Senate is blue on both platforms.
 - **Identity Resolution**: A `persons` table and `identityResolver` module ensure stable identity tracking for officials across position changes, crucial for maintaining note continuity.
+- **Prayers System**: A comprehensive prayer management system stored in PostgreSQL with 5 tables (`prayers`, `prayer_categories`, `daily_prayer_picks`, `prayer_streak`, `app_settings`). Features include: CRUD operations with status transitions (OPEN → ANSWERED → ARCHIVED), daily picks rotation with weighted selection (priority, pinned, recency), streak tracking for consecutive prayer days, category management, official linkage via `officialIds` array, CSV export, bulk actions, and auto-archive for answered prayers (configurable, default 90 days). Chicago timezone date calculations. API routes in `server/routes/prayerRoutes.ts` with 20+ endpoints.
 
 ### Feature Specifications
 - **Map Screen**: Interactive district map with location services and draw-to-search.
