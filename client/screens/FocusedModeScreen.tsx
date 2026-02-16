@@ -17,6 +17,7 @@ import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
+import { invalidatePrayerQueries } from "@/lib/prayer-utils";
 import { useToast } from "@/components/Toast";
 
 type Prayer = {
@@ -89,7 +90,7 @@ export default function FocusedModeScreen() {
         setShowPrayedSuccess(false);
         scaleAnim.setValue(0);
       }, 2000);
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
     },
   });
 

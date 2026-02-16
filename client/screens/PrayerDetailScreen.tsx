@@ -22,6 +22,7 @@ import { useToast } from "@/components/Toast";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
+import { invalidatePrayerQueries } from "@/lib/prayer-utils";
 
 type Prayer = {
   id: string;
@@ -96,7 +97,7 @@ export default function PrayerDetailScreen() {
     },
     onSuccess: () => {
       setHasChanges(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Changes saved");
     },
   });
@@ -106,7 +107,7 @@ export default function PrayerDetailScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/answer`, { answerNote });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Prayer answered", { undoAction: () => reopenMutation.mutate() });
     },
   });
@@ -116,7 +117,7 @@ export default function PrayerDetailScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/reopen`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Prayer reopened");
     },
   });
@@ -126,7 +127,7 @@ export default function PrayerDetailScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/archive`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Prayer archived", { undoAction: () => unarchiveMutation.mutate() });
     },
   });
@@ -136,7 +137,7 @@ export default function PrayerDetailScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/unarchive`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Prayer unarchived");
     },
   });
@@ -146,7 +147,7 @@ export default function PrayerDetailScreen() {
       await apiRequest("DELETE", `/api/prayers/${prayerId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       navigation.goBack();
     },
   });

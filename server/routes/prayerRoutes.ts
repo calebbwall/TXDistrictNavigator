@@ -151,7 +151,9 @@ export function registerPrayerRoutes(app: Express) {
       if (status && status !== "ALL") {
         conditions.push(eq(prayers.status, status as "OPEN" | "ANSWERED" | "ARCHIVED"));
       }
-      if (categoryId) {
+      if (categoryId === "uncategorized") {
+        conditions.push(isNull(prayers.categoryId));
+      } else if (categoryId) {
         conditions.push(eq(prayers.categoryId, categoryId as string));
       }
       if (q && typeof q === "string" && q.trim()) {

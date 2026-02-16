@@ -23,6 +23,7 @@ import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl, apiRequest } from "@/lib/query-client";
+import { invalidatePrayerQueries } from "@/lib/prayer-utils";
 import { useToast } from "@/components/Toast";
 import * as WebBrowser from "expo-web-browser";
 
@@ -145,8 +146,11 @@ export default function PrayerListScreen() {
   }
   if (sortKey === "needsAttention") queryParams.set("sort", "needsAttention");
 
+  const qs = queryParams.toString();
+  const prayersUrl = qs ? `/api/prayers?${qs}` : "/api/prayers";
+
   const { data: rawPrayers = [], isLoading, refetch } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers", `?${queryParams.toString()}`],
+    queryKey: [prayersUrl],
   });
 
   const prayers = useMemo(() => {
@@ -181,7 +185,7 @@ export default function PrayerListScreen() {
       await apiRequest("POST", "/api/prayers/bulk", { action, prayerIds });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       setSelectMode(false);
       setSelectedIds(new Set());
     },
@@ -192,7 +196,7 @@ export default function PrayerListScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/answer`, {});
     },
     onSuccess: (_data, prayerId) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Prayer answered", {
         undoAction: () => {
           reopenMutation.mutate(prayerId);
@@ -206,7 +210,7 @@ export default function PrayerListScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/archive`, {});
     },
     onSuccess: (_data, prayerId) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Prayer archived", {
         undoAction: () => {
           unarchiveMutation.mutate(prayerId);
@@ -220,7 +224,7 @@ export default function PrayerListScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/reopen`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Prayer reopened");
     },
   });
@@ -230,7 +234,7 @@ export default function PrayerListScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/unarchive`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      invalidatePrayerQueries(queryClient);
       showToast("Prayer unarchived");
     },
   });

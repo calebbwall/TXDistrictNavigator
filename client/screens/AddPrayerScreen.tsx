@@ -16,6 +16,7 @@ import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
+import { invalidatePrayerQueries } from "@/lib/prayer-utils";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
 export default function AddPrayerScreen() {
@@ -39,8 +40,7 @@ export default function AddPrayerScreen() {
       await apiRequest("POST", "/api/prayers", payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/daily-prayer-picks"] });
+      invalidatePrayerQueries(queryClient);
       navigation.goBack();
     },
     onError: (err: Error) => {

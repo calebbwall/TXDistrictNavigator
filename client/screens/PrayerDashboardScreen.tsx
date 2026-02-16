@@ -19,6 +19,7 @@ import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
+import { invalidatePrayerQueries } from "@/lib/prayer-utils";
 
 type Prayer = {
   id: string;
@@ -94,11 +95,11 @@ export default function PrayerDashboardScreen() {
   });
 
   const { data: openPrayers = [] } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers", "?status=OPEN"],
+    queryKey: ["/api/prayers?status=OPEN"],
   });
 
   const { data: archivedPrayers = [] } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers", "?status=ARCHIVED"],
+    queryKey: ["/api/prayers?status=ARCHIVED"],
   });
 
   useFocusEffect(
@@ -125,9 +126,7 @@ export default function PrayerDashboardScreen() {
       await apiRequest("POST", `/api/prayers/${prayerId}/reopen`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers/recently-answered"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/daily-prayer-picks"] });
+      invalidatePrayerQueries(queryClient);
     },
   });
 

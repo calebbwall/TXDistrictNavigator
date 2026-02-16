@@ -76,15 +76,15 @@ export default function PrayerDiagnosticsScreen() {
   });
 
   const { data: openPrayers = [] } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers", "?status=OPEN"],
+    queryKey: ["/api/prayers?status=OPEN"],
   });
 
   const { data: answeredPrayers = [] } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers", "?status=ANSWERED"],
+    queryKey: ["/api/prayers?status=ANSWERED"],
   });
 
   const { data: archivedPrayers = [] } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers", "?status=ARCHIVED"],
+    queryKey: ["/api/prayers?status=ARCHIVED"],
   });
 
   const { data: streak } = useQuery<StreakResponse>({
