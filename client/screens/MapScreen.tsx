@@ -2277,7 +2277,7 @@ export default function MapScreen() {
   }, []);
 
   // Send headshot markers to the map for currently selected officials
-  const sendHeadshotMarkers = useCallback((officials: Official[], hits: DistrictHit[], selectionOrigin?: { lat: number; lng: number } | null, selectionMode?: 'tap' | 'draw' | null) => {
+  const sendHeadshotMarkers = useCallback((officials: Official[], hits: DistrictHit[], selectionOrigin?: { lat: number; lng: number } | null, selectionMode?: 'tap' | 'draw' | null, drawnPolygon?: { type: string; coordinates: number[][][] } | null) => {
     if (!officials || officials.length === 0 || !hits || hits.length === 0) {
       const clearMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
       if (Platform.OS === 'web') {
@@ -2313,6 +2313,9 @@ export default function MapScreen() {
     }
     if (selectionMode) {
       msg.selectionMode = selectionMode;
+    }
+    if (drawnPolygon) {
+      msg.drawnPolygon = drawnPolygon;
     }
     console.log('[MapScreen] Sending', markers.length, 'headshot markers', selectionOrigin ? '(with origin, mode=' + (selectionMode || 'none') + ')' : '');
     if (Platform.OS === 'web') {
@@ -2841,7 +2844,7 @@ export default function MapScreen() {
       setSelectedDistrict({ hits, officials });
       setShowResultsPanel(true);
       
-      sendHeadshotMarkers(officials, hits, drawCenter, 'draw');
+      sendHeadshotMarkers(officials, hits, drawCenter, 'draw', geometry);
       
       // Highlight ALL districts in the polygon (multi-select for draw mode)
       const webHits = hits.map((hit: { source: string; districtNumber: number }) => ({
