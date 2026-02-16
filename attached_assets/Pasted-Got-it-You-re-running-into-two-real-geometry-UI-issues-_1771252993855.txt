@@ -1,0 +1,136 @@
+Got it. You’re running into two real geometry/UI issues:
+	1.	“No overlap unless I zoom in” means your spacing logic is in lat/lng distance, not screen pixels. When zoomed out, 80 meters can collapse to like 2 pixels → faces overlap again. Fix: do collision avoidance in screen space (pixels), not meters.
+	2.	Draw-to-search pulling faces toward the drawn polygon means you’re using the draw origin as part of the placement. You don’t want that. You want: pick an anchor inside each district that is closest to the drawn polygon, and place it there—no blending, no clamping toward the draw center.
+
+Below is the Replit prompt to implement both fixes.
+
+⸻
+
+REPLIT PROMPT — Screen-space (pixel) no-overlap at any zoom + draw uses nearest district anchor to drawn polygon (no pulling)
+
+We have two remaining issues:
+
+ISSUE 1 — Photos still overlap when zoomed out
+
+Current separation uses geographic distance (meters/latlng). That fails when zoomed out because many meters = few pixels. We need screen-space collision avoidance so photos never overlap regardless of zoom level.
+
+ISSUE 2 — Draw-to-search pulls photos toward the drawn polygon
+
+We do NOT want photos placed near the draw center/origin. Instead:
+	•	Each district has a set of interior anchors.
+	•	For each selected district, choose the anchor that is closest to the user-drawn polygon (distance from anchor point to drawn polygon), and place the photo at that anchor.
+	•	No blending toward the draw polygon. Only “pick closest anchor,” then place at that anchor.
+
+⸻
+
+Part A — Screen-space (pixel) marker layout for tap multi-select (works at any zoom)
+
+A1) Use react-native-maps projection methods
+
+We must compute overlaps in pixels using MapView ref:
+	•	await mapRef.current.pointForCoordinate({latitude, longitude}) → {x, y} in screen pixels
+	•	await mapRef.current.coordinateForPoint({x, y}) → {latitude, longitude}
+
+This lets us “spread” markers by pixels, then convert back to coordinates.
+
+A2) Define a pixel separation rule
+
+Set MIN_PX = 64 (tune based on photo size; 52px bubble + tail needs ~60–70px).
+
+Guarantee: any two photo markers must have screen distance ≥ MIN_PX.
+
+A3) Implement pixel-based packing around the tap point
+
+When a tap selects N districts across overlays:
+	1.	Start with each marker’s desired position = the tap coordinate, but ensure it is inside each district (using existing finalize-inside logic).
+	2.	Convert desired coordinates to screen points with pointForCoordinate.
+	3.	Place markers one by one (stable order: layerPriority then districtId) using a ring layout in pixels:
+	•	radiiPx: [0, 70, 100, 130, 160, 200, 240, 280]
+	•	angles per ring: 12 or 16 evenly spaced
+	•	For each candidate pixel point (originPx.x + r*cosθ, originPx.y + r*sinθ):
+a) convert to latlng using coordinateForPoint
+b) finalizeInsideDistrict(feature, latlng) to keep it inside the district
+c) project back to px with pointForCoordinate (important, because finalizing inside moves it)
+d) accept if distance to all placed marker pixel points ≥ MIN_PX
+	4.	If we cannot place all markers within max radius (e.g., 280px), then:
+	•	place a “stack/+X” marker at tap point OR
+	•	keep placed ones and stack the remainder (preferred).
+
+A4) Recompute placement when camera changes
+
+Because screen projection changes when user zooms/pans, we must keep “no overlap” during zoom out/in.
+
+Implement:
+	•	Listen to onRegionChangeComplete on MapView.
+	•	If there is an active multi-select tap state, recompute pixel layout again (debounce ~80–150ms).
+	•	This ensures markers reflow as zoom changes and never overlap.
+
+A5) Implementation notes
+	•	This logic is ONLY needed for “multi-select at tap” (overlapping overlays).
+	•	Single selection stays where it is (close to tap, inside district).
+
+⸻
+
+Part B — Draw-to-search: choose district anchor closest to drawn polygon (no pulling)
+
+B1) District anchors
+
+Keep/ensure we have multiple interior anchors per district:
+	•	getDistrictAnchors(districtId, districtFeature) -> LatLng[]
+	•	Anchors must be inside the district.
+
+B2) Distance to the drawn polygon (not draw center)
+
+The drawn shape is a polygon (or circle approximated as polygon). We want for each district:
+	•	pick anchor that minimizes distance to drawn polygon
+
+Distance definition:
+	•	If anchor is inside drawn polygon → distance = 0
+	•	Else distance = minimum distance from anchor point to the drawn polygon boundary (meters or km)
+
+Use Turf:
+	•	@turf/boolean-point-in-polygon
+	•	@turf/polygon-to-line (for drawn polygon boundary line)
+	•	@turf/point-to-line-distance (or nearestPointOnLine + distance)
+
+Algorithm for each district:
+	1.	anchors = getDistrictAnchors(...)
+	2.	For each anchor:
+	•	if booleanPointInPolygon(anchor, drawnPolygon) → dist = 0
+	•	else dist = pointToLineDistance(anchor, drawnPolygonBoundaryLine, {units:“kilometers”})
+	3.	Choose anchor with min dist
+	4.	Place marker at that anchor (then run finalizeInsideDistrict to be safe)
+
+Important: Do NOT use draw origin/center for placement. Only use it to select which districts are highlighted; placement is anchor-only.
+
+B3) Avoid overlap in draw mode (optional, but helpful)
+
+If draw selection returns many districts that are geographically close, you can reuse the same pixel layout approach but with each marker’s “desired px” = projection of its chosen anchor.
+	•	Keep anchors as the base, but if two anchors project on top of each other, nudge in pixel space and finalize-inside again.
+
+This is optional, but likely necessary for dense areas.
+
+⸻
+
+Deliverables
+	1.	New module markerLayout.ts implementing:
+
+	•	layoutMarkersInPixels({ mapRef, originCoordinate, items, minPx, maxRadiusPx })
+	•	uses pointForCoordinate / coordinateForPoint
+	•	returns final coordinates per item (districtId)
+
+	2.	Map screen changes:
+
+	•	Maintain activeSelectionMode: "tap" | "draw" | null
+	•	For tap multi-select: call pixel layout on selection and onRegionChangeComplete (debounced)
+	•	For draw: compute anchors nearest drawn polygon and place there (no blending)
+
+	3.	Fix acceptance criteria:
+
+	•	Multi overlay tap: photos do not overlap even when fully zoomed out
+	•	Draw-to-search: photos appear at anchors inside each district closest to drawn polygon (not pulled to draw center)
+	•	Markers never appear outside their district
+
+⸻
+
+If you implement only one thing for overlap: pixel-based layout + recompute onRegionChangeComplete. That’s the missing piece that explains “it only works when zoomed in.”
