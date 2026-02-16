@@ -1,0 +1,211 @@
+Order of prompts (stages)
+	1.	Stage 1 — Data + API foundation
+
+	•	Add new fields/tables for answered notes, archive, streak tracking, daily picks v2, search endpoints, bulk actions, per-official prayer views.
+
+	2.	Stage 2 — UI buildout
+
+	•	Prayers Dashboard, Focused Mode, filters, search UI, bulk select, export UI, pin/priority, official-card navigation buttons (Open / Answered / Archived).
+
+	3.	Stage 3 — Polish + QA
+
+	•	Microcopy, visual grouping, “needs attention,” rotation fairness checks, offline/caching behavior, edge cases, basic tests.
+
+Below is Stage 1 as a single full prompt.
+
+⸻
+
+Stage 1 — Full Replit prompt (copy/paste)
+
+Implement the full “Prayers” system upgrade with a strong data/API foundation. Do NOT build the full UI yet beyond minimal screens needed to test endpoints. Focus on correctness and compatibility with existing app structure.
+
+Goals
+	1.	Support Open, Answered, and Archived prayers.
+	2.	Support closing prayers with answer note and answered date.
+	3.	Support daily 3 prayer selection that is stable for the day, fairly rotates, and supports pin-to-daily.
+	4.	Support streak tracking for days the user completes prayer review (simple, non-gamified).
+	5.	Support categories, search, bulk close/archive, export.
+	6.	Support per-official prayer routing: on each official card, add navigation buttons to view Open, Answered, Archived prayers attached to that official (UI can be minimal now; routes and endpoints must exist).
+
+⸻
+
+Data Model / Migrations
+
+Create or migrate tables/collections. If you already have a DB layer, follow the existing pattern. Ensure migrations are idempotent.
+
+prayers
+	•	id uuid PK
+	•	title string (required)
+	•	body text (required)
+	•	status enum: OPEN, ANSWERED, ARCHIVED
+	•	createdAt timestamp
+	•	updatedAt timestamp
+	•	answeredAt timestamp nullable
+	•	archivedAt timestamp nullable
+	•	answerNote text nullable
+	•	categoryId uuid nullable
+	•	officialIds JSON/array of official ids (support many-to-many via array OR junction table; pick the best fit for existing DB)
+	•	pinnedDaily boolean default false
+	•	priority int default 0 (0 normal, 1 high) for weighting rotation
+	•	lastShownAt timestamp nullable
+	•	lastPrayedAt timestamp nullable (optional, used for “needs attention” and future features)
+
+prayer_categories
+	•	id uuid PK
+	•	name string unique
+	•	sortOrder int default 0
+	•	createdAt, updatedAt
+
+daily_prayer_picks
+	•	dateKey string PK in format YYYY-MM-DD America/Chicago
+	•	prayerIds JSON/array length up to 3
+	•	generatedAt timestamp
+
+prayer_streak
+	•	id fixed single row OR keyed by userId (single-user app is fine)
+	•	currentStreak int
+	•	lastCompletedDateKey string nullable
+	•	longestStreak int
+
+Also add: a lightweight app_settings row if needed to store “archive after X days answered” with default 90.
+
+⸻
+
+Status Rules
+	•	OPEN: visible on official cards and in “Active/Open” filters.
+	•	ANSWERED: not visible in the official card “open prayers” list; visible in official answered view and in prayers tab.
+	•	ARCHIVED: not visible on official open/answered lists unless explicitly viewing archive.
+
+Transitions:
+	•	OPEN → ANSWERED: set answeredAt=now, optional answerNote, clear archivedAt.
+	•	ANSWERED → OPEN (reopen): clear answeredAt, clear answerNote optional (keep if you prefer), set status OPEN.
+	•	ANSWERED → ARCHIVED: set archivedAt=now.
+	•	OPEN → ARCHIVED allowed (bulk cleanup): set archivedAt=now.
+	•	ARCHIVED → OPEN allowed (unarchive): clear archivedAt, status OPEN.
+
+Auto-archive:
+	•	A scheduled job is NOT required. Instead, apply on read:
+	•	When querying ANSWERED prayers, if answeredAt is older than settings.autoArchiveDays (default 90), treat as ARCHIVED and update the row in background within the request (best-effort, safe).
+
+⸻
+
+API Endpoints
+
+Implement REST endpoints consistent with existing backend patterns.
+
+Categories
+	•	GET /api/prayer-categories
+	•	POST /api/prayer-categories { name, sortOrder }
+	•	PATCH /api/prayer-categories/:id
+	•	DELETE /api/prayer-categories/:id (only if no prayers use it OR reassign to null)
+
+Prayers
+	•	GET /api/prayers
+	•	query params:
+	•	status = OPEN|ANSWERED|ARCHIVED|ALL
+	•	categoryId
+	•	officialId (return prayers attached to this official)
+	•	q (search title/body)
+	•	limit, offset
+	•	sort (createdAt desc default, or needsAttention)
+	•	POST /api/prayers
+	•	{ title, body, categoryId?, officialIds?, pinnedDaily?, priority? }
+	•	GET /api/prayers/:id
+	•	PATCH /api/prayers/:id
+	•	POST /api/prayers/:id/answer
+	•	{ answerNote? } (sets status ANSWERED and answeredAt)
+	•	POST /api/prayers/:id/reopen
+	•	POST /api/prayers/:id/archive
+	•	POST /api/prayers/:id/unarchive
+	•	POST /api/prayers/bulk
+	•	{ action: “answer”|“archive”|“reopen”|“unarchive”, prayerIds: [], answerNote? }
+
+Daily Picks (Rotation v2)
+	•	GET /api/daily-prayer-picks
+	•	Determine today’s dateKey in America/Chicago.
+	•	If record exists for today → return those prayers (hydrate details).
+	•	Else generate picks with these rules:
+	1.	Eligible = status OPEN
+	2.	Exclude prayers shown yesterday (if yesterday picks exist), unless not enough eligible.
+	3.	Always include pinnedDaily=true prayers first (up to 3). If pinned > 3, pick 3 based on oldest lastShownAt.
+	4.	For remaining slots, choose from eligible pool weighted:
+	•	Prefer null/oldest lastShownAt
+	•	Prefer higher priority
+	•	Add light randomness among the top N candidates so it doesn’t feel deterministic
+	5.	Save daily_prayer_picks for today
+	6.	Update selected prayers’ lastShownAt = now
+	•	Return a stable set (same all day).
+
+Streak Tracking
+	•	POST /api/prayer-streak/complete-today
+	•	Called when user completes “Today’s 3” review (UI later)
+	•	Logic:
+	•	If lastCompletedDateKey == today → no change
+	•	If lastCompletedDateKey == yesterday → increment streak
+	•	Else → reset streak to 1
+	•	Update longestStreak
+	•	GET /api/prayer-streak
+
+Export
+	•	GET /api/prayers/export?status=ALL|OPEN|ANSWERED|ARCHIVED
+	•	Return CSV download with fields:
+	•	title, body, status, createdAt, answeredAt, archivedAt, answerNote, categoryName, officialIds
+
+⸻
+
+Minimal UI / Routing (only what’s needed for testing)
+
+Add minimal screens or routes that can be accessed to verify flows:
+	•	A basic Prayers list page (can be plain) with:
+	•	Filter status
+	•	Search box (q)
+	•	Button to fetch “Daily Picks”
+	•	On official profile card:
+	•	Add 3 buttons:
+	•	“Open Prayers”
+	•	“Answered”
+	•	“Archived”
+	•	Each navigates to a prayer list view with officialId + the status pre-filtered.
+
+UI can be simple; just ensure navigation and data wiring works.
+
+⸻
+
+UX Microcopy (foundation strings)
+
+Use these labels (keep consistent across app later):
+	•	Open = “Active”
+	•	Answered = “Answered”
+	•	Archived = “Archive”
+	•	Add = “Add Prayer”
+	•	Close = “Mark Answered”
+	•	Reopen = “Reopen”
+
+⸻
+
+Tests / Verification Checklist
+
+Add quick test utilities (dev-only) or simple logging:
+	1.	Create prayer from official with officialIds prefilled.
+	2.	Verify official “Open Prayers” list shows it.
+	3.	Mark Answered with note; verify it disappears from open and appears in answered.
+	4.	Archive answered; verify it appears only in archive.
+	5.	Daily picks stable for today and different tomorrow (simulate by changing dateKey).
+	6.	Yesterday exclusion works.
+	7.	Streak increments correctly.
+
+⸻
+
+Constraints
+	•	Do not overwrite any existing app data.
+	•	Keep everything compatible with single-user local usage.
+	•	Ensure queries are efficient (indexes if SQL; otherwise optimize filtering).
+	•	Use America/Chicago timezone for dateKey calculations.
+
+Deliverables
+	•	DB migrations + updated schema
+	•	All API endpoints above working
+	•	Minimal UI routes for testing
+	•	Notes in code comments where Stage 2 UI will expand (dashboard, focused mode, bulk actions UI)
+
+⸻

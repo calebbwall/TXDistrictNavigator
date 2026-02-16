@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, json, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, json, pgEnum, uniqueIndex, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -257,3 +257,92 @@ export const updateOfficialPrivateSchema = z.object({
 });
 
 export type UpdateOfficialPrivate = z.infer<typeof updateOfficialPrivateSchema>;
+
+// ── Prayer System ──
+
+export const prayerStatusEnum = pgEnum("prayer_status", ["OPEN", "ANSWERED", "ARCHIVED"]);
+
+export const prayerCategories = pgTable("prayer_categories", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const prayers = pgTable("prayers", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  title: varchar("title", { length: 500 }).notNull(),
+  body: text("body").notNull(),
+  status: prayerStatusEnum("status").default("OPEN").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  answeredAt: timestamp("answered_at"),
+  archivedAt: timestamp("archived_at"),
+  answerNote: text("answer_note"),
+  categoryId: varchar("category_id", { length: 255 })
+    .references(() => prayerCategories.id, { onDelete: "set null" }),
+  officialIds: json("official_ids").$type<string[]>().default([]),
+  pinnedDaily: boolean("pinned_daily").default(false).notNull(),
+  priority: integer("priority").default(0).notNull(),
+  lastShownAt: timestamp("last_shown_at"),
+  lastPrayedAt: timestamp("last_prayed_at"),
+});
+
+export const dailyPrayerPicks = pgTable("daily_prayer_picks", {
+  dateKey: varchar("date_key", { length: 10 }).primaryKey(),
+  prayerIds: json("prayer_ids").$type<string[]>().notNull(),
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+});
+
+export const prayerStreak = pgTable("prayer_streak", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  currentStreak: integer("current_streak").default(0).notNull(),
+  lastCompletedDateKey: varchar("last_completed_date_key", { length: 10 }),
+  longestStreak: integer("longest_streak").default(0).notNull(),
+});
+
+export const appSettings = pgTable("app_settings", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  key: varchar("key", { length: 100 }).notNull().unique(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Prayer types
+export type Prayer = typeof prayers.$inferSelect;
+export type InsertPrayer = typeof prayers.$inferInsert;
+export type PrayerCategory = typeof prayerCategories.$inferSelect;
+export type InsertPrayerCategory = typeof prayerCategories.$inferInsert;
+export type DailyPrayerPick = typeof dailyPrayerPicks.$inferSelect;
+export type PrayerStreakRow = typeof prayerStreak.$inferSelect;
+export type AppSetting = typeof appSettings.$inferSelect;
+
+export const insertPrayerSchema = z.object({
+  title: z.string().min(1).max(500),
+  body: z.string().min(1),
+  categoryId: z.string().nullable().optional(),
+  officialIds: z.array(z.string()).optional(),
+  pinnedDaily: z.boolean().optional(),
+  priority: z.number().int().min(0).max(1).optional(),
+});
+
+export const updatePrayerSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  body: z.string().min(1).optional(),
+  categoryId: z.string().nullable().optional(),
+  officialIds: z.array(z.string()).optional(),
+  pinnedDaily: z.boolean().optional(),
+  priority: z.number().int().min(0).max(1).optional(),
+});
+
+export type InsertPrayerInput = z.infer<typeof insertPrayerSchema>;
+export type UpdatePrayerInput = z.infer<typeof updatePrayerSchema>;
