@@ -649,20 +649,36 @@ export default function OfficialProfileScreen() {
               </Pressable>
             ) : null}
           </View>
-          <Pressable
-            onPress={handleToggleSaved}
-            style={({ pressed }) => [
-              styles.saveButton,
-              { opacity: pressed ? 0.7 : 1 },
-            ]}
-          >
-            <Feather
-              name={isSaved ? "bookmark" : "bookmark"}
-              size={24}
-              color={isSaved ? theme.primary : theme.secondaryText}
-              style={{ opacity: isSaved ? 1 : 0.5 }}
-            />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <Pressable
+              onPress={() => {
+                navigation.navigate("PrayerTab" as any, {
+                  screen: "AddPrayer",
+                  params: { officialId: official?.id?.toString(), officialName: official?.name },
+                });
+              }}
+              style={({ pressed }) => [
+                styles.saveButton,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Feather name="heart" size={22} color={theme.secondary} style={{ opacity: 0.7 }} />
+            </Pressable>
+            <Pressable
+              onPress={handleToggleSaved}
+              style={({ pressed }) => [
+                styles.saveButton,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Feather
+                name={isSaved ? "bookmark" : "bookmark"}
+                size={24}
+                color={isSaved ? theme.primary : theme.secondaryText}
+                style={{ opacity: isSaved ? 1 : 0.5 }}
+              />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.tabContainer}>
