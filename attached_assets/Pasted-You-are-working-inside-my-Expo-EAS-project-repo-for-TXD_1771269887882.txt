@@ -1,0 +1,60 @@
+You are working inside my Expo + EAS project repo for TXDistrictNavigator. The GitHub-triggered EAS build is failing with:
+
+1) “The extra.eas.projectId field is missing from your app config.”
+2) “cli.appVersionSource is not set” (warning but should be fixed)
+3) “EAS project not configured. Must configure EAS project by running ‘eas init’ before this command can be run in non-interactive mode.”
+
+Goal: Make EAS builds work from Expo Dashboard/GitHub for Android, and ensure the preview profile outputs an APK.
+
+DO NOT change any app behavior or business logic.
+
+Tasks (do all of these in order):
+
+A) Detect whether the project uses app.json or app.config.js
+- If app.config.js exists, prefer editing that.
+- Otherwise edit app.json.
+
+B) Ensure the app config includes extra.eas.projectId
+- Add/merge into the existing expo.extra object (do not overwrite existing extra fields like API_BASE_URL).
+- Structure must be: expo.extra.eas.projectId = "<PROJECT_ID>"
+
+How to obtain <PROJECT_ID>:
+- Run `npx eas project:info` (or `eas project:info`) and parse the Project ID from output.
+- If the project is not linked yet and that command fails, run `npx eas init` interactively in the shell to link it, then re-run `npx eas project:info` and proceed.
+
+C) Fix eas.json warning by setting cli.appVersionSource
+- In eas.json, under "cli", add:
+  "appVersionSource": "remote"
+- Keep existing "cli.version" as-is.
+- Do not break JSON formatting.
+
+D) Verify/ensure build profiles:
+- Confirm eas.json has:
+  build.preview.android.buildType = "apk"
+  build.production.android.buildType = "app-bundle"
+- If preview is missing or wrong, fix it.
+- Keep distribution: "internal" for preview if present.
+
+E) Ensure the repo is EAS-initialized for non-interactive GitHub builds
+- Run `npx eas init` if the project is not already configured.
+- Confirm that after initialization, the config contains extra.eas.projectId and the project is linked.
+
+F) Add one small safeguard for Android updates
+- In app config, ensure android.versionCode is present and is an integer.
+- If it is missing, set it to 1.
+- Do not increment it automatically.
+
+G) Output a final verification checklist
+After changes, print:
+- The exact files changed (app.json or app.config.js, eas.json)
+- The discovered projectId value (redact nothing)
+- The relevant snippets showing extra.eas.projectId and cli.appVersionSource
+- The exact EAS build command I can run to confirm: `eas build -p android --profile preview`
+
+Constraints:
+- Do not add new dependencies.
+- Do not refactor project structure.
+- Do not modify iOS fields.
+- Do not remove existing config fields.
+
+Proceed now.
