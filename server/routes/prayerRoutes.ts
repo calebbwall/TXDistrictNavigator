@@ -229,6 +229,48 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
+  app.get("/api/prayers/needs-attention", async (req, res) => {
+    try {
+      const allPrayers = await db.select().from(prayers)
+        .where(eq(prayers.status, "OPEN"));
+
+      const sorted = allPrayers.sort((a, b) => {
+        const aLastPrayed = a.lastPrayedAt?.getTime() ?? null;
+        const bLastPrayed = b.lastPrayedAt?.getTime() ?? null;
+
+        if (aLastPrayed === null && bLastPrayed === null) {
+          return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
+        }
+        if (aLastPrayed === null) return -1;
+        if (bLastPrayed === null) return 1;
+
+        if (aLastPrayed !== bLastPrayed) {
+          return aLastPrayed - bLastPrayed;
+        }
+
+        return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
+      });
+
+      const result = sorted.slice(0, 5);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/prayers/recently-answered", async (req, res) => {
+    try {
+      const result = await db.select().from(prayers)
+        .where(eq(prayers.status, "ANSWERED"))
+        .orderBy(desc(prayers.answeredAt))
+        .limit(5);
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/prayers/:id", async (req, res) => {
     try {
       const [prayer] = await db.select().from(prayers).where(eq(prayers.id, req.params.id)).limit(1);
@@ -531,52 +573,4 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  // ── Prayers needing attention ──
-
-  app.get("/api/prayers/needs-attention", async (req, res) => {
-    try {
-      const allPrayers = await db.select().from(prayers)
-        .where(eq(prayers.status, "OPEN"));
-
-      const sorted = allPrayers.sort((a, b) => {
-        const aLastPrayed = a.lastPrayedAt?.getTime() ?? null;
-        const bLastPrayed = b.lastPrayedAt?.getTime() ?? null;
-
-        // Nulls first
-        if (aLastPrayed === null && bLastPrayed === null) {
-          return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
-        }
-        if (aLastPrayed === null) return -1;
-        if (bLastPrayed === null) return 1;
-
-        // Both have lastPrayedAt, sort by oldest first
-        if (aLastPrayed !== bLastPrayed) {
-          return aLastPrayed - bLastPrayed;
-        }
-
-        // If lastPrayedAt is the same, fall back to createdAt
-        return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
-      });
-
-      const result = sorted.slice(0, 5);
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // ── Recently answered prayers ──
-
-  app.get("/api/prayers/recently-answered", async (req, res) => {
-    try {
-      const result = await db.select().from(prayers)
-        .where(eq(prayers.status, "ANSWERED"))
-        .orderBy(desc(prayers.answeredAt))
-        .limit(5);
-
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
 }
