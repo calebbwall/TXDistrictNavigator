@@ -1256,7 +1256,7 @@ export default function OfficialProfileScreen() {
             >
               <View style={styles.editHeader}>
                 <View>
-                  <ThemedText type="h3">Private Notes & Prayer</ThemedText>
+                  <ThemedText type="h3">Private Notes (Follow Up Needed)</ThemedText>
                   <ThemedText type="small" style={{ color: theme.secondaryText }}>
                     Private to this device.
                   </ThemedText>
