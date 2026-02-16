@@ -2656,6 +2656,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/photo-proxy", async (req, res) => {
+    try {
+      const url = req.query.url as string;
+      if (!url) {
+        return res.status(400).json({ error: "Missing url parameter" });
+      }
+
+      const allowedDomains = [
+        "directory.texastribune.org",
+        "www.congress.gov",
+        "congress.gov",
+        "bioguide.congress.gov",
+      ];
+
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        return res.status(400).json({ error: "Invalid URL" });
+      }
+
+      if (!allowedDomains.includes(parsedUrl.hostname)) {
+        return res.status(403).json({ error: "Domain not allowed" });
+      }
+
+      const imageResponse = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "Referer": `https://${parsedUrl.hostname}/`,
+        },
+      });
+
+      if (!imageResponse.ok) {
+        return res.status(imageResponse.status).json({ error: "Failed to fetch image" });
+      }
+
+      const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+      const buffer = Buffer.from(await imageResponse.arrayBuffer());
+
+      res.set({
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=604800, immutable",
+        "Content-Length": String(buffer.length),
+      });
+      res.send(buffer);
+    } catch (error) {
+      console.error("[API] Photo proxy error:", error);
+      res.status(500).json({ error: "Photo proxy failed" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
