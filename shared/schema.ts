@@ -342,6 +342,7 @@ export const updatePrayerSchema = z.object({
   officialIds: z.array(z.string()).optional(),
   pinnedDaily: z.boolean().optional(),
   priority: z.number().int().min(0).max(1).optional(),
+  lastPrayedAt: z.string().nullable().optional(),
 });
 
 export type InsertPrayerInput = z.infer<typeof insertPrayerSchema>;

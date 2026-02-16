@@ -1,0 +1,170 @@
+Stage 3 — Full Replit prompt (polish + QA + “nice” features)
+
+Polish, harden, and refine the Prayers feature. Stage 2 UI is implemented. This stage focuses on: visual clarity, UX friction removal, reliability, edge cases, and small “delight” features that don’t add complexity risk.
+
+Goals
+	1.	Make the UI feel calm, fast, and consistent.
+	2.	Improve “rhythm” features: rotation fairness, yesterday-exclusion, pinned behavior, needs-attention, streak UX.
+	3.	Add “Recently Answered” quality (reflection note display, quick reopen).
+	4.	Add optional gentle reminder (local notification) if Expo/React Native supports it in your app build.
+	5.	Add safe, useful guardrails: undo, confirmations, empty-state messaging.
+	6.	Add lightweight tests and a diagnostics screen to avoid regressions.
+
+⸻
+
+A) UI Polish & UX Refinements
+
+1) Empty states (must implement)
+
+Add calm empty-state cards for:
+	•	Today’s 3 empty (no open prayers): “No active prayers. Add one, or reopen an answered prayer.”
+	•	Active list empty for an official: “No active prayers for this official.”
+	•	Search no results: “No matches. Try fewer words.”
+	•	Categories empty: “No categories yet. Create one.”
+
+2) Micro-interactions (low risk)
+	•	Add subtle “Updated” toast after actions:
+	•	Mark Answered
+	•	Reopen
+	•	Archive
+	•	Unarchive
+	•	Pin/Unpin
+	•	Priority change
+	•	Add “Undo” for the last destructive action (single-step):
+	•	When marking answered / archiving, keep last action in memory and provide Undo for ~8 seconds.
+	•	Undo calls the appropriate endpoint (reopen/unarchive) and restores note if feasible.
+
+3) Visual hierarchy improvements
+	•	“Today’s 3” card: bigger typography, more spacing, tap targets.
+	•	Focused Mode: increase line height and font size, reduce chrome.
+	•	List items: improve spacing; make title dominant.
+	•	Status pills: only show when relevant; keep muted.
+
+4) Quick actions everywhere
+	•	In list rows: swipe actions (if supported) or inline small buttons:
+	•	Active → Mark Answered, Archive
+	•	Answered → Reopen, Archive
+	•	Archive → Unarchive
+	•	In Recently Answered list: allow quick “Reopen”.
+
+5) Official card improvements
+	•	Make the three buttons (Active/Answered/Archive) feel like a mini-nav bar.
+	•	Add counts and highlight the currently selected section when user navigates.
+
+⸻
+
+B) Rotation & “Today’s 3” Improvements (Algorithm hardening)
+
+Requirements
+	1.	Never reshuffle within a day (already).
+	2.	Exclude yesterday’s picks unless pool too small.
+	3.	PinnedDaily behavior:
+	•	If pinnedDaily >= 3, choose 3 pinned with oldest lastShownAt.
+	•	If pinnedDaily < 3, fill remaining with non-pinned.
+	4.	Add a “no-repeat within 3 days” preference:
+	•	Track recent dateKeys in memory by reading last 2 days of picks (if present).
+	•	Prefer prayers not shown in last 3 days.
+	•	If not enough, relax constraint gradually.
+	5.	Add “Needs Attention” scoring:
+	•	A prayer needs attention if lastPrayedAt is null or older than X days (default 14).
+	•	In “Needs Attention” panel, show oldest first.
+	6.	Add a small endpoint enhancement:
+	•	GET /api/daily-prayer-picks?forceRegenerate=true (dev-only behind a flag) for testing.
+
+Data updates
+	•	When user taps “Mark Prayed” in Focused Mode:
+	•	Set lastPrayedAt=now.
+	•	Optionally also set lastPrayedAt when user marks “Today Complete”:
+	•	Only for prayers in Today’s 3 deck, if they weren’t already updated today.
+
+⸻
+
+C) Archiving Improvements
+
+Auto-archive tuning
+	•	Keep “auto-archive after X days answered” default 90.
+	•	Add settings in UI:
+	•	Toggle auto-archive on/off
+	•	Days (30/60/90/180/custom)
+	•	Ensure auto-archive runs “on read” safely (best-effort) and never blocks UI.
+
+Archive browsing
+	•	Add “Archive” screen search + filters remain.
+	•	Add a small “Archive summary” in dashboard:
+	•	“Archived total: N”
+
+⸻
+
+D) Export Improvements
+	•	Export from UI should allow:
+	•	status filter
+	•	date range (createdAt or answeredAt)
+	•	include/exclude body (privacy option)
+	•	CSV column ordering should be consistent and human-friendly.
+	•	On mobile, export should:
+	•	open share sheet if available, otherwise save/open in viewer.
+
+⸻
+
+E) Notifications (optional, only if supported cleanly)
+
+Add an optional reminder:
+	•	Setting: “Daily reminder”
+	•	Time picker (default 8:00 AM)
+	•	Notification text: “Today’s 3 are ready.”
+	•	Must be able to turn off easily.
+	•	If notifications are a pain in your current Expo build, implement the UI toggle but gracefully disable with a message: “Notifications unavailable in this build.”
+
+⸻
+
+F) Diagnostics & Regression Safety
+
+1) Add a “Prayers Diagnostics” screen (hidden in settings or long-press title)
+
+Show:
+	•	Today dateKey
+	•	Yesterday dateKey
+	•	Today’s picks IDs
+	•	Count of Active/Answered/Archived
+	•	Streak current/longest
+	•	Last API sync time
+	•	Button: “Run Quick Self-Test” (dev-only)
+
+2) Quick self-test (dev-only)
+
+Runs through:
+	•	Create a test prayer (tagged title starts with “[TEST]”)
+	•	Attach to a known official if available
+	•	Mark answered with note
+	•	Archive
+	•	Unarchive
+	•	Delete test prayer
+Outputs pass/fail in a simple list.
+
+⸻
+
+G) Final QA Checklist (must run through)
+	•	Mark Answered from:
+	•	official inline list
+	•	prayer detail
+	•	bulk actions
+	•	Focused Mode (if you add it)
+	•	Ensure answered prayers disappear from official Active list immediately.
+	•	Ensure answered prayers still visible in Answered views.
+	•	Ensure archived prayers only in Archive views.
+	•	Ensure Today’s 3 stable and rotation respects constraints.
+	•	Ensure streak increments only once per day.
+	•	Ensure search is debounced and doesn’t spam API.
+	•	Ensure no crashes offline (show cached data + error banners).
+
+⸻
+
+Deliverables
+	•	Polish applied across Prayers Dashboard, lists, Focused Mode, details, official cards
+	•	Hardened daily rotation logic and needs-attention scoring
+	•	Auto-archive settings UI + behavior verified
+	•	Export enhancements
+	•	Optional reminders (graceful fallback)
+	•	Diagnostics screen + dev self-test
+
+Do not introduce any breaking changes to Stage 1/2 APIs unless you keep backward compatibility.

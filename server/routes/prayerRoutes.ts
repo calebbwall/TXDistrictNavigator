@@ -246,6 +246,9 @@ export function registerPrayerRoutes(app: Express) {
         return res.status(400).json({ error: parsed.error.issues });
       }
       const updates: any = { ...parsed.data, updatedAt: new Date() };
+      if (updates.lastPrayedAt && typeof updates.lastPrayedAt === 'string') {
+        updates.lastPrayedAt = new Date(updates.lastPrayedAt);
+      }
       const [prayer] = await db.update(prayers).set(updates).where(eq(prayers.id, req.params.id)).returning();
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });
       res.json(prayer);
