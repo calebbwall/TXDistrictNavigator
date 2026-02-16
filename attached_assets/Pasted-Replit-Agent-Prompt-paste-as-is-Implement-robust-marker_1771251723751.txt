@@ -1,0 +1,115 @@
+Replit Agent Prompt (paste as-is)
+
+Implement robust marker placement for official profile-picture markers on the map for TXDistrictNavigator. This prompt replaces and upgrades all current “anchor/centroid” logic for BOTH tap placement and draw-to-search placement.
+
+Current issues
+	1.	When multiple district overlays are enabled (TX House + TX Senate + US House), tapping shows multiple profile pictures stacked/overlapping. I need all officials’ profile pictures visible simultaneously.
+	2.	For draw-to-search, markers are sometimes far from where I drew AND sometimes appear outside the correct district polygon, undermining accuracy.
+	3.	New requirement: No marker should ever be on or near a district border. Markers must be placed comfortably inside the district so it’s visually unambiguous which district they belong to.
+
+⸻
+
+Hard requirements (must satisfy)
+
+A) No overlap on tap
+	•	When a tap returns N officials (N ≥ 2), place N distinct marker positions using a deterministic “fan-out” layout (radial/arc) near the tap, not stacked.
+	•	If N = 1, place normally (using the safe placement rules below).
+
+B) Draw-to-search markers must be close to the drawn area
+	•	When user completes draw-to-search, compute search center (center of drawn circle/polygon).
+	•	For each matched official/district, pick a base placement point that is inside the district polygon and as close to the search center as possible—subject to the border-safe constraint below.
+
+C) Absolute district correctness
+	•	A marker must never end up outside its district.
+	•	After offsets (fan-out), validate each final point; if outside, clamp it back inside.
+
+D) Border-safe constraint (NEW)
+	•	A marker must never be placed near a district boundary. Define a “safe inset zone” inside each district polygon and require all markers to lie within it.
+	•	“Near the boundary” means within a configurable distance threshold:
+	•	Use a map-scale-aware distance threshold (e.g., 250–500 meters for large districts, 75–150 meters for small districts), OR compute threshold dynamically based on polygon size (e.g., 1–2% of bbox diagonal, clamped to sensible min/max meters).
+	•	If a candidate point is inside the polygon but too close to its border, push it deeper toward the interior until it is beyond the threshold.
+	•	If that fails, fall back to a robust interior “label point” that maximizes distance from edges (polylabel / pole of inaccessibility) which naturally sits deep inside the polygon.
+
+E) Visual clarity rule
+	•	Even when the user taps near an edge, the marker should appear near the tap but still deep enough inside the district to be unambiguous.
+	•	Priority order for placement is:
+	1.	inside polygon AND beyond safe inset AND close to tap/draw center
+	2.	inside polygon AND beyond safe inset (even if not super close)
+	3.	polylabel (deep interior) as final fallback
+
+⸻
+
+Implementation plan (required)
+
+1) Add geometry utilities (create or centralize in one module)
+
+Implement or use a geometry library, but ensure consistent iOS/Android behavior.
+
+Required functions:
+	•	pointInPolygon(point, polygon)
+	•	distanceToPolygonBorder(point, polygon)
+	•	returns minimum distance from point to polygon edges (meters)
+	•	closestPointOnPolygon(point, polygon)
+	•	closest boundary point (lat/lng)
+	•	getPolylabelPoint(polygon) (preferred)
+	•	pole of inaccessibility / best label point that maximizes distance to boundary
+	•	getSafeInsetThresholdMeters(polygon)
+	•	compute a safe inset distance based on polygon size (clamp min/max)
+	•	pushPointTowardInterior(point, polygon, targetMeters, directionHintPoint)
+	•	iteratively move point deeper inside along a vector (e.g., toward polylabel point or toward polygon interior) until distance-to-border >= targetMeters
+	•	clampPointInsidePolygon(point, polygon, basePoint)
+	•	if outside, move inward toward basePoint / polylabel point until inside
+
+2) Compute a border-safe base point for each district
+
+Create:
+	•	getBorderSafeBasePoint({ desiredPoint, polygon }):
+	•	If desiredPoint is outside: project to boundary (closestPointOnPolygon), then move inward.
+	•	If inside but too close to border: push inward until distanceToBorder >= threshold.
+	•	Use directionHintPoint = polylabel point (deep interior).
+	•	If pushing fails: return polylabel point (guaranteed deep interior).
+
+3) Fan-out layout for multiple officials (tap and draw)
+	•	After base point is chosen per district/official, apply computeFanoutOffsets(n) in screen space (px) and convert to lat/lng via map projection utilities.
+	•	For each offset point:
+	•	Ensure inside polygon
+	•	Ensure distanceToBorder >= threshold
+	•	If not, push inward toward polylabel point until safe
+	•	If still not safe after max iterations, fall back to polylabel point plus a smaller fan-out radius around polylabel (still enforcing border-safe rule)
+
+4) Replace existing logic
+	•	Replace all current anchor/centroid placement logic for:
+	•	tap-to-select districts/officials
+	•	draw-to-search results
+with the new pipeline:
+desiredPoint (tap or draw center) → getBorderSafeBasePoint → fan-out offsets → clamp inside → enforce border-safe → render
+
+5) Debug mode & logging
+
+Add a debug flag to visualize:
+	•	district polygon outline
+	•	desired point (tap/draw center)
+	•	polylabel point
+	•	final marker points
+	•	show distance-to-border and whether “push inward” was used
+
+Log warnings if:
+	•	any marker needed fallback to polylabel
+	•	any marker required clamping
+	•	any marker cannot satisfy border-safe threshold (should be extremely rare)
+
+6) Testing scenarios (must verify)
+	1.	Tap where TX House + TX Senate overlap → pictures fan out; no overlap.
+	2.	Tap near a district boundary → marker still clearly inside and not near border.
+	3.	Draw-to-search inside large district near edge → marker appears as close as possible but still beyond inset.
+	4.	Concave polygons / weird shapes → marker remains inside and border-safe; polylabel fallback works.
+	5.	Extreme small polygons (if any) → safe inset threshold clamps down; still works.
+
+7) Do not change data sources
+
+This work is placement logic only. Do not modify GeoJSON sources or district data.
+
+Deliverables
+	•	Implement utilities and replacement logic.
+	•	Summarize files changed and where the new placement pipeline lives.
+	•	Ensure behavior is identical on iOS and Android.

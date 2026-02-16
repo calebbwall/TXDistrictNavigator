@@ -653,19 +653,7 @@ function getMapHtml(): string {
       return closestPointInsidePolygon(originLat, originLng, feature);
     }
 
-    var anchorCache = {};
-
-    function calculateFeatureArea(feature) {
-      var totalArea = 0;
-      if (feature.geometry.type === 'Polygon') {
-        totalArea = calculatePolygonArea(feature.geometry.coordinates);
-      } else if (feature.geometry.type === 'MultiPolygon') {
-        for (var i = 0; i < feature.geometry.coordinates.length; i++) {
-          totalArea += calculatePolygonArea(feature.geometry.coordinates[i]);
-        }
-      }
-      return totalArea;
-    }
+    var polylabelCache = {};
 
     function getFeatureBbox(feature) {
       var minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
@@ -682,130 +670,141 @@ function getMapHtml(): string {
       return [minLng, minLat, maxLng, maxLat];
     }
 
-    function getDistrictAnchors(layerType, districtNum) {
-      var cacheKey = layerType + '_' + districtNum;
-      if (anchorCache[cacheKey]) return anchorCache[cacheKey];
+    function distanceToPolygonBorderServer(lat, lng, feature) {
+      var nearest = nearestPointOnBoundary(lat, lng, feature);
+      var dx = lng - nearest[1];
+      var dy = lat - nearest[0];
+      return Math.sqrt(dx * dx + dy * dy);
+    }
 
-      var feature = getDistrictFeature(layerType, districtNum);
-      if (!feature) {
-        var c = getDistrictCentroid(layerType, districtNum);
-        return c ? [c] : [];
-      }
-
-      var a = calculateFeatureArea(feature);
-      var n = Math.max(1, Math.min(6, Math.ceil(a / 0.25)));
-
-      var centroid = getDistrictCentroid(layerType, districtNum);
-      if (!centroid) { anchorCache[cacheKey] = []; return []; }
-
-      var anchors = [centroid];
-      if (n === 1) { anchorCache[cacheKey] = anchors; return anchors; }
-
+    function getPolylabelServer(feature) {
+      var rings = getBoundaryRings(feature);
+      if (!rings || rings.length === 0) return computeCentroid(feature);
       var bb = getFeatureBbox(feature);
-      var gridSize = n <= 3 ? 5 : 7;
-      var pts = [];
-      for (var gi = 0; gi < gridSize; gi++) {
-        for (var gj = 0; gj < gridSize; gj++) {
-          var lng = bb[0] + ((gi + 0.5) / gridSize) * (bb[2] - bb[0]);
-          var lat = bb[1] + ((gj + 0.5) / gridSize) * (bb[3] - bb[1]);
-          if (isPointInGeoJSONFeature(lat, lng, feature)) pts.push([lat, lng]);
+      var bestPoint = null;
+      var bestDist = -Infinity;
+
+      var centroid = computeCentroid(feature);
+      if (centroid && isPointInGeoJSONFeature(centroid[0], centroid[1], feature)) {
+        bestDist = distanceToPolygonBorderServer(centroid[0], centroid[1], feature);
+        bestPoint = [centroid[0], centroid[1]];
+      }
+
+      var cellW = (bb[2] - bb[0]);
+      var cellH = (bb[3] - bb[1]);
+
+      for (var pass = 0; pass < 3; pass++) {
+        var gridSize = pass === 0 ? 10 : 8;
+        var sMinLng, sMinLat, sMaxLng, sMaxLat;
+        if (pass === 0 || !bestPoint) {
+          sMinLng = bb[0]; sMinLat = bb[1]; sMaxLng = bb[2]; sMaxLat = bb[3];
+        } else {
+          var refW = cellW / Math.pow(gridSize, pass);
+          var refH = cellH / Math.pow(gridSize, pass);
+          sMinLng = bestPoint[1] - refW; sMinLat = bestPoint[0] - refH;
+          sMaxLng = bestPoint[1] + refW; sMaxLat = bestPoint[0] + refH;
         }
-      }
-
-      function dist2(p, q) {
-        var dx = p[1] - q[1], dy = p[0] - q[0];
-        return dx * dx + dy * dy;
-      }
-
-      var selected = [];
-      if (pts.length > 0) {
-        pts.sort(function(p, q) { return dist2(q, centroid) - dist2(p, centroid); });
-        selected.push(pts[0]);
-        while (selected.length < (n - 1) && selected.length < pts.length) {
-          var best = null, bestScore = -1;
-          for (var pi = 0; pi < pts.length; pi++) {
-            var alreadyUsed = false;
-            for (var si = 0; si < selected.length; si++) {
-              if (pts[pi] === selected[si]) { alreadyUsed = true; break; }
-            }
-            if (alreadyUsed) continue;
-            var minD = Infinity;
-            for (var si2 = 0; si2 < selected.length; si2++) {
-              var d = dist2(pts[pi], selected[si2]);
-              if (d < minD) minD = d;
-            }
-            if (minD > bestScore) { bestScore = minD; best = pts[pi]; }
-          }
-          if (best) selected.push(best);
-          else break;
-        }
-      }
-
-      for (var k = 0; k < selected.length && anchors.length < n; k++) {
-        anchors.push(selected[k]);
-      }
-
-      anchorCache[cacheKey] = anchors;
-      return anchors;
-    }
-
-    function getNearestAnchor(originLat, originLng, layerType, districtNum) {
-      var anchors = getDistrictAnchors(layerType, districtNum);
-      if (anchors.length === 0) return getDistrictCentroid(layerType, districtNum);
-      if (anchors.length === 1) return anchors[0];
-      var bestDist = Infinity, bestAnchor = anchors[0];
-      for (var i = 0; i < anchors.length; i++) {
-        var dx = anchors[i][1] - originLng;
-        var dy = anchors[i][0] - originLat;
-        var d = dx * dx + dy * dy;
-        if (d < bestDist) { bestDist = d; bestAnchor = anchors[i]; }
-      }
-      return bestAnchor;
-    }
-
-    function simpleHash(str) {
-      var hash = 0;
-      for (var i = 0; i < str.length; i++) {
-        hash = ((hash << 5) - hash) + str.charCodeAt(i);
-        hash |= 0;
-      }
-      return Math.abs(hash);
-    }
-
-    function resolveCollisions(entries) {
-      var threshold = 0.0005;
-      var thresholdSq = threshold * threshold;
-      var angles = [0, 60, 120, 180, 240, 300];
-      var radii = [0.00015, 0.00025, 0.00035, 0.00050, 0.00075, 0.0010];
-
-      for (var i = 0; i < entries.length; i++) {
-        for (var j = i + 1; j < entries.length; j++) {
-          var dx = entries[i].pos[1] - entries[j].pos[1];
-          var dy = entries[i].pos[0] - entries[j].pos[0];
-          if (dx * dx + dy * dy < thresholdSq) {
-            var feature = entries[j].feature;
-            if (!feature) continue;
-            var angleOffset = simpleHash(entries[j].key) % 360;
-            var found = false;
-            for (var ri = 0; ri < radii.length && !found; ri++) {
-              for (var ai = 0; ai < angles.length && !found; ai++) {
-                var angle = (angles[ai] + angleOffset) * Math.PI / 180;
-                var candLat = entries[j].pos[0] + radii[ri] * Math.sin(angle);
-                var candLng = entries[j].pos[1] + radii[ri] * Math.cos(angle);
-                if (isPointInGeoJSONFeature(candLat, candLng, feature)) {
-                  var tooClose = false;
-                  for (var k = 0; k < entries.length; k++) {
-                    if (k === j) continue;
-                    var dk = candLng - entries[k].pos[1];
-                    var dl = candLat - entries[k].pos[0];
-                    if (dk * dk + dl * dl < thresholdSq) { tooClose = true; break; }
-                  }
-                  if (!tooClose) { entries[j].pos = [candLat, candLng]; found = true; }
-                }
-              }
+        for (var gi = 0; gi < gridSize; gi++) {
+          for (var gj = 0; gj < gridSize; gj++) {
+            var pLng = sMinLng + ((gi + 0.5) / gridSize) * (sMaxLng - sMinLng);
+            var pLat = sMinLat + ((gj + 0.5) / gridSize) * (sMaxLat - sMinLat);
+            if (isPointInGeoJSONFeature(pLat, pLng, feature)) {
+              var d = distanceToPolygonBorderServer(pLat, pLng, feature);
+              if (d > bestDist) { bestDist = d; bestPoint = [pLat, pLng]; }
             }
           }
         }
+      }
+      return bestPoint || centroid;
+    }
+
+    function getDistrictPolylabelServer(layerType, districtNum) {
+      var cacheKey = layerType + '_' + districtNum;
+      if (polylabelCache[cacheKey]) return polylabelCache[cacheKey];
+      var feature = getDistrictFeature(layerType, districtNum);
+      if (!feature) return getDistrictCentroid(layerType, districtNum);
+      var result = getPolylabelServer(feature);
+      if (result) polylabelCache[cacheKey] = result;
+      return result;
+    }
+
+    function getSafeInsetThresholdServer(feature) {
+      var bb = getFeatureBbox(feature);
+      var diagLng = bb[2] - bb[0];
+      var diagLat = bb[3] - bb[1];
+      var diag = Math.sqrt(diagLng * diagLng + diagLat * diagLat);
+      var threshold = diag * 0.015;
+      var minT = 0.001;
+      var maxT = 0.01;
+      return Math.max(minT, Math.min(maxT, threshold));
+    }
+
+    function pushPointTowardInteriorServer(lat, lng, feature, targetDist, hintLat, hintLng) {
+      var curLat = lat, curLng = lng;
+      for (var iter = 0; iter < 30; iter++) {
+        if (!isPointInGeoJSONFeature(curLat, curLng, feature)) {
+          curLat = (curLat + hintLat) / 2;
+          curLng = (curLng + hintLng) / 2;
+          continue;
+        }
+        var d = distanceToPolygonBorderServer(curLat, curLng, feature);
+        if (d >= targetDist) return [curLat, curLng];
+        var dx = hintLng - curLng;
+        var dy = hintLat - curLat;
+        var len = Math.sqrt(dx * dx + dy * dy) || 1;
+        var step = Math.max(0.0002, (targetDist - d) * 0.5);
+        curLat = curLat + (dy / len) * step;
+        curLng = curLng + (dx / len) * step;
+      }
+      if (isPointInGeoJSONFeature(curLat, curLng, feature)) return [curLat, curLng];
+      return [hintLat, hintLng];
+    }
+
+    function getBorderSafeBasePointServer(desLat, desLng, feature, layerType, districtNum) {
+      var polylabel = getDistrictPolylabelServer(layerType, districtNum);
+      if (!polylabel) return [desLat, desLng];
+      var safeThreshold = getSafeInsetThresholdServer(feature);
+
+      if (isPointInGeoJSONFeature(desLat, desLng, feature)) {
+        var d = distanceToPolygonBorderServer(desLat, desLng, feature);
+        if (d >= safeThreshold) return [desLat, desLng];
+        return pushPointTowardInteriorServer(desLat, desLng, feature, safeThreshold, polylabel[0], polylabel[1]);
+      }
+
+      var nearest = nearestPointOnBoundary(desLat, desLng, feature);
+      var pushed = pushPointTowardInteriorServer(nearest[0], nearest[1], feature, safeThreshold, polylabel[0], polylabel[1]);
+      if (isPointInGeoJSONFeature(pushed[0], pushed[1], feature) && distanceToPolygonBorderServer(pushed[0], pushed[1], feature) >= safeThreshold) {
+        return pushed;
+      }
+      return polylabel;
+    }
+
+    function computeFanoutPositionsServer(baseLat, baseLng, count, entries, safeThreshold) {
+      if (count <= 1) return;
+      var fanRadius = 0.004;
+      var startAngle = -Math.PI / 2;
+      for (var i = 0; i < count; i++) {
+        var angle = startAngle + (2 * Math.PI * i / count);
+        var offLat = fanRadius * Math.sin(angle);
+        var offLng = fanRadius * Math.cos(angle);
+        var candLat = baseLat + offLat;
+        var candLng = baseLng + offLng;
+        var entry = entries[i];
+        if (!entry.feature) { entry.pos = [candLat, candLng]; continue; }
+        if (isPointInGeoJSONFeature(candLat, candLng, entry.feature)) {
+          var d = distanceToPolygonBorderServer(candLat, candLng, entry.feature);
+          if (d >= safeThreshold) { entry.pos = [candLat, candLng]; continue; }
+        }
+        var polylabel = getDistrictPolylabelServer(entry.layerType, entry.m.districtNumber);
+        if (!polylabel) { continue; }
+        var smallR = 0.002;
+        var sCandLat = polylabel[0] + smallR * Math.sin(angle);
+        var sCandLng = polylabel[1] + smallR * Math.cos(angle);
+        if (entry.feature && isPointInGeoJSONFeature(sCandLat, sCandLng, entry.feature)) {
+          var d2 = distanceToPolygonBorderServer(sCandLat, sCandLng, entry.feature);
+          if (d2 >= safeThreshold * 0.5) { entry.pos = [sCandLat, sCandLng]; continue; }
+        }
+        entry.pos = polylabel;
       }
     }
     
@@ -820,27 +819,59 @@ function getMapHtml(): string {
       var entries = [];
       for (var i = 0; i < visible.length; i++) {
         var m = visible[i];
+        var feature = getDistrictFeature(m.layerType, m.districtNumber);
+        if (!feature) {
+          var centroid = getDistrictCentroid(m.layerType, m.districtNumber);
+          if (centroid) {
+            entries.push({ m: m, pos: [centroid[0], centroid[1]], feature: null, layerType: m.layerType, key: m.layerType + '_' + m.districtNumber });
+          }
+          continue;
+        }
+
         var pos;
-        if (mode === 'draw' && hasOrigin) {
-          pos = getNearestAnchor(selectionOrigin.lat, selectionOrigin.lng, m.layerType, m.districtNumber);
-        } else if (hasOrigin) {
-          pos = getMarkerPosition(selectionOrigin.lat, selectionOrigin.lng, m.layerType, m.districtNumber);
+        if (hasOrigin) {
+          pos = getBorderSafeBasePointServer(selectionOrigin.lat, selectionOrigin.lng, feature, m.layerType, m.districtNumber);
         } else {
+          pos = getDistrictPolylabelServer(m.layerType, m.districtNumber);
+        }
+        if (!pos) {
           pos = getDistrictCentroid(m.layerType, m.districtNumber);
         }
         if (!pos) continue;
 
-        var feature = getDistrictFeature(m.layerType, m.districtNumber);
         entries.push({
           m: m,
           pos: [pos[0], pos[1]],
           feature: feature,
+          layerType: m.layerType,
           key: m.layerType + '_' + m.districtNumber
         });
       }
 
-      if (entries.length > 1) {
-        resolveCollisions(entries);
+      if (entries.length >= 2) {
+        var overlapThreshold = 0.001;
+        var overlapThresholdSq = overlapThreshold * overlapThreshold;
+        var hasOverlap = false;
+        for (var ci = 0; ci < entries.length && !hasOverlap; ci++) {
+          for (var cj = ci + 1; cj < entries.length && !hasOverlap; cj++) {
+            var cdx = entries[ci].pos[1] - entries[cj].pos[1];
+            var cdy = entries[ci].pos[0] - entries[cj].pos[0];
+            if (cdx * cdx + cdy * cdy < overlapThresholdSq) hasOverlap = true;
+          }
+        }
+        if (hasOverlap) {
+          var avgLat = 0, avgLng = 0;
+          for (var ai = 0; ai < entries.length; ai++) {
+            avgLat += entries[ai].pos[0];
+            avgLng += entries[ai].pos[1];
+          }
+          var fanCenterLat = avgLat / entries.length;
+          var fanCenterLng = avgLng / entries.length;
+          var refFeature = entries[0].feature;
+          var refSafe = refFeature ? getSafeInsetThresholdServer(refFeature) : 0.002;
+          computeFanoutPositionsServer(fanCenterLat, fanCenterLng, entries.length, entries, refSafe);
+          console.log('[HEADSHOTS] Applied fan-out for ' + entries.length + ' overlapping markers');
+        }
       }
 
       for (var ei = 0; ei < entries.length; ei++) {
@@ -900,6 +931,8 @@ function getMapHtml(): string {
           headshotMarkers.push(oMarker);
         }
       }
+
+      console.log('[HEADSHOTS] Set', entries.length, 'headshot markers, mode=' + (mode || 'default'));
     };
     
     window.clearHeadshotMarkers = function() {

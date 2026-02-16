@@ -1,0 +1,159 @@
+REPLIT PROMPT — Fix “photo marker outside district” + zero-overlap photos when multiple overlays selected on tap
+
+We currently render official headshot photo markers for selected districts. There are two bugs to fix:
+	1.	Markers sometimes render just outside the district boundary (often barely across the line). We must guarantee every photo marker point is inside the correct district polygon.
+	2.	Tap selection with multiple overlay layers (TX House + TX Senate + US House, etc.) produces overlapping photo markers. We must guarantee no overlap at all when multiple districts are selected at once from a single tap.
+
+Non-negotiable outcomes
+	•	Every marker coordinate must be verified as inside the correct district polygon (Polygon or MultiPolygon).
+	•	When multiple districts are selected at once, markers must be placed so their photos do not overlap (use a deterministic algorithm). If perfect separation is impossible within reasonable radius, switch to a “stack/cluster” marker with a tap list (but do everything possible to avoid clustering first).
+
+⸻
+
+Part A — Guarantee markers are inside the district (hard constraint)
+
+A1) Create a single “finalize marker point” function
+
+Implement:
+
+finalizeMarkerPoint(districtFeature, desiredPoint) -> LatLng
+
+Rules:
+	1.	If desiredPoint is inside the district → return it.
+	2.	If outside:
+	•	Compute nearest point on polygon boundary to desiredPoint
+	•	Nudge inward robustly until inside (not just a tiny step)
+	•	If still failing, fall back to pointOnFeature(districtFeature) (guaranteed inside)
+
+A2) Use Turf for correctness
+
+Add these dependencies (small packages preferred):
+	•	@turf/boolean-point-in-polygon
+	•	@turf/nearest-point-on-line
+	•	@turf/polygon-to-line
+	•	@turf/point-on-feature
+	•	@turf/helpers
+
+Optional but recommended for better “inward nudge”:
+	•	@turf/bearing
+	•	@turf/destination
+	•	@turf/distance
+
+A3) Implement finalizeMarkerPoint using meters (not degrees)
+
+The “outside by a hair” bug is often caused by using tiny degree nudges + floating error, especially on MultiPolygons. Fix by nudging in meters using turf destination.
+
+Pseudo (implement this):
+	•	Convert desiredPoint → turf point
+	•	If inside → ok
+	•	Else:
+	•	boundary = polygonToLine(feature) (cache per district id)
+	•	nearest = nearestPointOnLine(boundary, desiredPt)
+	•	insideTarget = pointOnFeature(feature) (guaranteed inside)
+	•	Compute bearing from nearest → insideTarget
+	•	Try destination(nearest, d meters, bearing) for d in [5, 10, 20, 40, 80, 160]
+	•	First candidate that is inside wins
+	•	If none inside, return insideTarget
+
+This solves “just across the boundary” and also weird geometries.
+
+A4) Apply finalizeMarkerPoint to ALL marker placements
+
+No matter whether the placement comes from:
+	•	tap point (clamped),
+	•	anchor point selection,
+	•	collision-avoidance offsets,
+…you must pass the resulting coordinate through finalizeMarkerPoint(feature, candidate) right before rendering.
+
+⸻
+
+Part B — Zero-overlap markers when multiple districts selected from one tap
+
+Problem
+
+When the user taps where multiple overlays overlap (House+Senate+Congress), we select multiple districts at once, and all photos land in the same/near location.
+
+Goal
+
+Render all photos so none overlap. Use a deterministic layout around the tap location, but each marker must remain inside its own district.
+
+B1) Standardize “tap multi-select” selection origin
+
+When a tap results in N selected districts across layers:
+	•	Store tapOrigin = tap lat/lng
+	•	selectedDistricts includes districtId + feature + official data + layer type
+
+B2) Build a deterministic “radial packing” algorithm
+
+Implement:
+
+placeNonOverlappingMarkers(selectedItems, origin) -> placedItems
+
+Where each item has:
+	•	districtId
+	•	districtFeature
+	•	desiredPoint (start from origin)
+	•	finalPoint
+
+Algorithm (deterministic):
+	1.	Sort items in stable order (e.g., by layer priority then districtId) so results don’t jump.
+	2.	Define a minimum separation distance in meters based on marker size:
+	•	If photo bubble is ~52px, start with minSeparationMeters = 60 (tune).
+	3.	For each item i:
+	•	Generate candidate points around origin using rings:
+	•	ring radii meters: [0, 60, 90, 120, 150, 180, 210, 240, 280, 320]
+	•	angles per ring: 12 or 16 evenly spaced (0..360)
+	•	Use a stable angle offset based on hash(districtId) so different items start at different angles.
+	•	For each candidate:
+a) Convert (origin + radius+angle) → candidate point using turf destination
+b) Finalize inside: candidateInside = finalizeMarkerPoint(feature, candidate)
+c) Validate:
+	•	candidateInside is inside the district (already ensured)
+	•	candidateInside is at least minSeparationMeters away from all previously placed points
+d) First candidate that passes is chosen.
+	4.	If an item cannot be placed after exhausting candidates:
+	•	Place a single stack marker at origin that shows count “+K” for the unplaceable ones (or for all, if you prefer).
+	•	Tapping stack opens list of officials with their photos (so user can still access all).
+
+Distance checks:
+	•	Use turf distance in kilometers (or implement haversine). Prefer turf distance for consistency.
+
+B3) Apply this only when multi-select occurs
+	•	Single selected district: use tapOrigin clamped inside (finalizeMarkerPoint).
+	•	Multi-selected: use the packing algorithm above so there is no overlap.
+
+B4) Keep marker visuals unchanged
+
+Do not change the headshot marker UI; only change coordinate placement.
+
+⸻
+
+Part C — Draw-to-search selection stays sane
+
+(Keep existing approach, but apply finalizeMarkerPoint)
+	•	If draw mode uses nearest anchor points: keep it.
+	•	Run finalizeMarkerPoint on the chosen anchor too.
+	•	Apply optional collision avoidance in draw mode as well if multiple are close, using the same packing approach but with drawOrigin instead of tapOrigin.
+
+⸻
+
+Caching (performance)
+	•	Cache polygon boundary lines: boundaryCache[districtId] = polygonToLine(feature)
+	•	Cache pointOnFeature results per district as ultimate fallback interior point
+	•	Do not recompute each render; memoize per district id.
+
+⸻
+
+Acceptance tests
+	1.	Tap near a boundary: photo ALWAYS appears inside the selected district (never across the line).
+	2.	Tap where House+Senate+US House overlap:
+	•	All photos render without overlap
+	•	Each photo remains inside its own district
+	3.	If too many overlaps to resolve:
+	•	A stack marker appears, opening a list of officials on tap
+	4.	Works for Polygon and MultiPolygon districts.
+	5.	Android: works on first tap consistently.
+
+⸻
+
+Implement the above end-to-end and commit code changes + dependency updates.
