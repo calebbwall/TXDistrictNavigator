@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import { txHouseGeoJSON, txSenateGeoJSON, usCongressGeoJSON, txHouseGeoJSONFull, txSenateGeoJSONFull, usCongressGeoJSONFull } from "./data/geojson";
 import { db } from "./db";
+import { registerPrayerRoutes } from "./routes/prayerRoutes";
 import { 
   officialPublic, 
   officialPrivate, 
@@ -1270,6 +1271,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   startOfficialsRefreshScheduler();
+
+  registerPrayerRoutes(app);
 
   app.get("/api/geojson/tx_house", (_req, res) => {
     res.json(txHouseGeoJSON);
