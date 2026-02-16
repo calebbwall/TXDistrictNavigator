@@ -1,4 +1,5 @@
 import React from "react";
+import { Pressable } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { HeaderButton } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
@@ -8,6 +9,9 @@ import AddPrayerScreen from "@/screens/AddPrayerScreen";
 import PrayerDetailScreen from "@/screens/PrayerDetailScreen";
 import FocusedModeScreen from "@/screens/FocusedModeScreen";
 import ManageCategoriesScreen from "@/screens/ManageCategoriesScreen";
+import PrayerSettingsScreen from "@/screens/PrayerSettingsScreen";
+import PrayerDiagnosticsScreen from "@/screens/PrayerDiagnosticsScreen";
+import { ThemedText } from "@/components/ThemedText";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -19,6 +23,8 @@ export type PrayerStackParamList = {
   PrayerDetail: { prayerId: string };
   FocusedMode: { prayerIds: string[]; startIndex: number };
   ManageCategories: undefined;
+  PrayerSettings: undefined;
+  PrayerDiagnostics: undefined;
 };
 
 const Stack = createNativeStackNavigator<PrayerStackParamList>();
@@ -33,10 +39,17 @@ export default function PrayerStackNavigator() {
         name="PrayerDashboard"
         component={PrayerDashboardScreen}
         options={({ navigation }) => ({
-          headerTitle: "Prayers",
+          headerTitle: () => (
+            <Pressable
+              onLongPress={() => navigation.navigate("PrayerDiagnostics")}
+              delayLongPress={800}
+            >
+              <ThemedText type="h3">Prayers</ThemedText>
+            </Pressable>
+          ),
           headerRight: () => (
             <HeaderButton
-              onPress={() => navigation.navigate("ManageCategories")}
+              onPress={() => navigation.navigate("PrayerSettings")}
             >
               <Feather name="settings" size={20} color={theme.text} />
             </HeaderButton>
@@ -84,6 +97,20 @@ export default function PrayerStackNavigator() {
         component={ManageCategoriesScreen}
         options={{
           headerTitle: "Categories",
+        }}
+      />
+      <Stack.Screen
+        name="PrayerSettings"
+        component={PrayerSettingsScreen}
+        options={{
+          headerTitle: "Prayer Settings",
+        }}
+      />
+      <Stack.Screen
+        name="PrayerDiagnostics"
+        component={PrayerDiagnosticsScreen}
+        options={{
+          headerTitle: "Diagnostics",
         }}
       />
     </Stack.Navigator>

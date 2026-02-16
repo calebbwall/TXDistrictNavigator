@@ -18,6 +18,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
+import { useToast } from "@/components/Toast";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
@@ -46,6 +47,7 @@ type PrayerCategory = {
 
 export default function PrayerDetailScreen() {
   const { theme } = useTheme();
+  const { showToast } = useToast();
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const route = useRoute();
@@ -95,6 +97,7 @@ export default function PrayerDetailScreen() {
     onSuccess: () => {
       setHasChanges(false);
       queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Changes saved");
     },
   });
 
@@ -104,6 +107,7 @@ export default function PrayerDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Prayer answered", { undoAction: () => reopenMutation.mutate() });
     },
   });
 
@@ -113,6 +117,7 @@ export default function PrayerDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Prayer reopened");
     },
   });
 
@@ -122,6 +127,7 @@ export default function PrayerDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Prayer archived", { undoAction: () => unarchiveMutation.mutate() });
     },
   });
 
@@ -131,6 +137,7 @@ export default function PrayerDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Prayer unarchived");
     },
   });
 

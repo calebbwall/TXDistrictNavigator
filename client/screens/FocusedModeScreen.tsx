@@ -1,20 +1,23 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   StyleSheet,
   View,
   ScrollView,
   Pressable,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
+import { useToast } from "@/components/Toast";
 
 type Prayer = {
   id: string;
@@ -44,6 +47,7 @@ export default function FocusedModeScreen() {
   const route = useRoute();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   const { prayerIds, startIndex } = route.params as {
     prayerIds: string[];
@@ -51,6 +55,8 @@ export default function FocusedModeScreen() {
   };
 
   const [currentIndex, setCurrentIndex] = useState(startIndex || 0);
+  const [showPrayedSuccess, setShowPrayedSuccess] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
 
   const { data: categories } = useQuery<PrayerCategory[]>({
     queryKey: ["/api/prayer-categories"],
@@ -72,6 +78,17 @@ export default function FocusedModeScreen() {
       });
     },
     onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast("Marked as prayed");
+      setShowPrayedSuccess(true);
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+      }).start();
+      setTimeout(() => {
+        setShowPrayedSuccess(false);
+        scaleAnim.setValue(0);
+      }, 2000);
       queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
     },
   });
@@ -84,12 +101,14 @@ export default function FocusedModeScreen() {
 
   const handlePrev = () => {
     if (currentIndex > 0) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setCurrentIndex(currentIndex - 1);
     }
   };
 
   const handleNext = () => {
     if (currentIndex < prayerIds.length - 1) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setCurrentIndex(currentIndex + 1);
     }
   };
@@ -167,7 +186,7 @@ export default function FocusedModeScreen() {
         <Pressable onPress={handleClose} style={styles.closeButton}>
           <Feather name="x" size={24} color={theme.text} />
         </Pressable>
-        <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+        <ThemedText type="small" style={{ color: theme.secondaryText }}>
           {currentIndex + 1} of {prayerIds.length}
         </ThemedText>
       </View>
@@ -176,7 +195,7 @@ export default function FocusedModeScreen() {
         style={styles.scrollArea}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 140 },
+          { paddingBottom: insets.bottom + 140, paddingTop: Spacing.xl },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -233,7 +252,7 @@ export default function FocusedModeScreen() {
             type="body"
             style={[
               styles.bodyText,
-              { color: theme.text, lineHeight: 28 },
+              { color: theme.text, lineHeight: 34 },
             ]}
           >
             {currentPrayer.body}
@@ -254,26 +273,48 @@ export default function FocusedModeScreen() {
         <Button
           onPress={handleMarkPrayed}
           style={styles.markPrayedButton}
-          disabled={markPrayedMutation.isPending}
+          disabled={markPrayedMutation.isPending || showPrayedSuccess}
         >
-          <View style={styles.markPrayedContent}>
-            <Feather
-              name="check"
-              size={20}
-              color={theme.buttonText}
-              style={{ marginRight: Spacing.sm }}
-            />
-            <ThemedText
-              type="body"
-              style={{ color: theme.buttonText, fontWeight: "600" }}
+          {showPrayedSuccess ? (
+            <Animated.View
+              style={[
+                styles.markPrayedContent,
+                {
+                  transform: [{ scale: scaleAnim }],
+                },
+              ]}
             >
-              {markPrayedMutation.isPending
-                ? "Marking..."
-                : markPrayedMutation.isSuccess
-                ? "Prayed"
-                : "Mark Prayed"}
-            </ThemedText>
-          </View>
+              <View
+                style={[
+                  styles.successIcon,
+                  { backgroundColor: theme.primary },
+                ]}
+              >
+                <Feather
+                  name="check"
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </View>
+            </Animated.View>
+          ) : (
+            <View style={styles.markPrayedContent}>
+              <Feather
+                name="check"
+                size={20}
+                color={theme.buttonText}
+                style={{ marginRight: Spacing.sm }}
+              />
+              <ThemedText
+                type="body"
+                style={{ color: theme.buttonText, fontWeight: "600" }}
+              >
+                {markPrayedMutation.isPending
+                  ? "Marking..."
+                  : "Mark Prayed"}
+              </ThemedText>
+            </View>
+          )}
         </Button>
 
         <View style={styles.navRow}>
@@ -386,7 +427,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   bodyText: {
-    fontSize: 18,
+    fontSize: 20,
     textAlign: "center",
   },
   bottomBar: {
@@ -406,6 +447,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  successIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   navRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -416,7 +464,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: Spacing.sm + 4,
+    paddingVertical: Spacing.md,
     borderRadius: BorderRadius.md,
   },
 });

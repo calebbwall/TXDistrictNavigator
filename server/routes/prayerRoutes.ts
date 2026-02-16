@@ -10,7 +10,7 @@ import {
   updatePrayerSchema,
   type Prayer,
 } from "@shared/schema";
-import { eq, and, sql, or, ilike, inArray, desc, asc, isNull, lte } from "drizzle-orm";
+import { eq, and, sql, or, ilike, inArray, desc, asc, isNull, lte, gte, not } from "drizzle-orm";
 
 function getTodayDateKey(): string {
   const now = new Date();
@@ -33,6 +33,23 @@ function getYesterdayDateKey(): string {
   return `${y}-${m}-${d}`;
 }
 
+function getDateKeyNDaysAgo(n: number): string {
+  const now = new Date();
+  const chicagoStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
+  const chicagoDate = new Date(chicagoStr);
+  chicagoDate.setDate(chicagoDate.getDate() - n);
+  const y = chicagoDate.getFullYear();
+  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
+  const d = String(chicagoDate.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+async function getAutoArchiveEnabled(): Promise<boolean> {
+  const row = await db.select().from(appSettings).where(eq(appSettings.key, "autoArchiveEnabled")).limit(1);
+  if (row.length > 0) return row[0].value === "true";
+  return true;
+}
+
 async function getAutoArchiveDays(): Promise<number> {
   const row = await db.select().from(appSettings).where(eq(appSettings.key, "autoArchiveDays")).limit(1);
   if (row.length > 0) return parseInt(row[0].value, 10) || 90;
@@ -40,6 +57,8 @@ async function getAutoArchiveDays(): Promise<number> {
 }
 
 async function autoArchiveAnswered(): Promise<void> {
+  const enabled = await getAutoArchiveEnabled();
+  if (!enabled) return;
   const days = await getAutoArchiveDays();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
@@ -124,7 +143,7 @@ export function registerPrayerRoutes(app: Express) {
 
   app.get("/api/prayers", async (req, res) => {
     try {
-      await autoArchiveAnswered();
+      autoArchiveAnswered().catch(() => {});
 
       const { status, categoryId, officialId, q, limit: lim, offset: off, sort } = req.query;
       const conditions: any[] = [];
@@ -191,10 +210,22 @@ export function registerPrayerRoutes(app: Express) {
   app.get("/api/prayers/export", async (req, res) => {
     try {
       await autoArchiveAnswered();
-      const { status } = req.query;
+      const { status, dateFrom, dateTo, includeBody } = req.query;
       const conditions: any[] = [];
       if (status && status !== "ALL") {
         conditions.push(eq(prayers.status, status as "OPEN" | "ANSWERED" | "ARCHIVED"));
+      }
+      if (dateFrom && typeof dateFrom === "string") {
+        const from = new Date(dateFrom + "T00:00:00.000Z");
+        if (!isNaN(from.getTime())) {
+          conditions.push(gte(prayers.createdAt, from));
+        }
+      }
+      if (dateTo && typeof dateTo === "string") {
+        const to = new Date(dateTo + "T23:59:59.999Z");
+        if (!isNaN(to.getTime())) {
+          conditions.push(lte(prayers.createdAt, to));
+        }
       }
       const allPrayers = await db.select().from(prayers)
         .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -202,23 +233,31 @@ export function registerPrayerRoutes(app: Express) {
       const cats = await db.select().from(prayerCategories);
       const catMap = new Map(cats.map(c => [c.id, c.name]));
 
-      const header = "title,body,status,createdAt,answeredAt,archivedAt,answerNote,categoryName,officialIds";
+      const showBody = includeBody !== "false";
+      const headerCols = ["title"];
+      if (showBody) headerCols.push("body");
+      headerCols.push("status", "categoryName", "createdAt", "answeredAt", "archivedAt", "answerNote", "officialIds");
+      const header = headerCols.join(",");
+
       const csvEscape = (s: string | null | undefined) => {
         if (s == null) return "";
         const str = String(s).replace(/"/g, '""');
         return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str}"` : str;
       };
-      const rows = allPrayers.map(p => [
-        csvEscape(p.title),
-        csvEscape(p.body),
-        p.status,
-        p.createdAt?.toISOString() ?? "",
-        p.answeredAt?.toISOString() ?? "",
-        p.archivedAt?.toISOString() ?? "",
-        csvEscape(p.answerNote),
-        csvEscape(catMap.get(p.categoryId ?? "") ?? ""),
-        csvEscape((p.officialIds as string[] || []).join(";")),
-      ].join(","));
+      const rows = allPrayers.map(p => {
+        const cols: string[] = [csvEscape(p.title)];
+        if (showBody) cols.push(csvEscape(p.body));
+        cols.push(
+          p.status,
+          csvEscape(catMap.get(p.categoryId ?? "") ?? ""),
+          p.createdAt?.toISOString() ?? "",
+          p.answeredAt?.toISOString() ?? "",
+          p.archivedAt?.toISOString() ?? "",
+          csvEscape(p.answerNote),
+          csvEscape((p.officialIds as string[] || []).join(";")),
+        );
+        return cols.join(",");
+      });
       const csv = [header, ...rows].join("\n");
 
       res.setHeader("Content-Type", "text/csv");
@@ -231,23 +270,20 @@ export function registerPrayerRoutes(app: Express) {
 
   app.get("/api/prayers/needs-attention", async (req, res) => {
     try {
-      const allPrayers = await db.select().from(prayers)
+      const fourteenDaysAgo = new Date();
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+      const allOpen = await db.select().from(prayers)
         .where(eq(prayers.status, "OPEN"));
 
-      const sorted = allPrayers.sort((a, b) => {
-        const aLastPrayed = a.lastPrayedAt?.getTime() ?? null;
-        const bLastPrayed = b.lastPrayedAt?.getTime() ?? null;
+      const needsAttention = allOpen.filter(p =>
+        p.lastPrayedAt === null || p.lastPrayedAt < fourteenDaysAgo
+      );
 
-        if (aLastPrayed === null && bLastPrayed === null) {
-          return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
-        }
-        if (aLastPrayed === null) return -1;
-        if (bLastPrayed === null) return 1;
-
-        if (aLastPrayed !== bLastPrayed) {
-          return aLastPrayed - bLastPrayed;
-        }
-
+      const sorted = needsAttention.sort((a, b) => {
+        const aTime = a.lastPrayedAt?.getTime() ?? 0;
+        const bTime = b.lastPrayedAt?.getTime() ?? 0;
+        if (aTime !== bTime) return aTime - bTime;
         return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
       });
 
@@ -414,20 +450,37 @@ export function registerPrayerRoutes(app: Express) {
   app.get("/api/daily-prayer-picks", async (req, res) => {
     try {
       const todayKey = getTodayDateKey();
-      const existing = await db.select().from(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, todayKey)).limit(1);
+      const forceRegenerate = req.query.forceRegenerate === "true";
 
-      if (existing.length > 0) {
-        const ids = existing[0].prayerIds as string[];
-        const prayerList = ids.length > 0
-          ? await db.select().from(prayers).where(inArray(prayers.id, ids))
-          : [];
-        const ordered = ids.map(id => prayerList.find(p => p.id === id)).filter(Boolean);
-        return res.json({ dateKey: todayKey, prayers: ordered, generatedAt: existing[0].generatedAt });
+      if (forceRegenerate) {
+        await db.delete(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, todayKey));
       }
 
-      const yesterdayKey = getYesterdayDateKey();
-      const yesterdayPicks = await db.select().from(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, yesterdayKey)).limit(1);
-      const yesterdayIds = yesterdayPicks.length > 0 ? (yesterdayPicks[0].prayerIds as string[]) : [];
+      if (!forceRegenerate) {
+        const existing = await db.select().from(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, todayKey)).limit(1);
+        if (existing.length > 0) {
+          const ids = existing[0].prayerIds as string[];
+          const prayerList = ids.length > 0
+            ? await db.select().from(prayers).where(inArray(prayers.id, ids))
+            : [];
+          const ordered = ids.map(id => prayerList.find(p => p.id === id)).filter(Boolean);
+          return res.json({ dateKey: todayKey, prayers: ordered, generatedAt: existing[0].generatedAt });
+        }
+      }
+
+      const yesterdayKey = getDateKeyNDaysAgo(1);
+      const twoDaysAgoKey = getDateKeyNDaysAgo(2);
+
+      const recentPickRows = await db.select().from(dailyPrayerPicks)
+        .where(inArray(dailyPrayerPicks.dateKey, [yesterdayKey, twoDaysAgoKey]));
+
+      const yesterdayIds: string[] = [];
+      const twoDaysAgoIds: string[] = [];
+      for (const row of recentPickRows) {
+        if (row.dateKey === yesterdayKey) yesterdayIds.push(...(row.prayerIds as string[]));
+        if (row.dateKey === twoDaysAgoKey) twoDaysAgoIds.push(...(row.prayerIds as string[]));
+      }
+      const recentIds = new Set([...yesterdayIds, ...twoDaysAgoIds]);
 
       const openPrayers = await db.select().from(prayers)
         .where(eq(prayers.status, "OPEN"))
@@ -448,16 +501,28 @@ export function registerPrayerRoutes(app: Express) {
 
       if (picks.length < 3) {
         const pickedIds = new Set(picks.map(p => p.id));
-        const eligible = openPrayers.filter(p => !pickedIds.has(p.id) && !yesterdayIds.includes(p.id));
 
-        if (eligible.length === 0) {
-          const fallback = openPrayers.filter(p => !pickedIds.has(p.id));
-          for (const p of fallback) {
-            if (picks.length >= 3) break;
-            picks.push(p);
-          }
+        const strictEligible = openPrayers.filter(p => !pickedIds.has(p.id) && !recentIds.has(p.id));
+
+        const yesterdayOnlyEligible = openPrayers.filter(p =>
+          !pickedIds.has(p.id) && !yesterdayIds.includes(p.id)
+        );
+
+        const allEligible = openPrayers.filter(p => !pickedIds.has(p.id));
+
+        let pool: typeof openPrayers;
+        const needed = 3 - picks.length;
+
+        if (strictEligible.length >= needed) {
+          pool = strictEligible;
+        } else if (yesterdayOnlyEligible.length >= needed) {
+          pool = yesterdayOnlyEligible;
         } else {
-          const weighted = eligible.map(p => {
+          pool = allEligible;
+        }
+
+        if (pool.length > 0) {
+          const weighted = pool.map(p => {
             let weight = 1;
             if (p.lastShownAt === null) weight += 5;
             else {
@@ -465,6 +530,7 @@ export function registerPrayerRoutes(app: Express) {
               weight += Math.min(daysSince, 10);
             }
             if (p.priority === 1) weight *= 2;
+            if (recentIds.has(p.id)) weight *= 0.3;
             weight += Math.random() * 2;
             return { prayer: p, weight };
           });
@@ -533,7 +599,75 @@ export function registerPrayerRoutes(app: Express) {
         longestStreak: newLongest,
       }).where(eq(prayerStreak.id, streak.id)).returning();
 
+      try {
+        const todayPicks = await db.select().from(dailyPrayerPicks)
+          .where(eq(dailyPrayerPicks.dateKey, todayKey)).limit(1);
+        if (todayPicks.length > 0) {
+          const pickIds = todayPicks[0].prayerIds as string[];
+          if (pickIds.length > 0) {
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            await db.update(prayers)
+              .set({ lastPrayedAt: new Date(), updatedAt: new Date() })
+              .where(and(
+                inArray(prayers.id, pickIds),
+                or(
+                  isNull(prayers.lastPrayedAt),
+                  lte(prayers.lastPrayedAt, todayStart)
+                )
+              ));
+          }
+        }
+      } catch (_) {}
+
       res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Auto-Archive Settings ──
+
+  app.get("/api/settings/auto-archive", async (_req, res) => {
+    try {
+      const rows = await db.select().from(appSettings)
+        .where(inArray(appSettings.key, ["autoArchiveEnabled", "autoArchiveDays"]));
+      let enabled = true;
+      let days = 90;
+      for (const row of rows) {
+        if (row.key === "autoArchiveEnabled") enabled = row.value === "true";
+        if (row.key === "autoArchiveDays") days = parseInt(row.value, 10) || 90;
+      }
+      res.json({ enabled, days });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/settings/auto-archive", async (req, res) => {
+    try {
+      const { enabled, days } = req.body;
+      const now = new Date();
+
+      await db.insert(appSettings).values({
+        key: "autoArchiveEnabled",
+        value: String(enabled ?? true),
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value: String(enabled ?? true), updatedAt: now },
+      });
+
+      await db.insert(appSettings).values({
+        key: "autoArchiveDays",
+        value: String(days ?? 90),
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value: String(days ?? 90), updatedAt: now },
+      });
+
+      res.json({ enabled: enabled ?? true, days: days ?? 90 });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

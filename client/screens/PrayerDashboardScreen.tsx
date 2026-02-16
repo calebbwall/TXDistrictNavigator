@@ -55,6 +55,15 @@ type PrayerCategory = {
   sortOrder: number;
 };
 
+function getTodayDateKey(): string {
+  const localeStr = new Date().toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+  const parts = localeStr.split("/");
+  const month = parts[0].padStart(2, "0");
+  const day = parts[1].padStart(2, "0");
+  const year = parts[2];
+  return `${year}-${month}-${day}`;
+}
+
 export default function PrayerDashboardScreen() {
   const { theme } = useTheme();
   const headerHeight = useHeaderHeight();
@@ -88,6 +97,10 @@ export default function PrayerDashboardScreen() {
     queryKey: ["/api/prayers", "?status=OPEN"],
   });
 
+  const { data: archivedPrayers = [] } = useQuery<Prayer[]>({
+    queryKey: ["/api/prayers", "?status=ARCHIVED"],
+  });
+
   useFocusEffect(
     useCallback(() => {
       refetchDaily();
@@ -104,6 +117,17 @@ export default function PrayerDashboardScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prayer-streak"] });
+    },
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: async (prayerId: string) => {
+      await apiRequest("POST", `/api/prayers/${prayerId}/reopen`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prayers/recently-answered"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prayer-picks"] });
     },
   });
 
@@ -124,6 +148,9 @@ export default function PrayerDashboardScreen() {
 
   const uncategorizedCount = openPrayers.filter((p) => !p.categoryId).length;
 
+  const todayKey = getTodayDateKey();
+  const completedToday = streak ? streak.lastCompletedDateKey === todayKey : false;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <ScrollView
@@ -141,9 +168,18 @@ export default function PrayerDashboardScreen() {
               <ThemedText type="h3">Today's 3</ThemedText>
             </View>
             {streak ? (
-              <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-                Day {streak.currentStreak}
-              </ThemedText>
+              streak.currentStreak > 0 ? (
+                <View style={styles.streakBadge}>
+                  <Feather name="zap" size={16} color={theme.warning} style={{ marginRight: 4 }} />
+                  <ThemedText type="h3" style={{ color: theme.warning }}>
+                    Day {streak.currentStreak}
+                  </ThemedText>
+                </View>
+              ) : (
+                <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+                  Day {streak.currentStreak}
+                </ThemedText>
+              )
             ) : null}
           </View>
 
@@ -163,26 +199,52 @@ export default function PrayerDashboardScreen() {
                     })
                   }
                 >
-                  <ThemedText type="body" style={{ fontWeight: "600" }} numberOfLines={1}>
-                    {prayer.title}
-                  </ThemedText>
-                  <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 4 }} numberOfLines={1}>
-                    {getFirstLine(prayer.body)}
-                  </ThemedText>
+                  <View style={styles.dailyCardContent}>
+                    <View style={[styles.numberBadge, { backgroundColor: theme.primary + "18" }]}>
+                      <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "700" }}>
+                        {index + 1}
+                      </ThemedText>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <ThemedText type="h3" numberOfLines={1}>
+                        {prayer.title}
+                      </ThemedText>
+                      <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 4 }} numberOfLines={1}>
+                        {getFirstLine(prayer.body)}
+                      </ThemedText>
+                    </View>
+                  </View>
                 </Card>
               ))}
-              <Button
-                onPress={() => completeTodayMutation.mutate()}
-                disabled={completeTodayMutation.isPending}
-                style={{ marginTop: Spacing.sm }}
-              >
-                Mark Today Complete
-              </Button>
+              {completedToday ? (
+                <View style={styles.completedRow}>
+                  <Feather name="check-circle" size={18} color={theme.success} style={{ marginRight: Spacing.sm }} />
+                  <ThemedText type="body" style={{ color: theme.success, fontWeight: "600" }}>
+                    Completed today
+                  </ThemedText>
+                </View>
+              ) : (
+                <Button
+                  onPress={() => completeTodayMutation.mutate()}
+                  disabled={completeTodayMutation.isPending}
+                  style={{ marginTop: Spacing.sm }}
+                >
+                  Mark Today Complete
+                </Button>
+              )}
             </View>
           ) : (
-            <ThemedText type="small" style={{ color: theme.secondaryText, paddingVertical: Spacing.md }}>
-              No daily prayers available. Add some prayers first.
-            </ThemedText>
+            <Card elevation={0} style={styles.emptyCard}>
+              <View style={styles.emptyContent}>
+                <Feather name="sunrise" size={36} color={theme.secondaryText} style={{ marginBottom: Spacing.md }} />
+                <ThemedText type="body" style={{ color: theme.secondaryText, textAlign: "center", marginBottom: Spacing.md }}>
+                  No active prayers yet. Add one, or reopen an answered prayer.
+                </ThemedText>
+                <Button onPress={() => navigation.navigate("AddPrayer", {})}>
+                  Add Prayer
+                </Button>
+              </View>
+            </Card>
           )}
         </View>
 
@@ -230,12 +292,32 @@ export default function PrayerDashboardScreen() {
             </View>
             {recentlyAnswered.slice(0, 5).map((prayer) => (
               <View key={prayer.id} style={[styles.answeredRow, { borderBottomColor: theme.border }]}>
-                <ThemedText type="body" numberOfLines={1} style={{ flex: 1 }}>
-                  {prayer.title}
-                </ThemedText>
-                <ThemedText type="caption" style={{ color: theme.success }}>
-                  {formatDate(prayer.answeredAt)}
-                </ThemedText>
+                <View style={{ flex: 1, marginRight: Spacing.sm }}>
+                  <ThemedText type="body" numberOfLines={1}>
+                    {prayer.title}
+                  </ThemedText>
+                  {prayer.answerNote ? (
+                    <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }} numberOfLines={1}>
+                      {prayer.answerNote}
+                    </ThemedText>
+                  ) : null}
+                </View>
+                <View style={styles.answeredActions}>
+                  <ThemedText type="caption" style={{ color: theme.success, marginRight: Spacing.sm }}>
+                    {formatDate(prayer.answeredAt)}
+                  </ThemedText>
+                  <Pressable
+                    onPress={() => reopenMutation.mutate(prayer.id)}
+                    style={({ pressed }) => [
+                      styles.reopenButton,
+                      { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 },
+                    ]}
+                  >
+                    <ThemedText type="small" style={{ color: theme.primary, fontWeight: "600" }}>
+                      Reopen
+                    </ThemedText>
+                  </Pressable>
+                </View>
               </View>
             ))}
           </View>
@@ -285,14 +367,25 @@ export default function PrayerDashboardScreen() {
             </View>
           ) : (
             <ThemedText type="small" style={{ color: theme.secondaryText, paddingVertical: Spacing.md }}>
-              No categories yet.
+              No categories yet.{" "}
+              <ThemedText
+                type="small"
+                style={{ color: theme.primary, fontWeight: "600" }}
+                onPress={() => navigation.navigate("ManageCategories")}
+              >
+                Create one.
+              </ThemedText>
             </ThemedText>
           )}
         </View>
 
+        <ThemedText type="caption" style={{ color: theme.secondaryText, textAlign: "center", marginBottom: Spacing.md }}>
+          Archived: {archivedPrayers.length} total
+        </ThemedText>
+
         <Button
           onPress={() => navigation.navigate("AllPrayers", {})}
-          style={{ marginTop: Spacing.md, marginBottom: Spacing.lg }}
+          style={{ marginBottom: Spacing.lg }}
         >
           View All Prayers
         </Button>
@@ -314,9 +407,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  streakBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   dailyCard: {
     marginBottom: Spacing.sm,
-    padding: Spacing.md,
+    padding: Spacing.lg,
+  },
+  dailyCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  numberBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.md,
+  },
+  emptyCard: {
+    padding: Spacing.xl,
+  },
+  emptyContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  completedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
   },
   attentionRow: {
     flexDirection: "row",
@@ -335,6 +458,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: Spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  answeredActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  reopenButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
   },
   categoryRow: {
     flexDirection: "row",

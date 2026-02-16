@@ -23,6 +23,7 @@ import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl, apiRequest } from "@/lib/query-client";
+import { useToast } from "@/components/Toast";
 import * as WebBrowser from "expo-web-browser";
 
 type Prayer = {
@@ -173,6 +174,8 @@ export default function PrayerListScreen() {
     }, [refetch])
   );
 
+  const { showToast } = useToast();
+
   const bulkMutation = useMutation({
     mutationFn: async ({ action, prayerIds }: { action: string; prayerIds: string[] }) => {
       await apiRequest("POST", "/api/prayers/bulk", { action, prayerIds });
@@ -181,6 +184,54 @@ export default function PrayerListScreen() {
       queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
       setSelectMode(false);
       setSelectedIds(new Set());
+    },
+  });
+
+  const answerMutation = useMutation({
+    mutationFn: async (prayerId: string) => {
+      await apiRequest("POST", `/api/prayers/${prayerId}/answer`, {});
+    },
+    onSuccess: (_data, prayerId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Prayer answered", {
+        undoAction: () => {
+          reopenMutation.mutate(prayerId);
+        },
+      });
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async (prayerId: string) => {
+      await apiRequest("POST", `/api/prayers/${prayerId}/archive`, {});
+    },
+    onSuccess: (_data, prayerId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Prayer archived", {
+        undoAction: () => {
+          unarchiveMutation.mutate(prayerId);
+        },
+      });
+    },
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: async (prayerId: string) => {
+      await apiRequest("POST", `/api/prayers/${prayerId}/reopen`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Prayer reopened");
+    },
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: async (prayerId: string) => {
+      await apiRequest("POST", `/api/prayers/${prayerId}/unarchive`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prayers"] });
+      showToast("Prayer unarchived");
     },
   });
 
@@ -354,6 +405,54 @@ export default function PrayerListScreen() {
           >
             {item.body}
           </ThemedText>
+          {selectMode ? null : (
+            <View style={styles.quickActionRow}>
+              {item.status === "OPEN" ? (
+                <>
+                  <Pressable
+                    style={[styles.quickActionPill, { backgroundColor: theme.success + "18", borderColor: theme.success + "40" }]}
+                    onPress={(e) => { e.stopPropagation?.(); answerMutation.mutate(item.id); }}
+                    hitSlop={4}
+                  >
+                    <ThemedText type="caption" style={{ color: theme.success, fontWeight: "600" }}>
+                      Answered
+                    </ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.quickActionPill, { backgroundColor: theme.secondaryText + "12", borderColor: theme.secondaryText + "30" }]}
+                    onPress={(e) => { e.stopPropagation?.(); archiveMutation.mutate(item.id); }}
+                    hitSlop={4}
+                  >
+                    <ThemedText type="caption" style={{ color: theme.secondaryText, fontWeight: "600" }}>
+                      Archive
+                    </ThemedText>
+                  </Pressable>
+                </>
+              ) : null}
+              {item.status === "ANSWERED" ? (
+                <Pressable
+                  style={[styles.quickActionPill, { backgroundColor: theme.primary + "18", borderColor: theme.primary + "40" }]}
+                  onPress={(e) => { e.stopPropagation?.(); reopenMutation.mutate(item.id); }}
+                  hitSlop={4}
+                >
+                  <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                    Reopen
+                  </ThemedText>
+                </Pressable>
+              ) : null}
+              {item.status === "ARCHIVED" ? (
+                <Pressable
+                  style={[styles.quickActionPill, { backgroundColor: theme.primary + "18", borderColor: theme.primary + "40" }]}
+                  onPress={(e) => { e.stopPropagation?.(); unarchiveMutation.mutate(item.id); }}
+                  hitSlop={4}
+                >
+                  <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                    Unarchive
+                  </ThemedText>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
           <View style={styles.prayerFooter}>
             <ThemedText type="caption" style={{ color: theme.secondaryText }}>
               {formatDate(item.createdAt)}
@@ -601,13 +700,17 @@ export default function PrayerListScreen() {
                   textAlign: "center",
                 }}
               >
-                {activeTab === "OPEN"
-                  ? "No active prayers yet.\nTap + to add your first prayer."
-                  : activeTab === "ANSWERED"
-                    ? "No answered prayers yet."
-                    : activeTab === "ARCHIVED"
-                      ? "No archived prayers."
-                      : "No prayers found."}
+                {debouncedSearch.length > 0
+                  ? "No matches. Try fewer words."
+                  : officialId
+                    ? "No prayers for this official yet."
+                    : activeTab === "OPEN"
+                      ? "No active prayers yet.\nTap + to add your first prayer."
+                      : activeTab === "ANSWERED"
+                        ? "No answered prayers yet."
+                        : activeTab === "ARCHIVED"
+                          ? "No archived prayers."
+                          : "No prayers found."}
               </ThemedText>
             </View>
           }
@@ -692,6 +795,17 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: BorderRadius.full,
     marginLeft: Spacing.sm,
+  },
+  quickActionRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  quickActionPill: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
   },
   prayerFooter: {
     flexDirection: "row",
