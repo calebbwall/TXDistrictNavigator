@@ -56,6 +56,7 @@ import {
   type Official,
   type Office,
 } from "@/lib/mockData";
+import { useQuery } from "@tanstack/react-query";
 import { fetchOfficialById, updateOfficialPrivate } from "@/lib/officialsApi";
 import { apiOfficialToLegacy } from "@/lib/officialsAdapter";
 import { getApiUrl } from "@/lib/query-client";
@@ -227,6 +228,11 @@ export default function OfficialProfileScreen() {
     roleTitle: string | null;
   }>>([]);
   const [committeesLoading, setCommitteesLoading] = useState(false);
+
+  const { data: prayerCounts } = useQuery<{ open: number; answered: number; archived: number }>({
+    queryKey: [`/api/officials/${officialId}/prayer-counts`],
+    enabled: !!officialId,
+  });
 
   const loadOfficial = useCallback(async () => {
     setIsLoading(true);
@@ -654,7 +660,7 @@ export default function OfficialProfileScreen() {
               onPress={() => {
                 navigation.navigate("PrayerTab" as any, {
                   screen: "AddPrayer",
-                  params: { officialId: official?.id?.toString(), officialName: official?.name },
+                  params: { officialId: official?.id?.toString(), officialName: official?.fullName },
                 });
               }}
               style={({ pressed }) => [
@@ -1204,6 +1210,45 @@ export default function OfficialProfileScreen() {
                 )}
               </View>
             </View>
+
+            {prayerCounts && (prayerCounts.open > 0 || prayerCounts.answered > 0 || prayerCounts.archived > 0) ? (
+              <View style={[styles.section, { marginTop: Spacing.xl }]}>
+                <View style={styles.editHeader}>
+                  <ThemedText type="h3">Prayers</ThemedText>
+                  <Pressable
+                    onPress={() => {
+                      navigation.navigate("PrayerTab" as any, {
+                        screen: "PrayerList",
+                        params: { officialId: officialId, officialName: official?.fullName },
+                      });
+                    }}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                  >
+                    <ThemedText type="caption" style={{ color: theme.primary }}>View All</ThemedText>
+                  </Pressable>
+                </View>
+                <View style={{ flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.sm }}>
+                  {prayerCounts.open > 0 ? (
+                    <View style={[styles.prayerCountPill, { backgroundColor: theme.primary + "20" }]}>
+                      <View style={[styles.prayerCountDot, { backgroundColor: theme.primary }]} />
+                      <ThemedText type="caption">{prayerCounts.open} Active</ThemedText>
+                    </View>
+                  ) : null}
+                  {prayerCounts.answered > 0 ? (
+                    <View style={[styles.prayerCountPill, { backgroundColor: "#4CAF5020" }]}>
+                      <View style={[styles.prayerCountDot, { backgroundColor: "#4CAF50" }]} />
+                      <ThemedText type="caption">{prayerCounts.answered} Answered</ThemedText>
+                    </View>
+                  ) : null}
+                  {prayerCounts.archived > 0 ? (
+                    <View style={[styles.prayerCountPill, { backgroundColor: theme.secondaryText + "20" }]}>
+                      <View style={[styles.prayerCountDot, { backgroundColor: theme.secondaryText }]} />
+                      <ThemedText type="caption">{prayerCounts.archived} Archived</ThemedText>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
 
             <View 
               style={[styles.section, { marginTop: Spacing.xl }]}
@@ -1799,5 +1844,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  prayerCountPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  prayerCountDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });
