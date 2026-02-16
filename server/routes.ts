@@ -779,42 +779,185 @@ function getMapHtml(): string {
       return polylabel;
     }
 
-    function computeFanoutPositionsServer(baseLat, baseLng, count, entries, safeThreshold) {
-      if (count <= 1) return;
-      var fanRadius = 0.004;
-      var startAngle = -Math.PI / 2;
-      for (var i = 0; i < count; i++) {
-        var angle = startAngle + (2 * Math.PI * i / count);
-        var offLat = fanRadius * Math.sin(angle);
-        var offLng = fanRadius * Math.cos(angle);
-        var candLat = baseLat + offLat;
-        var candLng = baseLng + offLng;
-        var entry = entries[i];
-        if (!entry.feature) { entry.pos = [candLat, candLng]; continue; }
-        if (isPointInGeoJSONFeature(candLat, candLng, entry.feature)) {
-          var d = distanceToPolygonBorderServer(candLat, candLng, entry.feature);
-          if (d >= safeThreshold) { entry.pos = [candLat, candLng]; continue; }
+    var anchorCacheServer = {};
+
+    function getBorderSafeAnchorsServer(layerType, districtNum) {
+      var cacheKey = layerType + '_' + districtNum;
+      if (anchorCacheServer[cacheKey]) return anchorCacheServer[cacheKey];
+      var feature = getDistrictFeature(layerType, districtNum);
+      if (!feature) return [];
+      var polylabel = getDistrictPolylabelServer(layerType, districtNum);
+      if (!polylabel) return [];
+      var safeThreshold = getSafeInsetThresholdServer(feature);
+      var bb = getFeatureBbox(feature);
+      var gridSize = 7;
+      var candidates = [polylabel];
+      for (var gi = 0; gi < gridSize; gi++) {
+        for (var gj = 0; gj < gridSize; gj++) {
+          var lng = bb[0] + ((gi + 0.5) / gridSize) * (bb[2] - bb[0]);
+          var lat = bb[1] + ((gj + 0.5) / gridSize) * (bb[3] - bb[1]);
+          if (isPointInGeoJSONFeature(lat, lng, feature)) {
+            var d = distanceToPolygonBorderServer(lat, lng, feature);
+            if (d >= safeThreshold) candidates.push([lat, lng]);
+          }
         }
-        var polylabel = getDistrictPolylabelServer(entry.layerType, entry.m.districtNumber);
-        if (!polylabel) { continue; }
-        var smallR = 0.002;
-        var sCandLat = polylabel[0] + smallR * Math.sin(angle);
-        var sCandLng = polylabel[1] + smallR * Math.cos(angle);
-        if (entry.feature && isPointInGeoJSONFeature(sCandLat, sCandLng, entry.feature)) {
-          var d2 = distanceToPolygonBorderServer(sCandLat, sCandLng, entry.feature);
-          if (d2 >= safeThreshold * 0.5) { entry.pos = [sCandLat, sCandLng]; continue; }
-        }
-        entry.pos = polylabel;
       }
+      var maxAnchors = Math.min(6, Math.max(2, candidates.length));
+      var selected = [polylabel];
+      while (selected.length < maxAnchors && candidates.length > selected.length) {
+        var best = null, bestMinDist = -1;
+        for (var ci = 0; ci < candidates.length; ci++) {
+          var alreadyUsed = false;
+          for (var si = 0; si < selected.length; si++) {
+            if (candidates[ci] === selected[si]) { alreadyUsed = true; break; }
+          }
+          if (alreadyUsed) continue;
+          var minDist = Infinity;
+          for (var si2 = 0; si2 < selected.length; si2++) {
+            var dx = candidates[ci][1] - selected[si2][1];
+            var dy = candidates[ci][0] - selected[si2][0];
+            var dd = dx * dx + dy * dy;
+            if (dd < minDist) minDist = dd;
+          }
+          if (minDist > bestMinDist) { bestMinDist = minDist; best = candidates[ci]; }
+        }
+        if (best) selected.push(best);
+        else break;
+      }
+      anchorCacheServer[cacheKey] = selected;
+      return selected;
     }
+
+    function distancePointToDrawnPolygonServer(lat, lng, drawnCoords) {
+      var ring = drawnCoords[0];
+      if (!ring || ring.length < 3) return Infinity;
+      if (pointInPolygon(lat, lng, ring)) return 0;
+      var minDist = Infinity;
+      for (var i = 0; i < ring.length - 1; i++) {
+        var res = nearestPointOnSegment(lng, lat, ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+        if (res.dist < minDist) minDist = res.dist;
+      }
+      return minDist;
+    }
+
+    function nearestAnchorToDrawnPolygonServer(anchors, drawnCoords) {
+      if (!anchors || anchors.length === 0) return null;
+      if (!drawnCoords || !drawnCoords[0]) return anchors[0];
+      var bestAnchor = anchors[0];
+      var bestDist = Infinity;
+      for (var i = 0; i < anchors.length; i++) {
+        var d = distancePointToDrawnPolygonServer(anchors[i][0], anchors[i][1], drawnCoords);
+        if (d < bestDist) { bestDist = d; bestAnchor = anchors[i]; }
+      }
+      return bestAnchor;
+    }
+
+    var activeMarkerStateServer = null;
+    var pixelLayoutTimerServer = null;
+    var MIN_PX_SERVER = 64;
+
+    function applyPixelLayoutServer() {
+      if (!activeMarkerStateServer || activeMarkerStateServer.entries.length < 2) return;
+      var entries = activeMarkerStateServer.entries;
+      var leafletMarkers = activeMarkerStateServer.leafletMarkers;
+
+      for (var i = 0; i < entries.length; i++) {
+        entries[i].pos = [entries[i].basePos[0], entries[i].basePos[1]];
+      }
+
+      for (var i2 = 0; i2 < entries.length; i2++) {
+        entries[i2].screenPt = map.latLngToContainerPoint(L.latLng(entries[i2].pos[0], entries[i2].pos[1]));
+      }
+
+      var hasOverlap = false;
+      for (var ci = 0; ci < entries.length && !hasOverlap; ci++) {
+        for (var cj = ci + 1; cj < entries.length && !hasOverlap; cj++) {
+          var cdx = entries[ci].screenPt.x - entries[cj].screenPt.x;
+          var cdy = entries[ci].screenPt.y - entries[cj].screenPt.y;
+          if (Math.sqrt(cdx * cdx + cdy * cdy) < MIN_PX_SERVER) hasOverlap = true;
+        }
+      }
+
+      if (!hasOverlap) {
+        for (var ui = 0; ui < entries.length; ui++) {
+          if (leafletMarkers[ui]) leafletMarkers[ui].setLatLng(entries[ui].pos);
+        }
+        return;
+      }
+
+      var centerPx = { x: 0, y: 0 };
+      for (var ai = 0; ai < entries.length; ai++) {
+        centerPx.x += entries[ai].screenPt.x;
+        centerPx.y += entries[ai].screenPt.y;
+      }
+      centerPx.x /= entries.length;
+      centerPx.y /= entries.length;
+
+      var radiiPx = [0, 70, 100, 140, 180, 220, 260, 300];
+      var anglesPerRing = 12;
+      var placed = [];
+
+      for (var idx = 0; idx < entries.length; idx++) {
+        var entry = entries[idx];
+        var found = false;
+        for (var ri = 0; ri < radiiPx.length && !found; ri++) {
+          var radius = radiiPx[ri];
+          var numAngles = radius === 0 ? 1 : anglesPerRing;
+          for (var aii = 0; aii < numAngles && !found; aii++) {
+            var angle = -Math.PI / 2 + (2 * Math.PI * aii / numAngles);
+            if (radius === 0 && idx > 0) break;
+            var candPx = { x: centerPx.x + radius * Math.cos(angle), y: centerPx.y + radius * Math.sin(angle) };
+            var candLatLng = map.containerPointToLatLng(L.point(candPx.x, candPx.y));
+            var candLat = candLatLng.lat, candLng = candLatLng.lng;
+            if (entry.feature && !isPointInGeoJSONFeature(candLat, candLng, entry.feature)) continue;
+            if (entry.feature) {
+              var bDist = distanceToPolygonBorderServer(candLat, candLng, entry.feature);
+              var sThreshold = getSafeInsetThresholdServer(entry.feature);
+              if (bDist < sThreshold * 0.25) continue;
+            }
+            var finalPx = map.latLngToContainerPoint(L.latLng(candLat, candLng));
+            var tooClose = false;
+            for (var pi = 0; pi < placed.length; pi++) {
+              var pPx = entries[placed[pi]].screenPt;
+              var pdx = finalPx.x - pPx.x;
+              var pdy = finalPx.y - pPx.y;
+              if (Math.sqrt(pdx * pdx + pdy * pdy) < MIN_PX_SERVER) { tooClose = true; break; }
+            }
+            if (!tooClose) {
+              entry.pos = [candLat, candLng];
+              entry.screenPt = finalPx;
+              placed.push(idx);
+              found = true;
+            }
+          }
+        }
+        if (!found) placed.push(idx);
+      }
+
+      for (var fi = 0; fi < entries.length; fi++) {
+        if (leafletMarkers[fi]) leafletMarkers[fi].setLatLng(entries[fi].pos);
+      }
+      console.log('[HEADSHOTS] Pixel layout applied at zoom ' + map.getZoom());
+    }
+
+    map.on('moveend', function() {
+      if (!activeMarkerStateServer || activeMarkerStateServer.entries.length < 2) return;
+      if (pixelLayoutTimerServer) clearTimeout(pixelLayoutTimerServer);
+      pixelLayoutTimerServer = setTimeout(function() {
+        applyPixelLayoutServer();
+      }, 100);
+    });
     
-    window.setHeadshotMarkers = function(markers, selectionOrigin, selectionMode) {
+    window.setHeadshotMarkers = function(markers, selectionOrigin, selectionMode, drawnPolygon) {
       window.clearHeadshotMarkers();
+      activeMarkerStateServer = null;
       var mode = selectionMode || null;
       var MAX_VISIBLE = 10;
       var visible = markers.slice(0, MAX_VISIBLE);
       var overflow = markers.length - MAX_VISIBLE;
       var hasOrigin = selectionOrigin && typeof selectionOrigin.lat === 'number';
+      var isDraw = mode === 'draw';
+      var hasDrawnPoly = drawnPolygon && drawnPolygon.coordinates && drawnPolygon.coordinates[0];
 
       var entries = [];
       for (var i = 0; i < visible.length; i++) {
@@ -823,57 +966,35 @@ function getMapHtml(): string {
         if (!feature) {
           var centroid = getDistrictCentroid(m.layerType, m.districtNumber);
           if (centroid) {
-            entries.push({ m: m, pos: [centroid[0], centroid[1]], feature: null, layerType: m.layerType, key: m.layerType + '_' + m.districtNumber });
+            entries.push({ m: m, pos: [centroid[0], centroid[1]], basePos: [centroid[0], centroid[1]], feature: null, layerType: m.layerType, key: m.layerType + '_' + m.districtNumber });
           }
           continue;
         }
 
         var pos;
-        if (hasOrigin) {
+        if (isDraw && hasDrawnPoly) {
+          var anchors = getBorderSafeAnchorsServer(m.layerType, m.districtNumber);
+          pos = nearestAnchorToDrawnPolygonServer(anchors, drawnPolygon.coordinates);
+          if (!pos) pos = getDistrictPolylabelServer(m.layerType, m.districtNumber);
+        } else if (hasOrigin) {
           pos = getBorderSafeBasePointServer(selectionOrigin.lat, selectionOrigin.lng, feature, m.layerType, m.districtNumber);
         } else {
           pos = getDistrictPolylabelServer(m.layerType, m.districtNumber);
         }
-        if (!pos) {
-          pos = getDistrictCentroid(m.layerType, m.districtNumber);
-        }
+        if (!pos) pos = getDistrictCentroid(m.layerType, m.districtNumber);
         if (!pos) continue;
 
         entries.push({
           m: m,
           pos: [pos[0], pos[1]],
+          basePos: [pos[0], pos[1]],
           feature: feature,
           layerType: m.layerType,
           key: m.layerType + '_' + m.districtNumber
         });
       }
 
-      if (entries.length >= 2) {
-        var overlapThreshold = 0.001;
-        var overlapThresholdSq = overlapThreshold * overlapThreshold;
-        var hasOverlap = false;
-        for (var ci = 0; ci < entries.length && !hasOverlap; ci++) {
-          for (var cj = ci + 1; cj < entries.length && !hasOverlap; cj++) {
-            var cdx = entries[ci].pos[1] - entries[cj].pos[1];
-            var cdy = entries[ci].pos[0] - entries[cj].pos[0];
-            if (cdx * cdx + cdy * cdy < overlapThresholdSq) hasOverlap = true;
-          }
-        }
-        if (hasOverlap) {
-          var avgLat = 0, avgLng = 0;
-          for (var ai = 0; ai < entries.length; ai++) {
-            avgLat += entries[ai].pos[0];
-            avgLng += entries[ai].pos[1];
-          }
-          var fanCenterLat = avgLat / entries.length;
-          var fanCenterLng = avgLng / entries.length;
-          var refFeature = entries[0].feature;
-          var refSafe = refFeature ? getSafeInsetThresholdServer(refFeature) : 0.002;
-          computeFanoutPositionsServer(fanCenterLat, fanCenterLng, entries.length, entries, refSafe);
-          console.log('[HEADSHOTS] Applied fan-out for ' + entries.length + ' overlapping markers');
-        }
-      }
-
+      var leafletMarkersArr = [];
       for (var ei = 0; ei < entries.length; ei++) {
         var entry = entries[ei];
         var em = entry.m;
@@ -900,6 +1021,16 @@ function getMapHtml(): string {
         });
         marker.addTo(map);
         headshotMarkers.push(marker);
+        leafletMarkersArr.push(marker);
+      }
+
+      activeMarkerStateServer = {
+        entries: entries,
+        leafletMarkers: leafletMarkersArr
+      };
+
+      if (entries.length >= 2) {
+        applyPixelLayoutServer();
       }
       
       if (overflow > 0) {
@@ -932,7 +1063,7 @@ function getMapHtml(): string {
         }
       }
 
-      console.log('[HEADSHOTS] Set', entries.length, 'headshot markers, mode=' + (mode || 'default'));
+      console.log('[HEADSHOTS] Set', entries.length, 'markers, mode=' + (mode || 'default') + (isDraw && hasDrawnPoly ? ' (anchor-to-polygon)' : ''));
     };
     
     window.clearHeadshotMarkers = function() {
@@ -940,6 +1071,7 @@ function getMapHtml(): string {
         map.removeLayer(headshotMarkers[i]);
       }
       headshotMarkers = [];
+      activeMarkerStateServer = null;
     };
     
     window.receiveMessage = function(message) {
@@ -984,7 +1116,7 @@ function getMapHtml(): string {
           window.highlightDistricts(data.hits || []);
         } else if (data.type === 'SET_HEADSHOT_MARKERS') {
           console.log('[Leaflet] Received SET_HEADSHOT_MARKERS, count:', data.markers?.length);
-          window.setHeadshotMarkers(data.markers || [], data.selectionOrigin || null, data.selectionMode || null);
+          window.setHeadshotMarkers(data.markers || [], data.selectionOrigin || null, data.selectionMode || null, data.drawnPolygon || null);
         } else if (data.type === 'CLEAR_HEADSHOT_MARKERS') {
           console.log('[Leaflet] Received CLEAR_HEADSHOT_MARKERS');
           window.clearHeadshotMarkers();

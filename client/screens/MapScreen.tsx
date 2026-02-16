@@ -1524,7 +1524,7 @@ const MAP_HTML = `
     function distancePointToDrawnPolygon(point, drawnCoords) {
       var ring = drawnCoords[0];
       if (!ring || ring.length < 3) return Infinity;
-      if (pointInPolygonRing([point.lng, point.lat], ring)) return 0;
+      if (pointInRing([point.lng, point.lat], ring)) return 0;
       var minDist = Infinity;
       for (var i = 0; i < ring.length - 1; i++) {
         var res = nearestPointOnSegment(point.lng, point.lat, ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
