@@ -493,4 +493,87 @@ export function registerPrayerRoutes(app: Express) {
       res.status(500).json({ error: err.message });
     }
   });
+
+  // ── Official Prayer Counts ──
+
+  app.get("/api/officials/:id/prayer-counts", async (req, res) => {
+    try {
+      const { id: officialId } = req.params;
+      const allPrayers = await db.select().from(prayers);
+
+      let open = 0;
+      let answered = 0;
+      let archived = 0;
+
+      for (const prayer of allPrayers) {
+        const officialIds = prayer.officialIds as string[] | null;
+        if (!officialIds || !officialIds.includes(officialId)) continue;
+
+        switch (prayer.status) {
+          case "OPEN":
+            open++;
+            break;
+          case "ANSWERED":
+            answered++;
+            break;
+          case "ARCHIVED":
+            archived++;
+            break;
+        }
+      }
+
+      res.json({ open, answered, archived });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Prayers needing attention ──
+
+  app.get("/api/prayers/needs-attention", async (req, res) => {
+    try {
+      const allPrayers = await db.select().from(prayers)
+        .where(eq(prayers.status, "OPEN"));
+
+      const sorted = allPrayers.sort((a, b) => {
+        const aLastPrayed = a.lastPrayedAt?.getTime() ?? null;
+        const bLastPrayed = b.lastPrayedAt?.getTime() ?? null;
+
+        // Nulls first
+        if (aLastPrayed === null && bLastPrayed === null) {
+          return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
+        }
+        if (aLastPrayed === null) return -1;
+        if (bLastPrayed === null) return 1;
+
+        // Both have lastPrayedAt, sort by oldest first
+        if (aLastPrayed !== bLastPrayed) {
+          return aLastPrayed - bLastPrayed;
+        }
+
+        // If lastPrayedAt is the same, fall back to createdAt
+        return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
+      });
+
+      const result = sorted.slice(0, 5);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Recently answered prayers ──
+
+  app.get("/api/prayers/recently-answered", async (req, res) => {
+    try {
+      const result = await db.select().from(prayers)
+        .where(eq(prayers.status, "ANSWERED"))
+        .orderBy(desc(prayers.answeredAt))
+        .limit(5);
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 }

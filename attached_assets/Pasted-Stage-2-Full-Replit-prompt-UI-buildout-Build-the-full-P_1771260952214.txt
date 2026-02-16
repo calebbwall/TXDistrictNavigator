@@ -1,0 +1,214 @@
+Stage 2 — Full Replit prompt (UI buildout)
+
+Build the full Prayers UI/UX on top of the Stage 1 data + API foundation. Assume all Stage 1 endpoints exist and work. This stage is primarily FRONTEND + navigation + usability.
+
+Goals
+	1.	Replace the minimal test screens with a real Prayers Dashboard experience.
+	2.	Implement Focused Mode (one prayer per screen + swipe/next).
+	3.	Add filters, category chips, search, and grouping.
+	4.	Add bulk select actions (mark answered, archive, reopen, unarchive).
+	5.	Add export UI.
+	6.	Add pin to daily + priority controls.
+	7.	Enhance official cards with:
+	•	buttons: Active, Answered, Archive
+	•	counts on each
+	•	the open list stays on the profile, but provide navigation to answered/archive pages
+
+⸻
+
+Navigation / Screens
+
+A) Bottom Tab: “Prayers”
+
+Create a new bottom tab screen called Prayers.
+
+At top of Prayers tab: Prayer Dashboard
+
+Dashboard sections (in this order):
+	1.	Today’s 3 card
+	•	Show 3 items returned by GET /api/daily-prayer-picks
+	•	Each item: title + first line of body
+	•	Tap opens Focused Mode starting on that prayer
+	•	Add button “Mark Today Complete” → calls POST /api/prayer-streak/complete-today
+	•	Display current streak (from GET /api/prayer-streak) as subtle text: “Day X”
+	2.	Needs Attention
+	•	Show up to 5 open prayers sorted by oldest lastPrayedAt (or createdAt if lastPrayedAt null)
+	•	Add a small “Pray now” button that opens Focused Mode on that prayer
+	3.	Recently Answered
+	•	Show last 5 answered prayers (answeredAt desc)
+	4.	Category Overview
+	•	A simple list of categories with counts of OPEN prayers (and optionally Answered)
+	•	Tapping a category jumps to the prayer list filtered by that category
+
+Below dashboard: a button “View All Prayers” (takes you to the full list screen described below).
+
+⸻
+
+B) Full List Screen: “All Prayers”
+
+Implement a robust list screen with:
+
+Top controls:
+	•	Status segmented control: Active | Answered | Archive | All
+	•	Category chips row: All + each category + Uncategorized
+	•	Search bar (instant filtering) calling GET /api/prayers?q=...
+	•	Sort dropdown:
+	•	Newest
+	•	Oldest
+	•	Needs Attention (oldest lastPrayedAt / createdAt)
+	•	Recently Answered (for answered status)
+
+List behavior:
+	•	Display grouped by category when category = All (optional but recommended):
+	•	Header: category name + count
+	•	Items under each
+	•	If a specific category chip is selected: show flat list.
+
+List item layout:
+	•	Title (bold)
+	•	1–2 line body preview
+	•	Status pill (Active/Answered/Archive) only when status=All
+	•	Optional small icons:
+	•	📌 for pinnedDaily
+	•	↑ for priority=1
+	•	Tap → Prayer Detail
+
+Bulk mode:
+	•	Long press enters selection mode (or a “Select” button).
+	•	Show checkboxes.
+	•	Action bar shows allowed actions based on current status filter:
+	•	From Active: Mark Answered, Archive
+	•	From Answered: Reopen, Archive
+	•	From Archive: Unarchive, Reopen
+	•	Bulk actions call POST /api/prayers/bulk.
+
+Export:
+	•	Button “Export CSV”
+	•	Opens a small modal:
+	•	Status filter selection
+	•	Confirm → opens GET /api/prayers/export?... in webview/download flow (platform-appropriate)
+
+⸻
+
+C) Focused Mode (“Pray” view)
+
+Create a full-screen view optimized for prayer:
+	•	Shows a single prayer:
+	•	Title
+	•	Full body (large readable text)
+	•	Category + attached officials (tap official → official profile)
+	•	Controls:
+	•	“Next” / “Prev” (and swipe gestures if supported)
+	•	“Mark Prayed” button:
+	•	updates prayer’s lastPrayedAt = now via PATCH /api/prayers/:id
+	•	Entry points:
+	1.	From Today’s 3 (it loads that list as a deck)
+	2.	From any list (it loads that filtered list as a deck, starting on selected)
+	•	Keep UI minimal: no clutter.
+
+⸻
+
+D) Prayer Detail Screen (Manage view)
+
+This is the “admin” view of a single prayer:
+
+Fields:
+	•	Title (editable)
+	•	Body (editable)
+	•	Category dropdown
+	•	Attach/detach officials selector:
+	•	searchable list of officials
+	•	show selected officials chips
+Toggles:
+	•	Pin to Daily (pinnedDaily)
+	•	Priority (Normal / High)
+
+Actions:
+	•	If Active: “Mark Answered” → prompts optional Answer Note → calls /answer
+	•	If Answered: show Answer Note + Answered Date; buttons “Reopen”, “Archive”
+	•	If Archived: buttons “Unarchive”, “Reopen”
+	•	Delete (optional; if present, confirm + warn)
+
+Dates section (read-only):
+	•	Created
+	•	Answered (if any)
+	•	Archived (if any)
+	•	Last shown (if any)
+	•	Last prayed (if any)
+
+⸻
+
+E) Categories Management
+
+Inside Prayers tab, add a small “Manage Categories” screen:
+	•	List categories
+	•	Add / rename / delete
+	•	Deleting should either block if in use OR set prayers.categoryId=null (choose safer behavior and be consistent)
+
+⸻
+
+Official Card Enhancements
+
+On each official profile card:
+	1.	Show a small “Prayers” header with three buttons (pill buttons):
+
+	•	Active (count)
+	•	Answered (count)
+	•	Archive (count)
+
+Counts should be fetched efficiently:
+	•	Prefer one endpoint call or one GET /api/prayers?officialId=...&status=... per status if needed, but optimize with caching to avoid 3 network calls repeatedly.
+	•	If you can add a backend endpoint like GET /api/officials/:id/prayer-counts, do it in this stage (allowed) for performance:
+	•	returns { open, answered, archived }
+
+	2.	Under the buttons, show the Active prayers list inline (max 3, with “See all”).
+
+	•	Each row quick actions:
+	•	“Mark Answered”
+	•	Tap row opens Focused Mode starting on that prayer.
+
+Button routing:
+	•	Active → prayer list filtered officialId + status=OPEN
+	•	Answered → filtered officialId + status=ANSWERED
+	•	Archive → filtered officialId + status=ARCHIVED
+
+⸻
+
+UI Tone / Microcopy
+
+Use this vocabulary consistently:
+	•	“Active” not “Open”
+	•	“Mark Answered” not “Close”
+	•	“Archive” not “Hide”
+	•	“Focused Mode” label in settings can be “Pray”
+
+Keep it calm, minimal, and readable.
+
+⸻
+
+Performance & Caching
+	•	Cache categories locally.
+	•	Cache today’s picks for the day (but still trust backend dateKey).
+	•	Debounce search requests (300–500ms).
+	•	Avoid refetching counts on every re-render.
+
+⸻
+
+QA Checklist
+	•	Closed-out/Answered prayers never show in official “Active” list.
+	•	Answered prayers are visible in Prayers tab and official Answered view.
+	•	Archived prayers only visible in Archive views.
+	•	Daily picks stable through the day.
+	•	Streak increments once per day.
+	•	Bulk actions work for each status.
+	•	Export works on Android (open/download).
+
+Deliverables
+	•	Full Prayers tab UI + Dashboard
+	•	Full list + filters + search + bulk actions
+	•	Focused Mode
+	•	Prayer detail/manage screen
+	•	Categories management UI
+	•	Official card buttons + counts + routing
+
+⸻
