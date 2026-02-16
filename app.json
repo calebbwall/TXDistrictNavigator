@@ -26,7 +26,10 @@
       "versionCode": 1
     },
     "extra": {
-      "API_BASE_URL": "https://tx-district-navigator.replit.app"
+      "API_BASE_URL": "https://tx-district-navigator.replit.app",
+      "eas": {
+        "projectId": "f1fa6722-e341-4f9f-a57e-2327bffc26eb"
+      }
     },
     "web": {
       "output": "single",
