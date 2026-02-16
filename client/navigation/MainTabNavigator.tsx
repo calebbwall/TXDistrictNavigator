@@ -5,6 +5,7 @@ import { BlurView } from "expo-blur";
 import { Platform, StyleSheet } from "react-native";
 import MapStackNavigator from "@/navigation/MapStackNavigator";
 import BrowseStackNavigator from "@/navigation/BrowseStackNavigator";
+import PrayerStackNavigator from "@/navigation/PrayerStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -14,6 +15,7 @@ import type { NavigatorScreenParams } from "@react-navigation/native";
 export type MainTabParamList = {
   MapTab: NavigatorScreenParams<{ Map: { focusDistrict?: FocusDistrictParams } | undefined }> | undefined;
   BrowseTab: undefined;
+  PrayerTab: undefined;
   ProfileTab: undefined;
 };
 
@@ -65,6 +67,16 @@ export default function MainTabNavigator() {
           title: "Browse",
           tabBarIcon: ({ color, size }) => (
             <Feather name="list" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="PrayerTab"
+        component={PrayerStackNavigator}
+        options={{
+          title: "Prayers",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="heart" size={size} color={color} />
           ),
         }}
       />
