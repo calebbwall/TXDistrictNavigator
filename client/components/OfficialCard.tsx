@@ -13,6 +13,7 @@ import { PartyBadge } from "@/components/PartyBadge";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import { type Official, getOfficeTypeLabel, type SourceType } from "@/lib/officials";
+import { getProxiedPhotoUrl } from "@/lib/photoProxy";
 
 interface OfficialCardProps {
   official: Official;
@@ -74,8 +75,8 @@ export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCar
           <View style={[styles.vacantAvatar, { backgroundColor: theme.backgroundDefault }]}>
             <Feather name="user-x" size={24} color={theme.secondaryText} />
           </View>
-        ) : official.photoUrl ? (
-          <Image source={{ uri: official.photoUrl }} style={styles.avatar} />
+        ) : getProxiedPhotoUrl(official.photoUrl) ? (
+          <Image source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }} style={styles.avatar} />
         ) : (
           <Image
             source={require("../../assets/images/default-avatar.png")}

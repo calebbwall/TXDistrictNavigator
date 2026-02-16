@@ -24,6 +24,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing, Shadows } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
+import { getProxiedPhotoUrl } from "@/lib/photoProxy";
 import {
   getOverlayPreferences,
   saveOverlayPreferences,
@@ -2301,7 +2302,7 @@ export default function MapScreen() {
       return {
         officialId: official.id,
         name: official.fullName,
-        photoUrl: official.photoUrl || null,
+        photoUrl: getProxiedPhotoUrl(official.photoUrl) || null,
         source: sourceType,
         districtNumber: official.districtNumber || districtHit?.districtNumber || 0,
       };
@@ -3604,8 +3605,8 @@ export default function MapScreen() {
                   }}
                 >
                   <View style={styles.overflowItemPhoto}>
-                    {official.photoUrl ? (
-                      <Image source={{ uri: official.photoUrl }} style={styles.overflowItemImage} />
+                    {getProxiedPhotoUrl(official.photoUrl) ? (
+                      <Image source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }} style={styles.overflowItemImage} />
                     ) : (
                       <View style={[styles.overflowItemImage, styles.overflowItemPlaceholder]}>
                         <ThemedText style={{ fontWeight: '700', color: theme.secondaryText }}>

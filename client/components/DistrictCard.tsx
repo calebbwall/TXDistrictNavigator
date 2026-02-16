@@ -12,6 +12,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing, Shadows } from "@/constants/theme";
 import type { District, Official } from "@/lib/mockData";
 import { getDistrictTypeLabel, getOfficeTypeLabel } from "@/lib/mockData";
+import { getProxiedPhotoUrl } from "@/lib/photoProxy";
 
 interface DistrictCardProps {
   district: District;
@@ -96,9 +97,9 @@ export function DistrictCard({
       {official ? (
         <View style={styles.officialRow}>
           <View style={styles.avatarContainer}>
-            {official.photoUrl ? (
+            {getProxiedPhotoUrl(official.photoUrl) ? (
               <Image
-                source={{ uri: official.photoUrl }}
+                source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }}
                 style={styles.avatar}
               />
             ) : (

@@ -60,6 +60,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchOfficialById, updateOfficialPrivate } from "@/lib/officialsApi";
 import { apiOfficialToLegacy } from "@/lib/officialsAdapter";
 import { getApiUrl } from "@/lib/query-client";
+import { getProxiedPhotoUrl } from "@/lib/photoProxy";
 import {
   getPrivateNotes,
   savePrivateNotes,
@@ -618,7 +619,7 @@ export default function OfficialProfileScreen() {
         scrollIndicatorInsets={{ bottom: insets.bottom }}
       >
         <View style={styles.header}>
-          {official.photoUrl ? (
+          {getProxiedPhotoUrl(official.photoUrl) ? (
             <Pressable 
               onPress={() => setShowPhotoModal(true)}
               style={({ pressed }) => [
@@ -628,7 +629,7 @@ export default function OfficialProfileScreen() {
               accessibilityRole="button"
               accessibilityLabel="View photo"
             >
-              <Image source={{ uri: official.photoUrl }} style={styles.avatar} />
+              <Image source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }} style={styles.avatar} />
             </Pressable>
           ) : (
             <View style={styles.avatarContainer}>
@@ -1492,7 +1493,7 @@ export default function OfficialProfileScreen() {
         )}
       </KeyboardAwareScrollViewCompat>
 
-      {official.photoUrl ? (
+      {getProxiedPhotoUrl(official.photoUrl) ? (
         <Modal
           visible={showPhotoModal}
           transparent
@@ -1505,7 +1506,7 @@ export default function OfficialProfileScreen() {
           >
             <View style={styles.photoModalContent}>
               <Image
-                source={{ uri: official.photoUrl }}
+                source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }}
                 style={styles.photoModalImage}
                 resizeMode="contain"
               />
