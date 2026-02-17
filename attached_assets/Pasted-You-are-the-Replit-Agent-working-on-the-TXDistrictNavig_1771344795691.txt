@@ -1,0 +1,152 @@
+You are the Replit Agent working on the TXDistrictNavigator app. Several regressions exist. Fix them with minimal, targeted changes and verify on iOS + Android.
+
+====================================================
+PROBLEMS TO FIX (ALL REQUIRED)
+====================================================
+
+1) TX HOUSE + TX SENATE PHOTOS NOT RENDERING (NONE SHOW)
+- Currently, no Texas House or Texas Senate profile photos render anywhere they should.
+- Diagnose the root cause and implement a durable fix.
+
+2) “ADD PRAYER” BUTTON MISSING FROM PRAYERS SECTION
+- The Prayers tab/section no longer shows an Add Prayer CTA/button.
+- Restore it and ensure it is visible, tappable, and styled correctly (not smooshed).
+
+3) OFFICIAL CARDS MISSING “PRAYERS” SECTION
+- On Official/Legislator profile cards (where Public Notes and Private Notes exist), the “Prayers” section (Open / Answered / Archived) is missing.
+- Implement this section so prayers are visible by official.
+
+====================================================
+PHASE A — QUICK TRIAGE & LOGGING (DO THIS FIRST)
+====================================================
+
+A1) Add temporary console logging (remove after fix) to confirm:
+- What URL (or local path) is being used for each official’s photo.
+- Whether the Image component is receiving a non-empty uri.
+- Whether requests are failing (404/403/blocked/mixed content).
+- Whether the Add Prayer button component is mounted but hidden, or not mounted at all.
+- Whether official card component receives prayer counts / list for that official.
+
+A2) Identify the exact files responsible for:
+- Official/legislator profile card rendering
+- Photo rendering component (Image wrapper, Avatar, etc.)
+- Prayers tab screen
+- Prayer create flow (screen/modal)
+- Prayer data store layer (SQLite/AsyncStorage/API)
+
+====================================================
+PHASE B — FIX #1: PHOTOS NOT RENDERING
+====================================================
+
+B1) Confirm the data source for Texas House/Senate photo URLs
+- Find where photo URLs are populated (Texas Tribune directory scrape, seed file, API).
+- Confirm fields used: photoUrl, imageUrl, headshotUrl, etc.
+- Ensure House + Senate records actually have a URL saved (not null/empty).
+
+B2) Confirm the Image rendering path
+Common breakpoints to check and fix:
+- React Native <Image> `source` is malformed (needs `{ uri: ... }`)
+- Passing full object instead of string, or vice versa
+- Remote image blocked due to http (needs https) on iOS/Android
+- Missing `https://` prefix or double-prefix bug
+- Using an expo-image / fast-image component incorrectly
+- Caching bug: try adding a cache-busting param when loading
+- Size/layout: image exists but height/width is 0 (not visible)
+- `resizeMode` + container constraints causing “invisible” image
+- If using `expo-image`: ensure correct `source={{ uri }}` and placeholder behavior
+
+B3) Implement a robust “normalizePhotoUri” helper
+- Create a function that:
+  - Trims string
+  - Ensures https
+  - Rejects empty/invalid values
+  - Optionally adds `?v=<updatedAt>` to bust stale caches
+- Use this helper anywhere photos are rendered.
+
+B4) Add a safe fallback
+- If uri invalid or fails to load, show a default silhouette avatar.
+- Ensure fallback does NOT crash.
+
+B5) Verify
+- Confirm TX House + TX Senate photos render on:
+  - Official list/cards
+  - Official detail/profile card
+  - Any map overlays that show headshots (if applicable)
+
+====================================================
+PHASE C — FIX #2: “ADD PRAYER” BUTTON MISSING
+====================================================
+
+C1) Restore the Add Prayer CTA to the Prayers tab
+- The Prayers screen must always show an Add Prayer button (top-right or bottom primary CTA).
+- It must open the create prayer modal/screen.
+
+C2) Ensure correct layout (not smooshed)
+- Minimum height 48px
+- Padding 12–16px vertical
+- Proper margins (>=16px)
+- Make sure it is not inside an over-constrained flex row.
+
+C3) Verify
+- Button is visible on small screens
+- Button is tappable
+- Button opens prayer creation
+
+====================================================
+PHASE D — FIX #3: OFFICIAL CARD “PRAYERS” SECTION
+====================================================
+
+D1) Implement “Prayers” section on official/legislator detail cards
+- On the official profile card page (the same place as Public Notes and Private Notes):
+  Add a section titled “Prayers”.
+
+D2) Display by status
+- Provide tabs/segmented buttons for:
+  - Open
+  - Answered
+  - Archived
+- Default: Open
+- Show counts for each status.
+
+D3) Link prayers to officials (required)
+- Ensure prayers are connected to officials, so filtering works.
+- If this relationship exists already, use it.
+- If not, implement minimal viable approach:
+  - Add `officialId` to prayer OR implement join table `prayer_official` (preferred if already planned).
+
+D4) Actions
+- Open list items open prayer detail/edit.
+- Allow status transitions:
+  - Mark Answered (open -> answered)
+  - Archive (answered/open -> archived)
+- Ensure that after a status change, lists update immediately.
+
+D5) Button color semantics
+- “Mark Answered” must NOT be green (green implies already answered).
+- Use neutral styling; use green only for passive “Answered” badges.
+
+====================================================
+PHASE E — DATA + MIGRATIONS (ONLY IF NEEDED)
+====================================================
+
+- If storage is SQLite and schema changes are needed:
+  - Add safe migrations without wiping data.
+  - Confirm existing prayers/categories are preserved.
+
+====================================================
+REQUIRED OUTPUT FORMAT
+====================================================
+
+1) Root cause for missing photos + exact fix
+2) Root cause for missing Add Prayer button + exact fix
+3) Root cause for missing Prayers section on official cards + exact fix
+4) Files changed (full paths)
+5) Any migrations performed (and proof no data loss)
+6) Quick manual verification steps performed and results
+
+IMPORTANT CONSTRAINTS
+- Keep changes minimal and targeted.
+- Do not refactor unrelated features.
+- Do not remove existing data or reset user storage.
+
+If Replit comes back saying it “can’t find photo URLs,” the most likely culprit is the image URL field name changed (e.g., photoUrl vs image_url) or the app started storing http links and iOS is refusing them. The prompt above forces it to trace that exact chain and fix it rather than guessing.
