@@ -1,11 +1,11 @@
 {
-  "id": "a002ce3b-1484-4768-9853-684cc390d355",
-  "createdAt": "2026-02-17T03:58:44.339Z",
+  "id": "b56afcca-2570-41a3-9845-53575369c61a",
+  "createdAt": "2026-02-17T04:04:57.603Z",
   "runtimeVersion": "exposdk:54.0.0",
   "launchAsset": {
-    "key": "bundle-1771300724339-7215",
+    "key": "bundle-1771301097603-8134",
     "contentType": "application/javascript",
-    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev:5000/1771300724339-7215/_expo/static/js/ios/bundle.js"
+    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/1771301097603-8134/_expo/static/js/ios/bundle.js"
   },
   "assets": [],
   "metadata": {},
@@ -97,10 +97,10 @@
         "backgroundColor": "#ffffff"
       },
       "iconUrl": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/assets/./assets/images/icon.png",
-      "hostUri": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev:5000/ios"
+      "hostUri": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/ios"
     },
     "expoGo": {
-      "debuggerHost": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev:5000/ios",
+      "debuggerHost": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/ios",
       "developer": {
         "tool": "expo-cli",
         "projectRoot": "/home/runner/workspace"
