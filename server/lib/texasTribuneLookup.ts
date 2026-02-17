@@ -7,8 +7,20 @@ interface HometownResult {
   error?: string;
 }
 
+function transliterate(str: string): string {
+  const map: Record<string, string> = {
+    'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a', 'ã': 'a',
+    'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+    'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
+    'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o', 'õ': 'o',
+    'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+    'ñ': 'n', 'ç': 'c', 'ý': 'y', 'ÿ': 'y',
+  };
+  return str.replace(/[^\x00-\x7F]/g, ch => map[ch] || '');
+}
+
 function nameToSlug(fullName: string): string {
-  return fullName
+  return transliterate(fullName)
     .toLowerCase()
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "")
@@ -17,30 +29,33 @@ function nameToSlug(fullName: string): string {
 }
 
 function generateSlugVariants(fullName: string): string[] {
-  const parts = fullName.trim().split(/\s+/);
+  const cleanName = fullName.replace(/\./g, '').trim();
+  const parts = cleanName.split(/\s+/);
   const slugs: string[] = [];
   
   if (parts.length >= 2) {
-    const firstName = parts[0].toLowerCase();
-    const lastName = parts[parts.length - 1].toLowerCase();
+    const firstName = parts[0];
+    const lastName = parts[parts.length - 1];
     const middleParts = parts.slice(1, -1);
     
-    slugs.push(`${firstName}-${lastName}`);
+    slugs.push(nameToSlug(`${firstName} ${lastName}`));
     
     if (middleParts.length > 0) {
-      slugs.push(parts.map(p => p.toLowerCase()).join("-"));
+      slugs.push(nameToSlug(parts.join(' ')));
       
       for (const middle of middleParts) {
-        slugs.push(`${firstName}-${middle.toLowerCase()}-${lastName}`);
+        slugs.push(nameToSlug(`${firstName} ${middle} ${lastName}`));
+      }
+      
+      if (middleParts.length === 1 && middleParts[0].length === 1) {
+        slugs.push(nameToSlug(`${firstName} ${middleParts[0]} ${lastName}`));
       }
     }
-    
-    slugs.push(nameToSlug(fullName));
   } else {
     slugs.push(nameToSlug(fullName));
   }
   
-  return [...new Set(slugs)];
+  return [...new Set(slugs.filter(s => s.length > 0))];
 }
 
 function parseHometownFromHtml(html: string): string | null {
