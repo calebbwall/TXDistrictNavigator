@@ -1260,6 +1260,7 @@ function mergeOfficial(pub: OfficialPublic, priv: OfficialPrivate | null): Merge
       notes: priv.notes,
       tags: priv.tags,
       updatedAt: priv.updatedAt,
+      addressSource: priv.addressSource,
     };
   }
   return merged;
@@ -1439,6 +1440,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("[API] Error fetching officials:", err);
       res.status(500).json({ error: "Failed to fetch officials" });
+    }
+  });
+
+  app.post("/api/officials/batch-backfill", async (req, res) => {
+    try {
+      const { officialIds } = req.body;
+      
+      if (!officialIds || !Array.isArray(officialIds)) {
+        return res.status(400).json({ error: "officialIds array required" });
+      }
+      
+      const results: Record<string, { hometown: string | null; addressSource: string | null }> = {};
+      
+      const privateRecords = await db.select({
+        officialPublicId: officialPrivate.officialPublicId,
+        personalAddress: officialPrivate.personalAddress,
+        addressSource: officialPrivate.addressSource,
+      }).from(officialPrivate);
+      
+      const privateMap = new Map(privateRecords.map(r => [r.officialPublicId, r]));
+      
+      for (const id of officialIds) {
+        const priv = privateMap.get(id);
+        results[id] = {
+          hometown: priv?.personalAddress || null,
+          addressSource: priv?.addressSource || null,
+        };
+      }
+      
+      res.json({ results });
+    } catch (err) {
+      console.error("[API] Batch backfill error:", err);
+      res.status(500).json({ error: "Batch backfill failed" });
+    }
+  });
+
+  app.get("/api/officials/backfill-audit", async (req, res) => {
+    try {
+      const allPublic = await db.select({
+        id: officialPublic.id,
+        fullName: officialPublic.fullName,
+        source: officialPublic.source,
+        district: officialPublic.district,
+      }).from(officialPublic).where(eq(officialPublic.active, true));
+      
+      const allPrivate = await db.select().from(officialPrivate);
+      const privMap = new Map(allPrivate.map(p => [p.officialPublicId, p]));
+      
+      const { isEffectivelyEmpty } = await import("./lib/backfillUtils");
+      
+      const audit = allPublic.map(pub => {
+        const priv = privMap.get(pub.id);
+        const address = priv?.personalAddress;
+        const addrSource = priv?.addressSource || null;
+        return {
+          id: pub.id,
+          name: pub.fullName,
+          source: pub.source,
+          district: pub.district,
+          hasAddress: !isEffectivelyEmpty(address),
+          address: address || null,
+          addressSource: addrSource,
+        };
+      });
+      
+      const summary = {
+        total: audit.length,
+        withAddress: audit.filter(a => a.hasAddress).length,
+        missingAddress: audit.filter(a => !a.hasAddress).length,
+        bySource: {} as Record<string, { total: number; filled: number; missing: number }>,
+        byAddressSource: {} as Record<string, number>,
+      };
+      
+      for (const a of audit) {
+        if (!summary.bySource[a.source]) {
+          summary.bySource[a.source] = { total: 0, filled: 0, missing: 0 };
+        }
+        summary.bySource[a.source].total++;
+        if (a.hasAddress) summary.bySource[a.source].filled++;
+        else summary.bySource[a.source].missing++;
+        
+        const src = a.addressSource || "unknown";
+        summary.byAddressSource[src] = (summary.byAddressSource[src] || 0) + 1;
+      }
+      
+      res.json({ summary, officials: audit });
+    } catch (err) {
+      console.error("[API] Backfill audit error:", err);
+      res.status(500).json({ error: "Audit failed" });
     }
   });
 
@@ -1655,11 +1745,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await db.update(officialPrivate)
           .set({
             ...updateData,
+            addressSource: "user",
             updatedAt: new Date(),
           })
           .where(eq(officialPrivate.id, existing.id));
       } else {
         let finalUpdateData = { ...updateData };
+        let autoFilled = false;
         
         const addressIsEmpty = !updateData.personalAddress || 
           updateData.personalAddress.trim().length === 0;
@@ -1672,6 +1764,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (result.success && result.hometown) {
               console.log(`[API] Auto-fill: Setting personalAddress to "${result.hometown}" for ${pub.fullName}`);
               finalUpdateData.personalAddress = result.hometown;
+              autoFilled = true;
             } else {
               console.log(`[API] Auto-fill: No hometown found for ${pub.fullName}`);
             }
@@ -1683,6 +1776,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await db.insert(officialPrivate).values({
           officialPublicId: id,
           ...finalUpdateData,
+          addressSource: autoFilled ? "tribune" : "user",
           updatedAt: new Date(),
         });
       }

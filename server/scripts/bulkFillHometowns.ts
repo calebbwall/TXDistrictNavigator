@@ -70,7 +70,8 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
         existingPrivate = records[0] || null;
       }
       
-      if (existingPrivate?.personalAddress && existingPrivate.personalAddress.trim().length > 0) {
+      const { isEffectivelyEmpty } = await import("../lib/backfillUtils");
+      if (!isEffectivelyEmpty(existingPrivate?.personalAddress)) {
         console.log(`[BulkFill] Skipping ${official.fullName} - already has personalAddress`);
         result.skipped++;
         result.details.push({
@@ -101,6 +102,7 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
           .update(officialPrivate)
           .set({
             personalAddress: lookup.hometown,
+            addressSource: "tribune",
             updatedAt: new Date(),
           })
           .where(eq(officialPrivate.id, existingPrivate.id));
@@ -110,6 +112,7 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
           personId: official.personId,
           officialPublicId: official.id,
           personalAddress: lookup.hometown,
+          addressSource: "tribune",
         });
         console.log(`[BulkFill] Created new record for ${official.fullName} with hometown: ${lookup.hometown}`);
       }

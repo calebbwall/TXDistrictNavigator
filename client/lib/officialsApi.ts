@@ -35,6 +35,7 @@ export interface OfficialPrivate {
   notes?: string | null;
   tags?: string[] | null;
   updatedAt?: string;
+  addressSource?: string | null;
 }
 
 export interface MergedOfficial extends OfficialPublic {

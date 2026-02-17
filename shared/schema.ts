@@ -79,6 +79,7 @@ export const officialPrivate = pgTable("official_private", {
     .references(() => officialPublic.id), // Legacy: kept for backwards compatibility
   personalPhone: varchar("personal_phone", { length: 50 }),
   personalAddress: text("personal_address"),
+  addressSource: varchar("address_source", { length: 20 }),
   spouseName: varchar("spouse_name", { length: 255 }),
   childrenNames: json("children_names").$type<string[]>(),
   birthday: varchar("birthday", { length: 20 }),
