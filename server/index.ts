@@ -4,54 +4,9 @@ import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
-import { exec } from "child_process";
 
 const app = express();
 const log = console.log;
-
-const expoGoPort = 8081;
-let expoGoListening = false;
-
-function killMetroAndClaim(attempt = 0) {
-  if (expoGoListening || attempt > 20) {
-    if (!expoGoListening && attempt > 20) {
-      log(`[ExpoGo] Gave up claiming port ${expoGoPort}`);
-    }
-    return;
-  }
-  exec(`ps aux | grep 'expo start' | grep -v grep | awk '{print $2}'`, (_err, stdout) => {
-    const pids = stdout.trim().split('\n').filter(Boolean);
-    if (pids.length > 0) {
-      log(`[ExpoGo] Killing Metro PIDs: ${pids.join(', ')}`);
-      pids.forEach(pid => {
-        try { process.kill(parseInt(pid), 'SIGKILL'); } catch {}
-      });
-    }
-    exec(`ss -tlnp 2>/dev/null | grep ':${expoGoPort}' | grep -oP 'pid=\\K[0-9]+'`, (_e, out) => {
-      const portPids = out?.trim().split('\n').filter(Boolean) || [];
-      portPids.forEach(pid => {
-        const p = parseInt(pid);
-        if (p !== process.pid) {
-          try { process.kill(p, 'SIGKILL'); log(`[ExpoGo] Killed PID ${p} on port ${expoGoPort}`); } catch {}
-        }
-      });
-      setTimeout(() => {
-        const s = http.createServer(app);
-        s.listen({ port: expoGoPort, host: "0.0.0.0" }, () => {
-          expoGoListening = true;
-          log(`[ExpoGo] Manifest server listening on port ${expoGoPort}`);
-        });
-        s.on("error", (err: NodeJS.ErrnoException) => {
-          if (err.code === "EADDRINUSE") {
-            setTimeout(() => killMetroAndClaim(attempt + 1), 2000);
-          }
-        });
-      }, 500);
-    });
-  });
-}
-
-setTimeout(() => killMetroAndClaim(), 5000);
 
 declare module "http" {
   interface IncomingMessage {
