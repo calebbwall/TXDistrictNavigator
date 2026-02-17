@@ -67,4 +67,3 @@ ensurePreviewReachable = "/status"
 [userenv]
 
 [userenv.development]
-RCT_METRO_PORT = "19006"

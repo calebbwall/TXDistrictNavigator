@@ -1,0 +1,49 @@
+You are working in my Replit project that is an Expo / React Native app. Replit is stuck in a restart loop showing “Restarted Start App” repeatedly and Expo Go hangs on “Opening project… taking much longer than it should.”
+
+Goal: Stop the restart loop and make Expo reliably open in Expo Go.
+
+Do ALL of the following, in order, and do not skip steps:
+
+1) Diagnose why the process is restarting
+- Open the Replit Console/Logs and identify the exact error right BEFORE each restart.
+- Summarize the root cause(s) in plain English.
+- If multiple errors exist, fix them in priority order (crash > config > warnings).
+
+2) Fix the Replit run configuration so it does NOT crash-loop
+- Inspect `.replit`, `replit.nix`, `package.json` scripts, and any “Run” configuration.
+- Ensure the “Run” command is stable and does not exit immediately.
+- For Expo projects, configure it to start Metro bundler reliably:
+  - Prefer: `npx expo start --tunnel --clear`
+  - If tunnel is not available, fall back to `npx expo start --lan --clear`
+- Ensure the command runs as a foreground process and does not daemonize.
+- Add a small startup script if needed so the process doesn’t exit and Replit doesn’t keep restarting.
+
+3) Ensure dependencies and Node version are compatible
+- Check Node version. If the project requires a specific version, add it via `.nvmrc` (and/or replit config) and align dependencies.
+- Run a clean install:
+  - remove `node_modules` and lockfile ONLY if required by mismatched deps
+  - reinstall dependencies
+- Fix any Expo/React Native dependency version conflicts (expo doctor if available).
+- Do not introduce unnecessary upgrades; keep changes minimal.
+
+4) Fix common Expo-on-Replit connectivity issues
+- Ensure Metro binds correctly for remote access (tunnel/lan).
+- Confirm the output prints a scannable QR code / URL for Expo Go.
+- Ensure there is no requirement for binding to `process.env.PORT` that would cause Replit health checks to restart the process.
+- If the project includes a backend server, do NOT start it in the same process unless it’s required; if required, provide a stable concurrent setup (e.g., `concurrently`) that keeps both alive.
+
+5) Fix environment variable issues that could be crashing the app on launch
+- Search for usage of `EXPO_PUBLIC_*` env vars (especially `EXPO_PUBLIC_API_BASE_URL`) and ensure they exist in Replit Secrets / env.
+- If missing, implement safe defaults in code so the app does not crash at startup.
+- Add clear console warnings when env vars are missing, but do not crash.
+
+6) Verify the fix
+- Start the app from Replit.
+- Confirm there is no restart loop.
+- Confirm Expo Go can open the project successfully using the printed URL.
+- Provide me the exact final “Run” command, and list every file you changed and why.
+
+Constraints:
+- Make the smallest set of changes that permanently stop the restart loop.
+- Do not handwave; the answer must be implemented in the code/config.
+- If a change is uncertain, add logging rather than guessing.

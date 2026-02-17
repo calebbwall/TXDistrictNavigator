@@ -4,8 +4,6 @@ import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
-import { spawn } from "child_process";
-
 const app = express();
 const log = console.log;
 
@@ -283,24 +281,6 @@ function setupErrorHandler(app: express.Application) {
     },
     () => {
       log(`express server serving on port ${port}`);
-
-      if (process.env.NODE_ENV === "development") {
-        const devDomain = process.env.REPLIT_DEV_DOMAIN || "";
-        const metroEnv = {
-          ...process.env,
-          EXPO_PACKAGER_PROXY_URL: `https://${devDomain}`,
-          REACT_NATIVE_PACKAGER_HOSTNAME: devDomain,
-          EXPO_PUBLIC_DOMAIN: `${devDomain}:5000`,
-        };
-        const metro = spawn("npx", ["expo", "start", "--localhost", "--port", "8081"], {
-          env: { ...metroEnv, CI: "1" },
-          stdio: "inherit",
-          shell: true,
-        });
-        metro.on("error", (err) => log(`[Metro] Failed to start: ${err.message}`));
-        metro.on("exit", (code) => log(`[Metro] Exited with code ${code}`));
-        log("[Metro] Starting Expo dev server on port 8081...");
-      }
     },
   );
 
