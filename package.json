@@ -30,6 +30,7 @@
     "@turf/turf": "^7.3.2",
     "@types/cheerio": "^0.22.35",
     "cheerio": "^1.1.2",
+    "concurrently": "^9.2.1",
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.0",
     "expo": "~54.0.31",
