@@ -542,6 +542,17 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
           if (existing[0].photoUrl && !updateData.photoUrl) {
             updateData.photoUrl = existing[0].photoUrl;
           }
+          if (!updateData.photoUrl && (source === "TX_HOUSE" || source === "TX_SENATE")) {
+            try {
+              const { lookupHeadshotFromTexasTribune } = await import("../lib/texasTribuneLookup");
+              const headshot = await lookupHeadshotFromTexasTribune(record.fullName);
+              if (headshot.success && headshot.photoUrl) {
+                updateData.photoUrl = headshot.photoUrl;
+              }
+            } catch (err) {
+              console.log(`[RefreshOfficials] Headshot lookup failed for ${record.fullName}`);
+            }
+          }
           await db.update(officialPublic)
             .set(updateData)
             .where(eq(officialPublic.id, existing[0].id));

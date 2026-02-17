@@ -936,6 +936,17 @@ async function refreshTLO(chamber) {
           if (existing[0].photoUrl && !updateData.photoUrl) {
             updateData.photoUrl = existing[0].photoUrl;
           }
+          if (!updateData.photoUrl && (source === "TX_HOUSE" || source === "TX_SENATE")) {
+            try {
+              const { lookupHeadshotFromTexasTribune: lookupHeadshotFromTexasTribune2 } = await Promise.resolve().then(() => (init_texasTribuneLookup(), texasTribuneLookup_exports));
+              const headshot = await lookupHeadshotFromTexasTribune2(record.fullName);
+              if (headshot.success && headshot.photoUrl) {
+                updateData.photoUrl = headshot.photoUrl;
+              }
+            } catch (err) {
+              console.log(`[RefreshOfficials] Headshot lookup failed for ${record.fullName}`);
+            }
+          }
           await db.update(officialPublic).set(updateData).where(eq2(officialPublic.id, existing[0].id));
         } else {
           if (!insertData.photoUrl) {
