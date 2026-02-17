@@ -389,6 +389,16 @@ export default function PrayerDashboardScreen() {
           View All Prayers
         </Button>
       </ScrollView>
+
+      <Pressable
+        style={[
+          styles.fab,
+          { backgroundColor: theme.primary, bottom: tabBarHeight + Spacing.lg },
+        ]}
+        onPress={() => navigation.navigate("AddPrayer")}
+      >
+        <Feather name="plus" size={24} color={theme.buttonText} />
+      </Pressable>
     </View>
   );
 }
@@ -479,5 +489,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.xs,
+  },
+  fab: {
+    position: "absolute",
+    right: Spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 4,
   },
 });

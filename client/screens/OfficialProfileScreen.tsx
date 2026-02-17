@@ -1212,22 +1212,22 @@ export default function OfficialProfileScreen() {
               </View>
             </View>
 
-            {prayerCounts && (prayerCounts.open > 0 || prayerCounts.answered > 0 || prayerCounts.archived > 0) ? (
-              <View style={[styles.section, { marginTop: Spacing.xl }]}>
-                <View style={styles.editHeader}>
-                  <ThemedText type="h3">Prayers</ThemedText>
-                  <Pressable
-                    onPress={() => {
-                      navigation.navigate("PrayerTab" as any, {
-                        screen: "PrayerList",
-                        params: { officialId: officialId, officialName: official?.fullName },
-                      });
-                    }}
-                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                  >
-                    <ThemedText type="caption" style={{ color: theme.primary }}>View All</ThemedText>
-                  </Pressable>
-                </View>
+            <View style={[styles.section, { marginTop: Spacing.xl }]}>
+              <View style={styles.editHeader}>
+                <ThemedText type="h3">Prayers</ThemedText>
+                <Pressable
+                  onPress={() => {
+                    navigation.navigate("PrayerTab" as any, {
+                      screen: "PrayerList",
+                      params: { officialId: officialId, officialName: official?.fullName },
+                    });
+                  }}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                >
+                  <ThemedText type="caption" style={{ color: theme.primary }}>View All</ThemedText>
+                </Pressable>
+              </View>
+              {prayerCounts && (prayerCounts.open > 0 || prayerCounts.answered > 0 || prayerCounts.archived > 0) ? (
                 <View style={{ flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.sm }}>
                   {prayerCounts.open > 0 ? (
                     <View style={[styles.prayerCountPill, { backgroundColor: theme.primary + "20" }]}>
@@ -1248,8 +1248,12 @@ export default function OfficialProfileScreen() {
                     </View>
                   ) : null}
                 </View>
-              </View>
-            ) : null}
+              ) : (
+                <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: Spacing.sm }}>
+                  No prayers yet. Tap the prayer icon above to add one.
+                </ThemedText>
+              )}
+            </View>
 
             <View 
               style={[styles.section, { marginTop: Spacing.xl }]}
