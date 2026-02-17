@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
+import { spawn } from "child_process";
 
 const app = express();
 const log = console.log;
@@ -104,7 +105,7 @@ function getAppName(): string {
   }
 }
 
-function serveExpoManifest(platform: string, res: Response) {
+function serveExpoManifest(platform: string, req: Request, res: Response) {
   const manifestPath = path.resolve(
     process.cwd(),
     "static-build",
@@ -122,8 +123,53 @@ function serveExpoManifest(platform: string, res: Response) {
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
 
-  const manifest = fs.readFileSync(manifestPath, "utf-8");
-  res.send(manifest);
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+
+  const forwardedProto = req.header("x-forwarded-proto");
+  const protocol = forwardedProto || req.protocol || "https";
+  const forwardedHost = req.header("x-forwarded-host");
+  const host = forwardedHost || req.get("host") || "";
+  const requestBaseUrl = `${protocol}://${host}`;
+  const hostWithoutProtocol = host;
+
+  if (manifest.launchAsset?.url) {
+    const originalUrl = new URL(manifest.launchAsset.url);
+    manifest.launchAsset.url = `${requestBaseUrl}${originalUrl.pathname}`;
+  }
+
+  if (manifest.assets) {
+    manifest.assets.forEach((asset: { url?: string }) => {
+      if (asset.url) {
+        const originalUrl = new URL(asset.url);
+        asset.url = `${requestBaseUrl}${originalUrl.pathname}`;
+      }
+    });
+  }
+
+  if (manifest.extra?.expoClient) {
+    manifest.extra.expoClient.hostUri = `${hostWithoutProtocol}/${platform}`;
+  }
+  if (manifest.extra?.expoGo) {
+    manifest.extra.expoGo.debuggerHost = `${hostWithoutProtocol}/${platform}`;
+  }
+
+  if (manifest.extra?.expoClient?.iconUrl) {
+    const originalUrl = new URL(manifest.extra.expoClient.iconUrl);
+    manifest.extra.expoClient.iconUrl = `${requestBaseUrl}${originalUrl.pathname}`;
+  }
+
+  if (manifest.extra?.expoClient?.android?.adaptiveIcon) {
+    const icon = manifest.extra.expoClient.android.adaptiveIcon;
+    for (const key of ["foregroundImageUrl", "monochromeImageUrl", "backgroundImageUrl"]) {
+      if (icon[key]) {
+        const originalUrl = new URL(icon[key]);
+        icon[key] = `${requestBaseUrl}${originalUrl.pathname}`;
+      }
+    }
+  }
+
+  log(`[Manifest] Serving ${platform} manifest with baseUrl: ${requestBaseUrl}`);
+  res.json(manifest);
 }
 
 function serveLandingPage({
@@ -179,7 +225,7 @@ function configureExpoAndLanding(app: express.Application) {
 
     const platform = req.header("expo-platform");
     if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, res);
+      return serveExpoManifest(platform, req, res);
     }
 
     if (req.path === "/") {
@@ -237,8 +283,25 @@ function setupErrorHandler(app: express.Application) {
     },
     () => {
       log(`express server serving on port ${port}`);
+
+      if (process.env.NODE_ENV === "development") {
+        const devDomain = process.env.REPLIT_DEV_DOMAIN || "";
+        const metroEnv = {
+          ...process.env,
+          EXPO_PACKAGER_PROXY_URL: `https://${devDomain}`,
+          REACT_NATIVE_PACKAGER_HOSTNAME: devDomain,
+          EXPO_PUBLIC_DOMAIN: `${devDomain}:5000`,
+        };
+        const metro = spawn("npx", ["expo", "start", "--localhost", "--port", "8081"], {
+          env: { ...metroEnv, CI: "1" },
+          stdio: "inherit",
+          shell: true,
+        });
+        metro.on("error", (err) => log(`[Metro] Failed to start: ${err.message}`));
+        metro.on("exit", (code) => log(`[Metro] Exited with code ${code}`));
+        log("[Metro] Starting Expo dev server on port 8081...");
+      }
     },
   );
-
 
 })();
