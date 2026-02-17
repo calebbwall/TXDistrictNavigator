@@ -51,7 +51,12 @@ export default function ManageCategoriesScreen() {
       queryClient.invalidateQueries({ queryKey: ["/api/prayer-categories"] });
     },
     onError: (err: Error) => {
-      Alert.alert("Error", err.message);
+      const msg = err.message;
+      if (msg.includes("already exists")) {
+        Alert.alert("Duplicate", "A category with this name already exists. Please choose a different name.");
+      } else {
+        Alert.alert("Error", "Could not create category. Please try again.");
+      }
     },
   });
 

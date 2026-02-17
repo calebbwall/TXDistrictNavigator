@@ -478,13 +478,16 @@ export default function PrayerDetailScreen() {
 
         {prayer.status === "OPEN" ? (
           <View>
-            <Button
+            <Pressable
+              style={[styles.actionBtn, { borderColor: theme.primary, backgroundColor: theme.primary + "10", marginTop: Spacing.sm }]}
               onPress={handleMarkAnswered}
               disabled={answerMutation.isPending}
-              style={{ marginTop: Spacing.sm }}
             >
-              Mark Answered
-            </Button>
+              <Feather name="check" size={16} color={theme.primary} style={{ marginRight: Spacing.xs }} />
+              <ThemedText type="body" style={{ color: theme.primary, fontWeight: "600" }}>
+                {answerMutation.isPending ? "Saving..." : "Mark Answered"}
+              </ThemedText>
+            </Pressable>
             <Pressable
               style={[styles.outlineBtn, { borderColor: theme.border, marginTop: Spacing.sm }]}
               onPress={() => archiveMutation.mutate()}
@@ -661,6 +664,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: Spacing.xs,
+  },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    minHeight: 48,
   },
   deleteRow: {
     flexDirection: "row",

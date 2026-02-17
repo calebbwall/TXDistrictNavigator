@@ -414,12 +414,12 @@ export default function PrayerListScreen() {
               {item.status === "OPEN" ? (
                 <>
                   <Pressable
-                    style={[styles.quickActionPill, { backgroundColor: theme.success + "18", borderColor: theme.success + "40" }]}
+                    style={[styles.quickActionPill, { backgroundColor: theme.primary + "18", borderColor: theme.primary + "40" }]}
                     onPress={(e) => { e.stopPropagation?.(); answerMutation.mutate(item.id); }}
                     hitSlop={4}
                   >
-                    <ThemedText type="caption" style={{ color: theme.success, fontWeight: "600" }}>
-                      Answered
+                    <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                      Mark Answered
                     </ThemedText>
                   </Pressable>
                   <Pressable

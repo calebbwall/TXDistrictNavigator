@@ -98,7 +98,12 @@ export function registerPrayerRoutes(app: Express) {
     try {
       const { name, sortOrder } = req.body;
       if (!name || typeof name !== "string" || !name.trim()) {
-        return res.status(400).json({ error: "name is required" });
+        return res.status(400).json({ error: "Category name is required" });
+      }
+      const existing = await db.select().from(prayerCategories)
+        .where(sql`LOWER(${prayerCategories.name}) = LOWER(${name.trim()})`);
+      if (existing.length > 0) {
+        return res.status(409).json({ error: "A category with this name already exists" });
       }
       const [cat] = await db.insert(prayerCategories).values({
         name: name.trim(),
@@ -107,7 +112,7 @@ export function registerPrayerRoutes(app: Express) {
       res.status(201).json(cat);
     } catch (err: any) {
       if (err.message?.includes("unique")) {
-        return res.status(409).json({ error: "Category name already exists" });
+        return res.status(409).json({ error: "A category with this name already exists" });
       }
       res.status(500).json({ error: err.message });
     }
@@ -160,6 +165,9 @@ export function registerPrayerRoutes(app: Express) {
         const search = `%${q.trim()}%`;
         conditions.push(or(ilike(prayers.title, search), ilike(prayers.body, search)));
       }
+      if (officialId && typeof officialId === "string") {
+        conditions.push(sql`${prayers.officialIds}::jsonb @> ${JSON.stringify([officialId])}::jsonb`);
+      }
 
       const orderBy = sort === "needsAttention"
         ? [asc(prayers.lastPrayedAt), desc(prayers.priority), desc(prayers.createdAt)]
@@ -173,14 +181,6 @@ export function registerPrayerRoutes(app: Express) {
       const offsetVal = parseInt(off as string) || 0;
       // @ts-ignore - limit/offset chaining
       const results: Prayer[] = await query.limit(limitVal).offset(offsetVal);
-
-      if (officialId && typeof officialId === "string") {
-        const filtered = results.filter((p) => {
-          const ids = p.officialIds as string[] | null;
-          return ids && ids.includes(officialId);
-        });
-        return res.json(filtered);
-      }
 
       res.json(results);
     } catch (err: any) {

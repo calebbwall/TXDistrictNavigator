@@ -1,0 +1,158 @@
+You are working on the TXDistrictNavigator app. The “Prayers” section needs functional fixes and UI corrections.
+
+ALL ITEMS BELOW MUST BE COMPLETED.
+
+========================================================
+FUNCTIONAL FIXES
+========================================================
+
+1) FIX CATEGORY CREATION
+- Users cannot create new categories.
+- Diagnose root cause (validation, async handler, state refresh, schema issue, silent error).
+- Fix it.
+- Prevent duplicate category names (case-insensitive).
+- Show proper error messages.
+- Immediately refresh category list after creation.
+
+2) ADD CATEGORY SELECTION TO NEW PRAYER FLOW
+- Add a Category dropdown/picker on New Prayer screen.
+- Default value: “None”.
+- Add inline “+ New Category” option that opens modal and auto-selects it after creation.
+- Persist categoryId (nullable).
+- Allow editing category on prayer detail.
+
+3) LINK PRAYERS TO OFFICIALS
+- A prayer must be linked to at least one official.
+- If created from official card → auto-link.
+- If created from Prayers tab → allow selecting one or more officials.
+- Implement many-to-many relationship if feasible; otherwise one-to-many.
+
+4) ADD “PRAYERS” SECTION TO OFFICIAL / LEGISLATOR CARDS
+
+On each official card:
+
+Add a section titled: “Prayers”
+
+Must include:
+- Segmented tabs or buttons:
+    Open
+    Answered
+    Archived
+- Show counts for each.
+- Default view: Open.
+- Archived hidden unless selected.
+
+Each prayer item must show:
+- Title
+- Created date
+- Category badge (if assigned)
+
+Actions:
+- Mark Answered
+- Archive
+- Re-open (optional)
+
+Behavior rules:
+- When marked Answered → immediately removed from Open and shown in Answered.
+- When Archived → only appears in Archived tab.
+- No prayer should appear in multiple status lists.
+
+========================================================
+UI FIXES
+========================================================
+
+5) FIX “ADD PRAYER” BUTTON (Currently Smooshed)
+
+Redesign the Add Prayer button.
+
+Requirements:
+- Minimum height: 48px
+- Proper vertical padding (12–16px)
+- Proper horizontal padding
+- Rounded corners consistent with app design
+- Centered text
+- No text wrapping or overflow
+- Minimum 16px margin above/below
+- Must render properly on iOS and Android
+- No flexbox collapse issues
+- No incorrect row-based layout constraining width
+
+Check for:
+- flexDirection: "row" constraining width
+- Missing flex: 1
+- Hardcoded width
+- Parent container layout issues
+
+Make it visually balanced and clearly a primary CTA.
+
+6) FIX “MARK ANSWERED” BUTTON COLOR CONFUSION
+
+Currently:
+- The “Mark Answered” button is green.
+- This visually suggests the prayer is already answered.
+- This is confusing from a UX perspective.
+
+Change behavior:
+
+- The “Mark Answered” button should NOT use green styling.
+- It should appear as a neutral action button (standard primary or secondary style).
+- It must visually indicate an available action, not a completed state.
+
+Green styling should ONLY be used for:
+- A status badge labeled “Answered”
+- Or passive state indicators (not action buttons).
+
+Button styling rules:
+- Neutral background (consistent with other action buttons)
+- Clear border or subtle emphasis
+- No success-state color until after action is completed
+- After marking answered, the prayer moves to Answered tab and shows a green “Answered” badge — NOT a green button.
+
+========================================================
+DATA MODEL
+========================================================
+
+Prayer:
+- id
+- title
+- description
+- status: "open" | "answered" | "archived"
+- categoryId (nullable)
+- createdAt
+- updatedAt
+
+Category:
+- id
+- name (unique per user/device)
+- createdAt
+- updatedAt
+
+PrayerOfficial (if many-to-many):
+- prayerId
+- officialId
+
+Add safe migration logic if required.
+Do NOT wipe existing data.
+
+========================================================
+REGRESSION CHECKLIST
+========================================================
+
+1) Create category → appears immediately
+2) Create prayer → category selectable
+3) Create from official → auto-linked
+4) Official card shows prayer correctly
+5) Mark Answered → moves lists immediately
+6) Archive → behaves correctly
+7) Add Prayer button renders correctly on small and large screens
+8) Mark Answered button is NOT green and does not visually imply completion
+
+========================================================
+OUTPUT REQUIRED
+========================================================
+
+1) Root cause of category bug
+2) Files modified
+3) Schema changes (if any)
+4) Code changes
+5) Confirmation all regression tests pass

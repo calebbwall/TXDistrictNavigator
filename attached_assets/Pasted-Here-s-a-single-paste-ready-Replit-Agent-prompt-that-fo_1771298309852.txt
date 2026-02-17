@@ -1,0 +1,90 @@
+Here’s a single, paste-ready Replit Agent prompt that forces the exact behavior you want: backfill hometown + address only when missing, never overwrite your dad’s edits, and make it deterministic for the next APK build.
+
+⸻
+
+Replit prompt (copy/paste)
+
+Build a safe “hometown/address backfill” system for TXDistrictNavigator so that on the next Android APK build, the app auto-populates missing hometowns (and addresses if we have them) from our database without overriding any existing user-edited values.
+
+Goal
+
+When the app loads officials (US House, TX Senate, TX House, etc.), if an official record in the app has:
+	•	hometown is null/empty/whitespace AND
+	•	address is null/empty/whitespace (or for address, treat it independently if we store it separately)
+
+…then we should fill missing fields from the authoritative database source (Texas Tribune / our backend) only for that official.
+
+If either field already has a value (because Dad edited it manually, or it was previously populated), do not overwrite it.
+
+Non-negotiable rules
+	1.	Never overwrite user edits. If the local value is non-empty, keep it.
+	2.	Backfill only missing fields. If hometown is missing but address exists, fill only hometown (and vice versa).
+	3.	Stable key matching. Match officials by a stable ID first (preferred), and only fall back to deterministic matching if needed.
+	4.	Do not change UI layout except adding optional “Last updated from DB” debug metadata view in dev builds only.
+
+Data model requirements (implement if missing)
+	•	Ensure every official has a stable unique identifier:
+	•	Prefer a backend official_id (string/uuid).
+	•	If the dataset doesn’t have one, compute one deterministically and store it:
+	•	official_id = sha1(normalized_chamber + ":" + normalized_district + ":" + normalized_full_name)
+	•	Store user-edited fields separately from imported fields OR store a source + userEdited flag per field:
+	•	Option A (preferred): hometown_user, hometown_db, address_user, address_db and a computed “display value” chooses user first.
+	•	Option B: hometown, address plus flags hometown_userEdited, address_userEdited.
+
+Implementation steps
+	1.	Audit current code paths where officials are loaded into the app:
+	•	Identify where officials are fetched from backend / cached locally (SQLite/AsyncStorage/Realm/etc.).
+	•	Identify where the official card reads hometown and address.
+	2.	Implement a backfill function that runs after officials are loaded locally:
+	•	Input: list of local officials
+	•	For each official:
+	•	Determine localHometown = trim(hometown) and localAddress = trim(address)
+	•	If localHometown is empty OR localAddress is empty:
+	•	Fetch DB record for that official via backend endpoint GET /officials/:official_id (or batch endpoint).
+	•	If DB has hometown and local hometown is empty → set local hometown to DB hometown.
+	•	If DB has address and local address is empty → set local address to DB address.
+	•	Never write anything if local values are non-empty.
+	3.	Batching/performance
+	•	Prefer a batch endpoint: POST /officials/backfill with { official_ids: [...] } returning { official_id, hometown, address }.
+	•	Update local storage in a single transaction/batch write.
+	4.	Local persistence
+	•	Persist the updated local officials so it survives restarts and is included in the APK build behavior.
+	5.	Edge cases
+	•	Treat "N/A", "Unknown", "TBD" as empty (configurable list).
+	•	Normalize whitespace and casing.
+	6.	Logging
+	•	Add logs showing:
+	•	how many officials were checked
+	•	how many had hometown backfilled
+	•	how many had address backfilled
+	•	how many were skipped due to existing values
+	•	Logs should be visible in dev builds (console) and optionally behind a hidden debug toggle in production.
+	7.	Tests (must include)
+	•	Unit tests for the backfill decision logic:
+	•	Existing hometown/address → no overwrite
+	•	Missing hometown only → fill hometown only
+	•	Missing address only → fill address only
+	•	Missing both → fill both
+	•	“Unknown/TBD” treated as empty → fill
+	•	Integration test (or simulated run) with sample officials list.
+
+Acceptance criteria
+	•	On a fresh install of the APK, officials with no hometown/address display the DB values after first load.
+	•	On an existing install where Dad edited hometown/address, those values remain unchanged after the backfill runs.
+	•	Officials that have one field missing get only that field filled.
+	•	The process is deterministic and repeatable across app restarts.
+
+Deliverables
+	•	Code changes implementing the backfill system.
+	•	Any backend endpoint additions required for efficient batch backfill.
+	•	A short “How to verify” checklist I can run before building the next APK.
+
+Do not stop at advice—make the changes in code and show me the updated files/paths and how to run the tests.
+
+⸻
+
+Tiny extra that usually fixes “it didn’t work” situations
+
+A common failure mode is: the app does backfill, but the UI is reading from a different field (or a stale cached slice). The prompt above forces Replit to trace the full read/write path, and to add logging so you can prove it ran.
+
+If you want, I can also give you a second prompt that’s purely a verification harness (“print a table of officials and show local vs DB vs display value”), which makes this kind of bug painfully obvious.
