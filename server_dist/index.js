@@ -295,7 +295,11 @@ var init_db = __esm({
       throw new Error("DATABASE_URL environment variable is not set");
     }
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL
+      connectionString: process.env.DATABASE_URL,
+      connectionTimeoutMillis: 3e4,
+      idleTimeoutMillis: 3e4,
+      keepAlive: true,
+      max: 10
     });
     db = drizzle(pool, { schema: schema_exports });
   }
@@ -2383,6 +2387,23 @@ import { eq as eq6 } from "drizzle-orm";
 async function delay(ms) {
   return new Promise((resolve3) => setTimeout(resolve3, ms));
 }
+async function dbQuery(fn, label) {
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (attempt < maxRetries && (msg.includes("timed out") || msg.includes("socket") || msg.includes("Authentication") || msg.includes("terminated") || msg.includes("TLS"))) {
+        console.log(`[BulkFill] DB retry ${attempt}/${maxRetries} (${label}): ${msg}`);
+        await delay(3e3 * attempt);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Unreachable");
+}
 async function bulkFillHometowns() {
   console.log("[BulkFill] Starting bulk hometown fill...");
   const result = {
@@ -2393,89 +2414,84 @@ async function bulkFillHometowns() {
     errors: 0,
     details: []
   };
-  const officials = await db.select({
+  const officials = await dbQuery(() => db.select({
     id: officialPublic.id,
     fullName: officialPublic.fullName,
     personId: officialPublic.personId,
     source: officialPublic.source,
     active: officialPublic.active
-  }).from(officialPublic).where(eq6(officialPublic.active, true));
+  }).from(officialPublic).where(eq6(officialPublic.active, true)), "fetch officials");
   result.total = officials.length;
   console.log(`[BulkFill] Found ${officials.length} active officials`);
   const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
+  const BATCH_SIZE = 10;
   for (let i = 0; i < officials.length; i++) {
     const official = officials[i];
-    const maxRetries = 3;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        let existingPrivate = null;
-        if (official.personId) {
-          const records = await db.select().from(officialPrivate).where(eq6(officialPrivate.personId, official.personId));
-          existingPrivate = records[0] || null;
-        }
-        if (!existingPrivate) {
-          const records = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, official.id));
-          existingPrivate = records[0] || null;
-        }
-        if (!isEffectivelyEmpty2(existingPrivate?.personalAddress)) {
-          result.skipped++;
-          result.details.push({
-            name: official.fullName,
-            status: "skipped",
-            reason: "Already has personalAddress"
-          });
-          break;
-        }
-        await delay(800);
-        const lookup = await lookupHometownFromTexasTribune(official.fullName);
-        if (!lookup.success || !lookup.hometown) {
-          result.notFound++;
-          result.details.push({
-            name: official.fullName,
-            status: "not_found",
-            reason: "Not found in Texas Tribune directory"
-          });
-          break;
-        }
-        if (existingPrivate) {
-          await db.update(officialPrivate).set({
-            personalAddress: lookup.hometown,
-            addressSource: "tribune",
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq6(officialPrivate.id, existingPrivate.id));
-          console.log(`[BulkFill] Updated ${official.fullName}: ${lookup.hometown}`);
-        } else {
-          await db.insert(officialPrivate).values({
-            personId: official.personId,
-            officialPublicId: official.id,
-            personalAddress: lookup.hometown,
-            addressSource: "tribune"
-          });
-          console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
-        }
-        result.filled++;
-        result.details.push({
-          name: official.fullName,
-          status: "filled",
-          hometown: lookup.hometown
-        });
-        break;
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : "Unknown error";
-        if (attempt < maxRetries && (msg.includes("timed out") || msg.includes("socket") || msg.includes("Authentication"))) {
-          console.log(`[BulkFill] Retry ${attempt}/${maxRetries} for ${official.fullName}: ${msg}`);
-          await delay(5e3 * attempt);
-          continue;
-        }
-        console.error(`[BulkFill] Failed ${official.fullName}: ${msg}`);
-        result.errors++;
-        result.details.push({
-          name: official.fullName,
-          status: "error",
-          reason: msg
-        });
-        break;
+    try {
+      let existingPrivate = null;
+      if (official.personId) {
+        const records = await dbQuery(() => db.select().from(officialPrivate).where(eq6(officialPrivate.personId, official.personId)), `lookup ${official.fullName}`);
+        existingPrivate = records[0] || null;
       }
+      if (!existingPrivate) {
+        const records = await dbQuery(() => db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, official.id)), `lookup2 ${official.fullName}`);
+        existingPrivate = records[0] || null;
+      }
+      if (!isEffectivelyEmpty2(existingPrivate?.personalAddress)) {
+        result.skipped++;
+        result.details.push({
+          name: official.fullName,
+          status: "skipped",
+          reason: "Already has personalAddress"
+        });
+        continue;
+      }
+      await delay(1e3);
+      const lookup = await lookupHometownFromTexasTribune(official.fullName);
+      if (!lookup.success || !lookup.hometown) {
+        result.notFound++;
+        result.details.push({
+          name: official.fullName,
+          status: "not_found",
+          reason: "Not found in Texas Tribune directory"
+        });
+        continue;
+      }
+      if (existingPrivate) {
+        await dbQuery(() => db.update(officialPrivate).set({
+          personalAddress: lookup.hometown,
+          addressSource: "tribune",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq6(officialPrivate.id, existingPrivate.id)), `update ${official.fullName}`);
+        console.log(`[BulkFill] Updated ${official.fullName}: ${lookup.hometown}`);
+      } else {
+        await dbQuery(() => db.insert(officialPrivate).values({
+          personId: official.personId,
+          officialPublicId: official.id,
+          personalAddress: lookup.hometown,
+          addressSource: "tribune"
+        }), `insert ${official.fullName}`);
+        console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
+      }
+      result.filled++;
+      result.details.push({
+        name: official.fullName,
+        status: "filled",
+        hometown: lookup.hometown
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[BulkFill] Failed ${official.fullName}: ${msg}`);
+      result.errors++;
+      result.details.push({
+        name: official.fullName,
+        status: "error",
+        reason: msg
+      });
+    }
+    if ((i + 1) % BATCH_SIZE === 0 && i + 1 < officials.length) {
+      console.log(`[BulkFill] Progress: ${i + 1}/${officials.length} processed (filled=${result.filled}). Pausing 5s...`);
+      await delay(5e3);
     }
   }
   console.log(`[BulkFill] Complete! Filled: ${result.filled}, Skipped: ${result.skipped}, Not Found: ${result.notFound}, Errors: ${result.errors}`);
