@@ -73,9 +73,27 @@ export default function PrayerStackNavigator() {
       <Stack.Screen
         name="AddPrayer"
         component={AddPrayerScreen}
-        options={{
+        options={({ navigation }) => ({
           headerTitle: "Add Prayer",
-        }}
+          headerLeft: () => (
+            <HeaderButton
+              onPress={() => {
+                const state = navigation.getState();
+                const hasStackHistory = state && state.routes && state.routes.length > 1;
+                if (hasStackHistory) {
+                  navigation.goBack();
+                } else {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: "PrayerDashboard" }],
+                  });
+                }
+              }}
+            >
+              <Feather name="arrow-left" size={22} color={theme.text} />
+            </HeaderButton>
+          ),
+        })}
       />
       <Stack.Screen
         name="PrayerDetail"
