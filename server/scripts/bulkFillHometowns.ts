@@ -140,7 +140,7 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
   return result;
 }
 
-if (require.main === module) {
+if (typeof require !== 'undefined' && require.main === module) {
   bulkFillHometowns()
     .then(result => {
       console.log("\n=== BULK FILL SUMMARY ===");

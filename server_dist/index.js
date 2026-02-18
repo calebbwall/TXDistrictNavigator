@@ -2450,7 +2450,7 @@ var init_bulkFillHometowns = __esm({
     init_db();
     init_schema();
     init_texasTribuneLookup();
-    if (__require.main === module) {
+    if (typeof __require !== "undefined" && __require.main === module) {
       bulkFillHometowns().then((result) => {
         console.log("\n=== BULK FILL SUMMARY ===");
         console.log(`Total officials: ${result.total}`);
