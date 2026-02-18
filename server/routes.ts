@@ -1276,11 +1276,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { bulkFillHometowns } = await import("./scripts/bulkFillHometowns");
       console.log("[Startup] Running automatic hometown backfill...");
       const result = await bulkFillHometowns();
-      console.log(`[Startup] Hometown backfill complete: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}`);
+      console.log(`[Startup] Hometown backfill complete: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}, errors=${result.errors}`);
     } catch (err) {
       console.error("[Startup] Hometown backfill failed:", err);
     }
-  }, 15000);
+  }, 60000);
 
   startOfficialsRefreshScheduler();
 

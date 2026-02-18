@@ -2402,72 +2402,80 @@ async function bulkFillHometowns() {
   }).from(officialPublic).where(eq6(officialPublic.active, true));
   result.total = officials.length;
   console.log(`[BulkFill] Found ${officials.length} active officials`);
+  const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
   for (let i = 0; i < officials.length; i++) {
     const official = officials[i];
-    console.log(`[BulkFill] Processing ${i + 1}/${officials.length}: ${official.fullName}`);
-    try {
-      let existingPrivate = null;
-      if (official.personId) {
-        const records = await db.select().from(officialPrivate).where(eq6(officialPrivate.personId, official.personId));
-        existingPrivate = records[0] || null;
-      }
-      if (!existingPrivate) {
-        const records = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, official.id));
-        existingPrivate = records[0] || null;
-      }
-      const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
-      if (!isEffectivelyEmpty2(existingPrivate?.personalAddress)) {
-        console.log(`[BulkFill] Skipping ${official.fullName} - already has personalAddress`);
-        result.skipped++;
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        let existingPrivate = null;
+        if (official.personId) {
+          const records = await db.select().from(officialPrivate).where(eq6(officialPrivate.personId, official.personId));
+          existingPrivate = records[0] || null;
+        }
+        if (!existingPrivate) {
+          const records = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, official.id));
+          existingPrivate = records[0] || null;
+        }
+        if (!isEffectivelyEmpty2(existingPrivate?.personalAddress)) {
+          result.skipped++;
+          result.details.push({
+            name: official.fullName,
+            status: "skipped",
+            reason: "Already has personalAddress"
+          });
+          break;
+        }
+        await delay(800);
+        const lookup = await lookupHometownFromTexasTribune(official.fullName);
+        if (!lookup.success || !lookup.hometown) {
+          result.notFound++;
+          result.details.push({
+            name: official.fullName,
+            status: "not_found",
+            reason: "Not found in Texas Tribune directory"
+          });
+          break;
+        }
+        if (existingPrivate) {
+          await db.update(officialPrivate).set({
+            personalAddress: lookup.hometown,
+            addressSource: "tribune",
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq6(officialPrivate.id, existingPrivate.id));
+          console.log(`[BulkFill] Updated ${official.fullName}: ${lookup.hometown}`);
+        } else {
+          await db.insert(officialPrivate).values({
+            personId: official.personId,
+            officialPublicId: official.id,
+            personalAddress: lookup.hometown,
+            addressSource: "tribune"
+          });
+          console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
+        }
+        result.filled++;
         result.details.push({
           name: official.fullName,
-          status: "skipped",
-          reason: "Already has personalAddress"
+          status: "filled",
+          hometown: lookup.hometown
         });
-        continue;
-      }
-      await delay(500);
-      const lookup = await lookupHometownFromTexasTribune(official.fullName);
-      if (!lookup.success || !lookup.hometown) {
-        console.log(`[BulkFill] No hometown found for ${official.fullName}`);
-        result.notFound++;
+        break;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        if (attempt < maxRetries && (msg.includes("timed out") || msg.includes("socket") || msg.includes("Authentication"))) {
+          console.log(`[BulkFill] Retry ${attempt}/${maxRetries} for ${official.fullName}: ${msg}`);
+          await delay(5e3 * attempt);
+          continue;
+        }
+        console.error(`[BulkFill] Failed ${official.fullName}: ${msg}`);
+        result.errors++;
         result.details.push({
           name: official.fullName,
-          status: "not_found",
-          reason: "Not found in Texas Tribune directory"
+          status: "error",
+          reason: msg
         });
-        continue;
+        break;
       }
-      if (existingPrivate) {
-        await db.update(officialPrivate).set({
-          personalAddress: lookup.hometown,
-          addressSource: "tribune",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq6(officialPrivate.id, existingPrivate.id));
-        console.log(`[BulkFill] Updated ${official.fullName} with hometown: ${lookup.hometown}`);
-      } else {
-        await db.insert(officialPrivate).values({
-          personId: official.personId,
-          officialPublicId: official.id,
-          personalAddress: lookup.hometown,
-          addressSource: "tribune"
-        });
-        console.log(`[BulkFill] Created new record for ${official.fullName} with hometown: ${lookup.hometown}`);
-      }
-      result.filled++;
-      result.details.push({
-        name: official.fullName,
-        status: "filled",
-        hometown: lookup.hometown
-      });
-    } catch (error) {
-      console.error(`[BulkFill] Error processing ${official.fullName}:`, error);
-      result.errors++;
-      result.details.push({
-        name: official.fullName,
-        status: "error",
-        reason: error instanceof Error ? error.message : "Unknown error"
-      });
     }
   }
   console.log(`[BulkFill] Complete! Filled: ${result.filled}, Skipped: ${result.skipped}, Not Found: ${result.notFound}, Errors: ${result.errors}`);
@@ -5562,11 +5570,11 @@ async function registerRoutes(app2) {
       const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
       console.log("[Startup] Running automatic hometown backfill...");
       const result = await bulkFillHometowns2();
-      console.log(`[Startup] Hometown backfill complete: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}`);
+      console.log(`[Startup] Hometown backfill complete: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}, errors=${result.errors}`);
     } catch (err) {
       console.error("[Startup] Hometown backfill failed:", err);
     }
-  }, 15e3);
+  }, 6e4);
   startOfficialsRefreshScheduler();
   registerPrayerRoutes(app2);
   app2.get("/api/geojson/tx_house", (_req, res) => {
