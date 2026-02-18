@@ -415,6 +415,9 @@ function splitInitials(name) {
 }
 function generateSlugVariants(fullName) {
   let cleanName2 = fullName.replace(/\./g, "").trim();
+  if (/^"[^"]+"\s*$/.test(cleanName2)) {
+    cleanName2 = cleanName2.replace(/"/g, "").trim();
+  }
   const nicknameMatch = cleanName2.match(/"([^"]+)"/);
   const nickname = nicknameMatch ? nicknameMatch[1] : null;
   cleanName2 = cleanName2.replace(/"[^"]+"\s*/g, "").trim();
@@ -427,10 +430,15 @@ function generateSlugVariants(fullName) {
     const firstName = parts[0];
     const lastName = parts[parts.length - 1];
     const middleParts = parts.slice(1, -1);
-    slugs.push(nameToSlug(`${firstName} ${lastName}`));
+    const baseSlug = nameToSlug(`${firstName} ${lastName}`);
+    slugs.push(baseSlug);
     if (suffix) {
       slugs.push(nameToSlug(`${firstName} ${lastName} ${suffix}`));
     }
+    slugs.push(nameToSlug(`${firstName} ${lastName} jr`));
+    slugs.push(nameToSlug(`${firstName} ${lastName} iii`));
+    slugs.push(nameToSlug(`${firstName} ${lastName} ii`));
+    slugs.push(nameToSlug(`${firstName} ${lastName} sr`));
     if (/^[A-Z]{2,3}$/.test(firstName)) {
       const splitFirst = splitInitials(firstName);
       slugs.push(nameToSlug(`${splitFirst} ${lastName}`));
