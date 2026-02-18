@@ -48,25 +48,35 @@ async function runRefreshCycle(): Promise<void> {
   
   try {
     // Step 1: Refresh Legislature + US House officials
-    console.log("[Scheduler] Step 1/5: Refreshing Legislature + US House officials...");
+    console.log("[Scheduler] Step 1/6: Refreshing Legislature + US House officials...");
     await checkAndRefreshIfChanged(false);
     
     // Step 2: Refresh Other Texas Officials
-    console.log("[Scheduler] Step 2/5: Refreshing Other Texas Officials...");
+    console.log("[Scheduler] Step 2/6: Refreshing Other Texas Officials...");
     await refreshOtherTexasOfficials({ force: false });
     
     // Step 3: Resolve personIds for all active officials
-    console.log("[Scheduler] Step 3/5: Resolving personIds for active officials...");
+    console.log("[Scheduler] Step 3/6: Resolving personIds for active officials...");
     const identityResult = await resolveAllMissingPersonIds();
     console.log(`[Scheduler] Identity resolution: ${identityResult.resolved} resolved, ${identityResult.created} new persons`);
     
     // Step 4: Refresh GeoJSON district boundaries
-    console.log("[Scheduler] Step 4/5: Refreshing GeoJSON district boundaries...");
+    console.log("[Scheduler] Step 4/6: Refreshing GeoJSON district boundaries...");
     await checkAndRefreshGeoJSONIfChanged(false);
     
     // Step 5: Refresh Committees
-    console.log("[Scheduler] Step 5/5: Refreshing Committees...");
+    console.log("[Scheduler] Step 5/6: Refreshing Committees...");
     await checkAndRefreshCommitteesIfChanged(false);
+    
+    // Step 6: Backfill hometowns from Texas Tribune
+    console.log("[Scheduler] Step 6/6: Backfilling hometowns...");
+    try {
+      const { bulkFillHometowns } = await import("../scripts/bulkFillHometowns");
+      const hometownResult = await bulkFillHometowns();
+      console.log(`[Scheduler] Hometown backfill: filled=${hometownResult.filled}, skipped=${hometownResult.skipped}`);
+    } catch (err) {
+      console.error("[Scheduler] Hometown backfill failed:", err);
+    }
     
     const cycleDuration = Date.now() - cycleStart;
     console.log("========================================");

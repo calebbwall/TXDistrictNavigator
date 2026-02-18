@@ -1,5 +1,11 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
@@ -2339,6 +2345,128 @@ var init_backfillUtils = __esm({
   }
 });
 
+// server/scripts/bulkFillHometowns.ts
+var bulkFillHometowns_exports = {};
+__export(bulkFillHometowns_exports, {
+  bulkFillHometowns: () => bulkFillHometowns
+});
+import { eq as eq6 } from "drizzle-orm";
+async function delay(ms) {
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
+}
+async function bulkFillHometowns() {
+  console.log("[BulkFill] Starting bulk hometown fill...");
+  const result = {
+    total: 0,
+    filled: 0,
+    skipped: 0,
+    notFound: 0,
+    errors: 0,
+    details: []
+  };
+  const officials = await db.select({
+    id: officialPublic.id,
+    fullName: officialPublic.fullName,
+    personId: officialPublic.personId,
+    source: officialPublic.source,
+    active: officialPublic.active
+  }).from(officialPublic).where(eq6(officialPublic.active, true));
+  result.total = officials.length;
+  console.log(`[BulkFill] Found ${officials.length} active officials`);
+  for (let i = 0; i < officials.length; i++) {
+    const official = officials[i];
+    console.log(`[BulkFill] Processing ${i + 1}/${officials.length}: ${official.fullName}`);
+    try {
+      let existingPrivate = null;
+      if (official.personId) {
+        const records = await db.select().from(officialPrivate).where(eq6(officialPrivate.personId, official.personId));
+        existingPrivate = records[0] || null;
+      }
+      if (!existingPrivate) {
+        const records = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, official.id));
+        existingPrivate = records[0] || null;
+      }
+      const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
+      if (!isEffectivelyEmpty2(existingPrivate?.personalAddress)) {
+        console.log(`[BulkFill] Skipping ${official.fullName} - already has personalAddress`);
+        result.skipped++;
+        result.details.push({
+          name: official.fullName,
+          status: "skipped",
+          reason: "Already has personalAddress"
+        });
+        continue;
+      }
+      await delay(500);
+      const lookup = await lookupHometownFromTexasTribune(official.fullName);
+      if (!lookup.success || !lookup.hometown) {
+        console.log(`[BulkFill] No hometown found for ${official.fullName}`);
+        result.notFound++;
+        result.details.push({
+          name: official.fullName,
+          status: "not_found",
+          reason: "Not found in Texas Tribune directory"
+        });
+        continue;
+      }
+      if (existingPrivate) {
+        await db.update(officialPrivate).set({
+          personalAddress: lookup.hometown,
+          addressSource: "tribune",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq6(officialPrivate.id, existingPrivate.id));
+        console.log(`[BulkFill] Updated ${official.fullName} with hometown: ${lookup.hometown}`);
+      } else {
+        await db.insert(officialPrivate).values({
+          personId: official.personId,
+          officialPublicId: official.id,
+          personalAddress: lookup.hometown,
+          addressSource: "tribune"
+        });
+        console.log(`[BulkFill] Created new record for ${official.fullName} with hometown: ${lookup.hometown}`);
+      }
+      result.filled++;
+      result.details.push({
+        name: official.fullName,
+        status: "filled",
+        hometown: lookup.hometown
+      });
+    } catch (error) {
+      console.error(`[BulkFill] Error processing ${official.fullName}:`, error);
+      result.errors++;
+      result.details.push({
+        name: official.fullName,
+        status: "error",
+        reason: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  }
+  console.log(`[BulkFill] Complete! Filled: ${result.filled}, Skipped: ${result.skipped}, Not Found: ${result.notFound}, Errors: ${result.errors}`);
+  return result;
+}
+var init_bulkFillHometowns = __esm({
+  "server/scripts/bulkFillHometowns.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_texasTribuneLookup();
+    if (__require.main === module) {
+      bulkFillHometowns().then((result) => {
+        console.log("\n=== BULK FILL SUMMARY ===");
+        console.log(`Total officials: ${result.total}`);
+        console.log(`Filled: ${result.filled}`);
+        console.log(`Skipped (already had address): ${result.skipped}`);
+        console.log(`Not found in Tribune: ${result.notFound}`);
+        console.log(`Errors: ${result.errors}`);
+        process.exit(0);
+      }).catch((err) => {
+        console.error("Bulk fill failed:", err);
+        process.exit(1);
+      });
+    }
+  }
+});
+
 // server/index.ts
 import express from "express";
 
@@ -2992,7 +3120,7 @@ function registerPrayerRoutes(app2) {
 init_schema();
 init_refreshOfficials();
 import { desc as desc2 } from "drizzle-orm";
-import { eq as eq6, and as and6, sql as sql7, or as or2, inArray as inArray2, isNull as isNull3 } from "drizzle-orm";
+import { eq as eq7, and as and6, sql as sql7, or as or3, inArray as inArray2, isNull as isNull4 } from "drizzle-orm";
 import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
 
@@ -3902,17 +4030,25 @@ async function runRefreshCycle() {
   console.log("[Scheduler] BEGIN refresh cycle");
   console.log("========================================");
   try {
-    console.log("[Scheduler] Step 1/5: Refreshing Legislature + US House officials...");
+    console.log("[Scheduler] Step 1/6: Refreshing Legislature + US House officials...");
     await checkAndRefreshIfChanged(false);
-    console.log("[Scheduler] Step 2/5: Refreshing Other Texas Officials...");
+    console.log("[Scheduler] Step 2/6: Refreshing Other Texas Officials...");
     await refreshOtherTexasOfficials({ force: false });
-    console.log("[Scheduler] Step 3/5: Resolving personIds for active officials...");
+    console.log("[Scheduler] Step 3/6: Resolving personIds for active officials...");
     const identityResult = await resolveAllMissingPersonIds();
     console.log(`[Scheduler] Identity resolution: ${identityResult.resolved} resolved, ${identityResult.created} new persons`);
-    console.log("[Scheduler] Step 4/5: Refreshing GeoJSON district boundaries...");
+    console.log("[Scheduler] Step 4/6: Refreshing GeoJSON district boundaries...");
     await checkAndRefreshGeoJSONIfChanged(false);
-    console.log("[Scheduler] Step 5/5: Refreshing Committees...");
+    console.log("[Scheduler] Step 5/6: Refreshing Committees...");
     await checkAndRefreshCommitteesIfChanged(false);
+    console.log("[Scheduler] Step 6/6: Backfilling hometowns...");
+    try {
+      const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
+      const hometownResult = await bulkFillHometowns2();
+      console.log(`[Scheduler] Hometown backfill: filled=${hometownResult.filled}, skipped=${hometownResult.skipped}`);
+    } catch (err) {
+      console.error("[Scheduler] Hometown backfill failed:", err);
+    }
     const cycleDuration = Date.now() - cycleStart;
     console.log("========================================");
     console.log(`[Scheduler] END refresh cycle (${cycleDuration}ms)`);
@@ -5406,6 +5542,16 @@ async function registerRoutes(app2) {
   maybeRunScheduledRefresh().catch((err) => {
     console.error("[Startup] Failed to check scheduled refresh:", err);
   });
+  setTimeout(async () => {
+    try {
+      const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
+      console.log("[Startup] Running automatic hometown backfill...");
+      const result = await bulkFillHometowns2();
+      console.log(`[Startup] Hometown backfill complete: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}`);
+    } catch (err) {
+      console.error("[Startup] Hometown backfill failed:", err);
+    }
+  }, 15e3);
   startOfficialsRefreshScheduler();
   registerPrayerRoutes(app2);
   app2.get("/api/geojson/tx_house", (_req, res) => {
@@ -5435,7 +5581,7 @@ async function registerRoutes(app2) {
       const { district_type, source, search, q, active } = req.query;
       const conditions = [];
       if (active !== "false") {
-        conditions.push(eq6(officialPublic.active, true));
+        conditions.push(eq7(officialPublic.active, true));
       }
       let sourceFilter = null;
       const isAllSources = source === "ALL";
@@ -5445,7 +5591,7 @@ async function registerRoutes(app2) {
           return res.status(400).json({ error: "Invalid district_type" });
         }
         sourceFilter = sourceFromDistrictType(district_type);
-        conditions.push(eq6(officialPublic.source, sourceFilter));
+        conditions.push(eq7(officialPublic.source, sourceFilter));
       }
       if (source && typeof source === "string" && source !== "ALL") {
         const validSources = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "OTHER_TX"];
@@ -5453,7 +5599,7 @@ async function registerRoutes(app2) {
           return res.status(400).json({ error: "Invalid source" });
         }
         sourceFilter = source;
-        conditions.push(eq6(officialPublic.source, sourceFilter));
+        conditions.push(eq7(officialPublic.source, sourceFilter));
       }
       const publicOfficials = await db.select().from(officialPublic).where(conditions.length > 0 ? and6(...conditions) : void 0);
       const privateData = await db.select().from(officialPrivate);
@@ -5566,7 +5712,7 @@ async function registerRoutes(app2) {
         fullName: officialPublic.fullName,
         source: officialPublic.source,
         district: officialPublic.district
-      }).from(officialPublic).where(eq6(officialPublic.active, true));
+      }).from(officialPublic).where(eq7(officialPublic.active, true));
       const allPrivate = await db.select().from(officialPrivate);
       const privMap = new Map(allPrivate.map((p) => [p.officialPublicId, p]));
       const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
@@ -5614,9 +5760,9 @@ async function registerRoutes(app2) {
         fullName: officialPublic.fullName,
         source: officialPublic.source,
         personalAddress: officialPrivate.personalAddress
-      }).from(officialPublic).innerJoin(officialPrivate, eq6(officialPublic.id, officialPrivate.officialPublicId)).where(
+      }).from(officialPublic).innerJoin(officialPrivate, eq7(officialPublic.id, officialPrivate.officialPublicId)).where(
         and6(
-          eq6(officialPublic.active, true),
+          eq7(officialPublic.active, true),
           sql7`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
         )
       );
@@ -5648,24 +5794,24 @@ async function registerRoutes(app2) {
         const source = sourceDistrictMatch[1];
         const district = sourceDistrictMatch[2];
         const [pub2] = await db.select().from(officialPublic).where(and6(
-          eq6(officialPublic.source, source),
-          eq6(officialPublic.district, district),
-          eq6(officialPublic.active, true)
+          eq7(officialPublic.source, source),
+          eq7(officialPublic.district, district),
+          eq7(officialPublic.active, true)
         )).limit(1);
         if (!pub2) {
           const vacant = createVacantOfficial(source, parseInt(district, 10));
           return res.json({ official: vacant });
         }
-        const [priv2] = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, pub2.id)).limit(1);
+        const [priv2] = await db.select().from(officialPrivate).where(eq7(officialPrivate.officialPublicId, pub2.id)).limit(1);
         const official2 = mergeOfficial(pub2, priv2 || null);
         official2.isVacant = false;
         return res.json({ official: official2 });
       }
-      const [pub] = await db.select().from(officialPublic).where(eq6(officialPublic.id, id)).limit(1);
+      const [pub] = await db.select().from(officialPublic).where(eq7(officialPublic.id, id)).limit(1);
       if (!pub) {
         return res.status(404).json({ error: "Official not found" });
       }
-      const [priv] = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, id)).limit(1);
+      const [priv] = await db.select().from(officialPrivate).where(eq7(officialPrivate.officialPublicId, id)).limit(1);
       const official = mergeOfficial(pub, priv || null);
       official.isVacant = false;
       res.json({ official });
@@ -5687,14 +5833,14 @@ async function registerRoutes(app2) {
       const distNum = String(district_number);
       const source = sourceFromDistrictType(district_type);
       const [pub] = await db.select().from(officialPublic).where(and6(
-        eq6(officialPublic.source, source),
-        eq6(officialPublic.district, distNum),
-        eq6(officialPublic.active, true)
+        eq7(officialPublic.source, source),
+        eq7(officialPublic.district, distNum),
+        eq7(officialPublic.active, true)
       )).limit(1);
       if (!pub) {
         return res.status(404).json({ error: "Official not found" });
       }
-      const [priv] = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, pub.id)).limit(1);
+      const [priv] = await db.select().from(officialPrivate).where(eq7(officialPrivate.officialPublicId, pub.id)).limit(1);
       const official = mergeOfficial(pub, priv || null);
       res.json({ official });
     } catch (err) {
@@ -5713,12 +5859,12 @@ async function registerRoutes(app2) {
         const { source, districtNumber } = dist;
         if (!source || districtNumber === void 0) continue;
         const [pub] = await db.select().from(officialPublic).where(and6(
-          eq6(officialPublic.source, source),
-          eq6(officialPublic.district, String(districtNumber)),
-          eq6(officialPublic.active, true)
+          eq7(officialPublic.source, source),
+          eq7(officialPublic.district, String(districtNumber)),
+          eq7(officialPublic.active, true)
         )).limit(1);
         if (pub) {
-          const [priv] = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, pub.id)).limit(1);
+          const [priv] = await db.select().from(officialPrivate).where(eq7(officialPrivate.officialPublicId, pub.id)).limit(1);
           results.push(mergeOfficial(pub, priv || null));
         } else {
           results.push(createVacantOfficial(source, districtNumber));
@@ -5733,7 +5879,7 @@ async function registerRoutes(app2) {
   app2.patch("/api/officials/:id/private", async (req, res) => {
     try {
       const { id } = req.params;
-      const [pub] = await db.select().from(officialPublic).where(eq6(officialPublic.id, id)).limit(1);
+      const [pub] = await db.select().from(officialPublic).where(eq7(officialPublic.id, id)).limit(1);
       if (!pub) {
         return res.status(404).json({ error: "Official not found" });
       }
@@ -5742,13 +5888,13 @@ async function registerRoutes(app2) {
         return res.status(400).json({ error: "Invalid request body", details: parseResult.error.issues });
       }
       const updateData = parseResult.data;
-      const [existing] = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, id)).limit(1);
+      const [existing] = await db.select().from(officialPrivate).where(eq7(officialPrivate.officialPublicId, id)).limit(1);
       if (existing) {
         await db.update(officialPrivate).set({
           ...updateData,
           addressSource: "user",
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq6(officialPrivate.id, existing.id));
+        }).where(eq7(officialPrivate.id, existing.id));
       } else {
         let finalUpdateData = { ...updateData };
         let autoFilled = false;
@@ -5776,7 +5922,7 @@ async function registerRoutes(app2) {
           updatedAt: /* @__PURE__ */ new Date()
         });
       }
-      const [updatedPriv] = await db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, id)).limit(1);
+      const [updatedPriv] = await db.select().from(officialPrivate).where(eq7(officialPrivate.officialPublicId, id)).limit(1);
       const official = mergeOfficial(pub, updatedPriv);
       res.json({ official });
     } catch (err) {
@@ -5959,7 +6105,7 @@ async function registerRoutes(app2) {
       const counts = await db.select({
         source: officialPublic.source,
         count: sql7`count(*)::int`
-      }).from(officialPublic).where(eq6(officialPublic.active, true)).groupBy(officialPublic.source);
+      }).from(officialPublic).where(eq7(officialPublic.active, true)).groupBy(officialPublic.source);
       const countsBySource = {
         TX_HOUSE: 0,
         TX_SENATE: 0,
@@ -6008,7 +6154,7 @@ async function registerRoutes(app2) {
       const counts = await db.select({
         source: officialPublic.source,
         count: sql7`count(*)::int`
-      }).from(officialPublic).where(eq6(officialPublic.active, true)).groupBy(officialPublic.source);
+      }).from(officialPublic).where(eq7(officialPublic.active, true)).groupBy(officialPublic.source);
       const stats = {
         tx_house: 0,
         tx_senate: 0,
@@ -6164,7 +6310,7 @@ async function registerRoutes(app2) {
       const chamber = req.query.chamber;
       let query = db.select().from(committees);
       if (chamber === "TX_HOUSE" || chamber === "TX_SENATE") {
-        query = query.where(eq6(committees.chamber, chamber));
+        query = query.where(eq7(committees.chamber, chamber));
       }
       const allCommittees = await query.orderBy(committees.sortOrder, committees.name);
       const parentCommittees = allCommittees.filter((c) => !c.parentCommitteeId);
@@ -6182,7 +6328,7 @@ async function registerRoutes(app2) {
   app2.get("/api/committees/:committeeId", async (req, res) => {
     try {
       const { committeeId } = req.params;
-      const committee = await db.select().from(committees).where(eq6(committees.id, committeeId)).limit(1);
+      const committee = await db.select().from(committees).where(eq7(committees.id, committeeId)).limit(1);
       if (committee.length === 0) {
         return res.status(404).json({ error: "Committee not found" });
       }
@@ -6196,7 +6342,7 @@ async function registerRoutes(app2) {
         officialDistrict: officialPublic.district,
         officialParty: officialPublic.party,
         officialPhotoUrl: officialPublic.photoUrl
-      }).from(committeeMemberships).leftJoin(officialPublic, eq6(committeeMemberships.officialPublicId, officialPublic.id)).where(eq6(committeeMemberships.committeeId, committeeId)).orderBy(committeeMemberships.sortOrder);
+      }).from(committeeMemberships).leftJoin(officialPublic, eq7(committeeMemberships.officialPublicId, officialPublic.id)).where(eq7(committeeMemberships.committeeId, committeeId)).orderBy(committeeMemberships.sortOrder);
       res.json({
         committee: committee[0],
         members
@@ -6214,7 +6360,7 @@ async function registerRoutes(app2) {
         committeeName: committees.name,
         chamber: committees.chamber,
         roleTitle: committeeMemberships.roleTitle
-      }).from(committeeMemberships).innerJoin(committees, eq6(committeeMemberships.committeeId, committees.id)).where(eq6(committeeMemberships.officialPublicId, officialId)).orderBy(committees.name);
+      }).from(committeeMemberships).innerJoin(committees, eq7(committeeMemberships.committeeId, committees.id)).where(eq7(committeeMemberships.officialPublicId, officialId)).orderBy(committees.name);
       res.json(memberships);
     } catch (err) {
       console.error("[API] Error fetching official committees:", err);
@@ -6250,9 +6396,9 @@ async function registerRoutes(app2) {
   app2.get("/api/other-tx-officials", async (req, res) => {
     try {
       const { active, grouped } = req.query;
-      const conditions = [eq6(officialPublic.source, "OTHER_TX")];
+      const conditions = [eq7(officialPublic.source, "OTHER_TX")];
       if (active !== "false") {
-        conditions.push(eq6(officialPublic.active, true));
+        conditions.push(eq7(officialPublic.active, true));
       }
       const officials = await db.select().from(officialPublic).where(and6(...conditions));
       const privateData = await db.select().from(officialPrivate);
@@ -6354,11 +6500,11 @@ async function registerRoutes(app2) {
         source: officialPublic.source,
         photoUrl: officialPublic.photoUrl
       }).from(officialPublic).where(and6(
-        eq6(officialPublic.active, true),
+        eq7(officialPublic.active, true),
         inArray2(officialPublic.source, ["TX_HOUSE", "TX_SENATE"]),
-        or2(
-          isNull3(officialPublic.photoUrl),
-          eq6(officialPublic.photoUrl, "")
+        or3(
+          isNull4(officialPublic.photoUrl),
+          eq7(officialPublic.photoUrl, "")
         )
       ));
       console.log(`[Admin] Headshot backfill: ${officials.length} officials missing photos`);
@@ -6372,7 +6518,7 @@ async function registerRoutes(app2) {
         try {
           const result = await lookupHeadshotFromTexasTribune2(official.fullName);
           if (result.success && result.photoUrl) {
-            await db.update(officialPublic).set({ photoUrl: result.photoUrl }).where(eq6(officialPublic.id, official.id));
+            await db.update(officialPublic).set({ photoUrl: result.photoUrl }).where(eq7(officialPublic.id, official.id));
             found++;
             console.log(`[Headshot] ${found}/${officials.length} Found: ${official.fullName}`);
           } else {
@@ -6407,12 +6553,12 @@ async function registerRoutes(app2) {
       if (!officialPublicId || !personId) {
         return res.status(400).json({ error: "officialPublicId and personId are required" });
       }
-      const official = await db.select().from(officialPublic).where(eq6(officialPublic.id, officialPublicId)).limit(1);
+      const official = await db.select().from(officialPublic).where(eq7(officialPublic.id, officialPublicId)).limit(1);
       if (official.length === 0) {
         return res.status(404).json({ error: "Official not found" });
       }
-      const { persons: persons2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const person = await db.select().from(persons2).where(eq6(persons2.id, personId)).limit(1);
+      const { persons: persons3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const person = await db.select().from(persons3).where(eq7(persons3.id, personId)).limit(1);
       if (person.length === 0) {
         return res.status(404).json({ error: "Person not found" });
       }
