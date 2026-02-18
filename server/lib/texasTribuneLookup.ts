@@ -102,7 +102,8 @@ function generateSlugVariants(fullName: string): string[] {
 }
 
 function parseHometownFromHtml(html: string): string | null {
-  const hometownMatch = html.match(/<td>\s*<strong>Hometown<\/strong>\s*<\/td>\s*<td>([^<]+)<\/td>/i);
+  const normalizedHtml = html.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ');
+  const hometownMatch = normalizedHtml.match(/<td>\s*<strong>Hometown<\/strong>\s*<\/td>\s*<td>([^<]+)<\/td>/i);
   
   if (hometownMatch && hometownMatch[1]) {
     const hometown = hometownMatch[1].trim();

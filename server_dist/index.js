@@ -469,7 +469,8 @@ function generateSlugVariants(fullName) {
   return [...new Set(slugs.filter((s) => s.length > 0))];
 }
 function parseHometownFromHtml(html) {
-  const hometownMatch = html.match(/<td>\s*<strong>Hometown<\/strong>\s*<\/td>\s*<td>([^<]+)<\/td>/i);
+  const normalizedHtml = html.replace(/\r?\n/g, " ").replace(/\s+/g, " ");
+  const hometownMatch = normalizedHtml.match(/<td>\s*<strong>Hometown<\/strong>\s*<\/td>\s*<td>([^<]+)<\/td>/i);
   if (hometownMatch && hometownMatch[1]) {
     const hometown = hometownMatch[1].trim();
     if (hometown && hometown.length > 0 && hometown.toLowerCase() !== "n/a") {
@@ -2414,15 +2415,17 @@ async function bulkFillHometowns() {
     errors: 0,
     details: []
   };
-  const officials = await dbQuery(() => db.select({
+  const allOfficials = await dbQuery(() => db.select({
     id: officialPublic.id,
     fullName: officialPublic.fullName,
     personId: officialPublic.personId,
     source: officialPublic.source,
     active: officialPublic.active
   }).from(officialPublic).where(eq6(officialPublic.active, true)), "fetch officials");
+  const sourceOrder = { "TX_SENATE": 0, "TX_HOUSE": 1, "US_HOUSE": 2, "OTHER_TX": 3 };
+  const officials = allOfficials.sort((a, b) => (sourceOrder[a.source] ?? 9) - (sourceOrder[b.source] ?? 9));
   result.total = officials.length;
-  console.log(`[BulkFill] Found ${officials.length} active officials`);
+  console.log(`[BulkFill] Found ${officials.length} active officials (Senate first)`);
   const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
   const BATCH_SIZE = 10;
   for (let i = 0; i < officials.length; i++) {

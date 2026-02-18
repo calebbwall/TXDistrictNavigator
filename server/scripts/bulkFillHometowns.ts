@@ -51,7 +51,7 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
     details: [],
   };
   
-  const officials = await dbQuery(() => db
+  const allOfficials = await dbQuery(() => db
     .select({
       id: officialPublic.id,
       fullName: officialPublic.fullName,
@@ -62,8 +62,11 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
     .from(officialPublic)
     .where(eq(officialPublic.active, true)), "fetch officials");
   
+  const sourceOrder: Record<string, number> = { 'TX_SENATE': 0, 'TX_HOUSE': 1, 'US_HOUSE': 2, 'OTHER_TX': 3 };
+  const officials = allOfficials.sort((a, b) => (sourceOrder[a.source] ?? 9) - (sourceOrder[b.source] ?? 9));
+  
   result.total = officials.length;
-  console.log(`[BulkFill] Found ${officials.length} active officials`);
+  console.log(`[BulkFill] Found ${officials.length} active officials (Senate first)`);
   
   const { isEffectivelyEmpty } = await import("../lib/backfillUtils");
   
