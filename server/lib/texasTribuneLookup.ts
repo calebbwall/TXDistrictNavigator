@@ -40,6 +40,9 @@ const SLUG_OVERRIDES: Record<string, string> = {
   'Jeff Barry': 'jeffrey-barry',
   'Vincent Perez': 'vince-perez',
   'Rhetta Bowers': 'rhetta-andrews-bowers',
+  'Borris Miles': 'borris-l-miles',
+  'César Blanco': 'cesar-j-blanco',
+  'Juan Hinojosa': 'juan-chuy-hinojosa',
 };
 
 const FIRST_NAME_ALTERNATES: Record<string, string[]> = {

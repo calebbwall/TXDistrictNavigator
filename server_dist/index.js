@@ -585,7 +585,10 @@ var init_texasTribuneLookup = __esm({
       "Jon Rosenthal": "jon-e-rosenthal",
       "Jeff Barry": "jeffrey-barry",
       "Vincent Perez": "vince-perez",
-      "Rhetta Bowers": "rhetta-andrews-bowers"
+      "Rhetta Bowers": "rhetta-andrews-bowers",
+      "Borris Miles": "borris-l-miles",
+      "C\xE9sar Blanco": "cesar-j-blanco",
+      "Juan Hinojosa": "juan-chuy-hinojosa"
     };
     FIRST_NAME_ALTERNATES = {
       "jeff": ["jeffrey"],
