@@ -418,6 +418,10 @@ function generateSlugVariants(fullName) {
   if (/^"[^"]+"\s*$/.test(cleanName2)) {
     cleanName2 = cleanName2.replace(/"/g, "").trim();
   }
+  const override = SLUG_OVERRIDES[cleanName2] || SLUG_OVERRIDES[fullName.replace(/"/g, "").replace(/\./g, "").trim()];
+  if (override) {
+    return [override];
+  }
   const nicknameMatch = cleanName2.match(/"([^"]+)"/);
   const nickname = nicknameMatch ? nicknameMatch[1] : null;
   cleanName2 = cleanName2.replace(/"[^"]+"\s*/g, "").trim();
@@ -439,6 +443,13 @@ function generateSlugVariants(fullName) {
     slugs.push(nameToSlug(`${firstName} ${lastName} iii`));
     slugs.push(nameToSlug(`${firstName} ${lastName} ii`));
     slugs.push(nameToSlug(`${firstName} ${lastName} sr`));
+    const altNames = FIRST_NAME_ALTERNATES[firstName.toLowerCase()] || [];
+    for (const alt of altNames) {
+      slugs.push(nameToSlug(`${alt} ${lastName}`));
+      if (suffix) {
+        slugs.push(nameToSlug(`${alt} ${lastName} ${suffix}`));
+      }
+    }
     if (/^[A-Z]{2,3}$/.test(firstName)) {
       const splitFirst = splitInitials(firstName);
       slugs.push(nameToSlug(`${splitFirst} ${lastName}`));
@@ -563,9 +574,47 @@ async function lookupHeadshotFromTexasTribune(fullName) {
   }
   return { photoUrl: null, success: false, error: "Headshot not found" };
 }
+var SLUG_OVERRIDES, FIRST_NAME_ALTERNATES;
 var init_texasTribuneLookup = __esm({
   "server/lib/texasTribuneLookup.ts"() {
     "use strict";
+    SLUG_OVERRIDES = {
+      "Alma Allen": "alma-a-allen",
+      "Angie Button": "angie-chen-button",
+      "Armando Walle": "armando-lucio-walle",
+      "Jon Rosenthal": "jon-e-rosenthal",
+      "Jeff Barry": "jeffrey-barry",
+      "Vincent Perez": "vince-perez",
+      "Rhetta Bowers": "rhetta-andrews-bowers"
+    };
+    FIRST_NAME_ALTERNATES = {
+      "jeff": ["jeffrey"],
+      "jeffrey": ["jeff"],
+      "mike": ["michael"],
+      "michael": ["mike"],
+      "sam": ["samuel"],
+      "samuel": ["sam"],
+      "bob": ["robert"],
+      "robert": ["bob"],
+      "bill": ["william"],
+      "william": ["bill"],
+      "jim": ["james"],
+      "james": ["jim"],
+      "tom": ["thomas"],
+      "thomas": ["tom"],
+      "vince": ["vincent"],
+      "vincent": ["vince"],
+      "jon": ["jonathan"],
+      "jonathan": ["jon"],
+      "liz": ["elizabeth"],
+      "elizabeth": ["liz"],
+      "don": ["donald"],
+      "donald": ["don"],
+      "ron": ["ronald"],
+      "ronald": ["ron"],
+      "dan": ["daniel"],
+      "daniel": ["dan"]
+    };
   }
 });
 

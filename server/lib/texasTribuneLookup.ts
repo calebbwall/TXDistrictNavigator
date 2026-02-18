@@ -32,11 +32,55 @@ function splitInitials(name: string): string {
   return name.replace(/([A-Z])(?=[A-Z])/g, '$1 ');
 }
 
+const SLUG_OVERRIDES: Record<string, string> = {
+  'Alma Allen': 'alma-a-allen',
+  'Angie Button': 'angie-chen-button',
+  'Armando Walle': 'armando-lucio-walle',
+  'Jon Rosenthal': 'jon-e-rosenthal',
+  'Jeff Barry': 'jeffrey-barry',
+  'Vincent Perez': 'vince-perez',
+  'Rhetta Bowers': 'rhetta-andrews-bowers',
+};
+
+const FIRST_NAME_ALTERNATES: Record<string, string[]> = {
+  'jeff': ['jeffrey'],
+  'jeffrey': ['jeff'],
+  'mike': ['michael'],
+  'michael': ['mike'],
+  'sam': ['samuel'],
+  'samuel': ['sam'],
+  'bob': ['robert'],
+  'robert': ['bob'],
+  'bill': ['william'],
+  'william': ['bill'],
+  'jim': ['james'],
+  'james': ['jim'],
+  'tom': ['thomas'],
+  'thomas': ['tom'],
+  'vince': ['vincent'],
+  'vincent': ['vince'],
+  'jon': ['jonathan'],
+  'jonathan': ['jon'],
+  'liz': ['elizabeth'],
+  'elizabeth': ['liz'],
+  'don': ['donald'],
+  'donald': ['don'],
+  'ron': ['ronald'],
+  'ronald': ['ron'],
+  'dan': ['daniel'],
+  'daniel': ['dan'],
+};
+
 function generateSlugVariants(fullName: string): string[] {
   let cleanName = fullName.replace(/\./g, '').trim();
   
   if (/^"[^"]+"\s*$/.test(cleanName)) {
     cleanName = cleanName.replace(/"/g, '').trim();
+  }
+  
+  const override = SLUG_OVERRIDES[cleanName] || SLUG_OVERRIDES[fullName.replace(/"/g, '').replace(/\./g, '').trim()];
+  if (override) {
+    return [override];
   }
   
   const nicknameMatch = cleanName.match(/"([^"]+)"/);
@@ -66,6 +110,14 @@ function generateSlugVariants(fullName: string): string[] {
     slugs.push(nameToSlug(`${firstName} ${lastName} iii`));
     slugs.push(nameToSlug(`${firstName} ${lastName} ii`));
     slugs.push(nameToSlug(`${firstName} ${lastName} sr`));
+    
+    const altNames = FIRST_NAME_ALTERNATES[firstName.toLowerCase()] || [];
+    for (const alt of altNames) {
+      slugs.push(nameToSlug(`${alt} ${lastName}`));
+      if (suffix) {
+        slugs.push(nameToSlug(`${alt} ${lastName} ${suffix}`));
+      }
+    }
     
     if (/^[A-Z]{2,3}$/.test(firstName)) {
       const splitFirst = splitInitials(firstName);
