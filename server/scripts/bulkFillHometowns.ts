@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { officialPublic, officialPrivate, persons } from "../../shared/schema";
-import { eq, isNull, or } from "drizzle-orm";
+import { eq, isNull, or, notInArray, sql } from "drizzle-orm";
 import { lookupHometownFromTexasTribune } from "../lib/texasTribuneLookup";
 
 interface BulkFillResult {
@@ -51,6 +51,16 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
     details: [],
   };
   
+  const allPrivate = await dbQuery(() => db
+    .select({
+      officialPublicId: officialPrivate.officialPublicId,
+      personId: officialPrivate.personId,
+    })
+    .from(officialPrivate), "fetch existing private records");
+  
+  const coveredOfficialIds = new Set(allPrivate.map(p => p.officialPublicId).filter(Boolean));
+  const coveredPersonIds = new Set(allPrivate.map(p => p.personId).filter(Boolean));
+  
   const allOfficials = await dbQuery(() => db
     .select({
       id: officialPublic.id,
@@ -62,13 +72,23 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
     .from(officialPublic)
     .where(eq(officialPublic.active, true)), "fetch officials");
   
+  const uncheckedOfficials = allOfficials.filter(o => {
+    if (coveredOfficialIds.has(o.id)) return false;
+    if (o.personId && coveredPersonIds.has(o.personId)) return false;
+    return true;
+  });
+  
   const sourceOrder: Record<string, number> = { 'TX_SENATE': 0, 'TX_HOUSE': 1, 'US_HOUSE': 2, 'OTHER_TX': 3 };
-  const officials = allOfficials.sort((a, b) => (sourceOrder[a.source] ?? 9) - (sourceOrder[b.source] ?? 9));
+  const officials = uncheckedOfficials.sort((a, b) => (sourceOrder[a.source] ?? 9) - (sourceOrder[b.source] ?? 9));
   
   result.total = officials.length;
-  console.log(`[BulkFill] Found ${officials.length} active officials (Senate first)`);
   
-  const { isEffectivelyEmpty } = await import("../lib/backfillUtils");
+  if (officials.length === 0) {
+    console.log(`[BulkFill] All ${allOfficials.length} officials already have private records. Nothing to do.`);
+    return result;
+  }
+  
+  console.log(`[BulkFill] Found ${officials.length} unchecked officials (of ${allOfficials.length} total)`);
   
   const BATCH_SIZE = 10;
   
@@ -76,67 +96,34 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
     const official = officials[i];
     
     try {
-      let existingPrivate = null;
-      
-      if (official.personId) {
-        const records = await dbQuery(() => db
-          .select()
-          .from(officialPrivate)
-          .where(eq(officialPrivate.personId, official.personId!)), `lookup ${official.fullName}`);
-        existingPrivate = records[0] || null;
-      }
-      
-      if (!existingPrivate) {
-        const records = await dbQuery(() => db
-          .select()
-          .from(officialPrivate)
-          .where(eq(officialPrivate.officialPublicId, official.id)), `lookup2 ${official.fullName}`);
-        existingPrivate = records[0] || null;
-      }
-      
-      if (!isEffectivelyEmpty(existingPrivate?.personalAddress)) {
-        result.skipped++;
-        result.details.push({
-          name: official.fullName,
-          status: "skipped",
-          reason: "Already has personalAddress",
-        });
-        continue;
-      }
-      
       await delay(1000);
       
       const lookup = await lookupHometownFromTexasTribune(official.fullName);
       
       if (!lookup.success || !lookup.hometown) {
+        await dbQuery(() => db.insert(officialPrivate).values({
+          personId: official.personId,
+          officialPublicId: official.id,
+          personalAddress: null,
+          addressSource: "tribune_not_found",
+        }), `mark-not-found ${official.fullName}`);
+        console.log(`[BulkFill] Not found, marked checked: ${official.fullName}`);
         result.notFound++;
         result.details.push({
           name: official.fullName,
           status: "not_found",
-          reason: "Not found in Texas Tribune directory",
+          reason: "Not found in Texas Tribune directory (marked so it won't be re-checked)",
         });
         continue;
       }
       
-      if (existingPrivate) {
-        await dbQuery(() => db
-          .update(officialPrivate)
-          .set({
-            personalAddress: lookup.hometown,
-            addressSource: "tribune",
-            updatedAt: new Date(),
-          })
-          .where(eq(officialPrivate.id, existingPrivate!.id)), `update ${official.fullName}`);
-        console.log(`[BulkFill] Updated ${official.fullName}: ${lookup.hometown}`);
-      } else {
-        await dbQuery(() => db.insert(officialPrivate).values({
-          personId: official.personId,
-          officialPublicId: official.id,
-          personalAddress: lookup.hometown,
-          addressSource: "tribune",
-        }), `insert ${official.fullName}`);
-        console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
-      }
+      await dbQuery(() => db.insert(officialPrivate).values({
+        personId: official.personId,
+        officialPublicId: official.id,
+        personalAddress: lookup.hometown,
+        addressSource: "tribune",
+      }), `insert ${official.fullName}`);
+      console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
       
       result.filled++;
       result.details.push({

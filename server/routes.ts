@@ -1272,27 +1272,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   setTimeout(async () => {
-    const { bulkFillHometowns } = await import("./scripts/bulkFillHometowns");
-    const maxRounds = 5;
-    let totalFilled = 0;
-    for (let round = 1; round <= maxRounds; round++) {
-      try {
-        console.log(`[Startup] Hometown backfill round ${round}/${maxRounds}...`);
-        const result = await bulkFillHometowns();
-        totalFilled += result.filled;
-        console.log(`[Startup] Round ${round} done: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}, errors=${result.errors}`);
-        if (result.filled === 0) {
-          console.log(`[Startup] No new hometowns found, stopping backfill. Total filled: ${totalFilled}`);
-          break;
-        }
-        await new Promise(r => setTimeout(r, 10000));
-      } catch (err) {
-        console.error(`[Startup] Backfill round ${round} crashed:`, err instanceof Error ? err.message : err);
-        if (round < maxRounds) {
-          console.log(`[Startup] Waiting 30s before retry...`);
-          await new Promise(r => setTimeout(r, 30000));
-        }
-      }
+    try {
+      const { bulkFillHometowns } = await import("./scripts/bulkFillHometowns");
+      console.log(`[Startup] Checking for new officials needing hometown lookup...`);
+      const result = await bulkFillHometowns();
+      console.log(`[Startup] Hometown check done: filled=${result.filled}, notFound=${result.notFound}, errors=${result.errors}`);
+    } catch (err) {
+      console.error(`[Startup] Hometown check failed:`, err instanceof Error ? err.message : err);
     }
   }, 90000);
 

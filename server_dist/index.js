@@ -2428,42 +2428,6 @@ var init_refreshOtherTexasOfficials = __esm({
   }
 });
 
-// server/lib/backfillUtils.ts
-var backfillUtils_exports = {};
-__export(backfillUtils_exports, {
-  isEffectivelyEmpty: () => isEffectivelyEmpty,
-  normalizeAddress: () => normalizeAddress
-});
-function isEffectivelyEmpty(value) {
-  if (!value) return true;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return true;
-  if (EMPTY_PLACEHOLDERS.includes(trimmed.toLowerCase())) return true;
-  return false;
-}
-function normalizeAddress(value) {
-  if (isEffectivelyEmpty(value)) return null;
-  return value.trim();
-}
-var EMPTY_PLACEHOLDERS;
-var init_backfillUtils = __esm({
-  "server/lib/backfillUtils.ts"() {
-    "use strict";
-    EMPTY_PLACEHOLDERS = [
-      "n/a",
-      "na",
-      "unknown",
-      "tbd",
-      "not available",
-      "none",
-      "\u2014",
-      "-",
-      ".",
-      "pending"
-    ];
-  }
-});
-
 // server/scripts/bulkFillHometowns.ts
 var bulkFillHometowns_exports = {};
 __export(bulkFillHometowns_exports, {
@@ -2500,6 +2464,12 @@ async function bulkFillHometowns() {
     errors: 0,
     details: []
   };
+  const allPrivate = await dbQuery(() => db.select({
+    officialPublicId: officialPrivate.officialPublicId,
+    personId: officialPrivate.personId
+  }).from(officialPrivate), "fetch existing private records");
+  const coveredOfficialIds = new Set(allPrivate.map((p) => p.officialPublicId).filter(Boolean));
+  const coveredPersonIds = new Set(allPrivate.map((p) => p.personId).filter(Boolean));
   const allOfficials = await dbQuery(() => db.select({
     id: officialPublic.id,
     fullName: officialPublic.fullName,
@@ -2507,60 +2477,48 @@ async function bulkFillHometowns() {
     source: officialPublic.source,
     active: officialPublic.active
   }).from(officialPublic).where(eq6(officialPublic.active, true)), "fetch officials");
+  const uncheckedOfficials = allOfficials.filter((o) => {
+    if (coveredOfficialIds.has(o.id)) return false;
+    if (o.personId && coveredPersonIds.has(o.personId)) return false;
+    return true;
+  });
   const sourceOrder = { "TX_SENATE": 0, "TX_HOUSE": 1, "US_HOUSE": 2, "OTHER_TX": 3 };
-  const officials = allOfficials.sort((a, b) => (sourceOrder[a.source] ?? 9) - (sourceOrder[b.source] ?? 9));
+  const officials = uncheckedOfficials.sort((a, b) => (sourceOrder[a.source] ?? 9) - (sourceOrder[b.source] ?? 9));
   result.total = officials.length;
-  console.log(`[BulkFill] Found ${officials.length} active officials (Senate first)`);
-  const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
+  if (officials.length === 0) {
+    console.log(`[BulkFill] All ${allOfficials.length} officials already have private records. Nothing to do.`);
+    return result;
+  }
+  console.log(`[BulkFill] Found ${officials.length} unchecked officials (of ${allOfficials.length} total)`);
   const BATCH_SIZE = 10;
   for (let i = 0; i < officials.length; i++) {
     const official = officials[i];
     try {
-      let existingPrivate = null;
-      if (official.personId) {
-        const records = await dbQuery(() => db.select().from(officialPrivate).where(eq6(officialPrivate.personId, official.personId)), `lookup ${official.fullName}`);
-        existingPrivate = records[0] || null;
-      }
-      if (!existingPrivate) {
-        const records = await dbQuery(() => db.select().from(officialPrivate).where(eq6(officialPrivate.officialPublicId, official.id)), `lookup2 ${official.fullName}`);
-        existingPrivate = records[0] || null;
-      }
-      if (!isEffectivelyEmpty2(existingPrivate?.personalAddress)) {
-        result.skipped++;
-        result.details.push({
-          name: official.fullName,
-          status: "skipped",
-          reason: "Already has personalAddress"
-        });
-        continue;
-      }
       await delay(1e3);
       const lookup = await lookupHometownFromTexasTribune(official.fullName);
       if (!lookup.success || !lookup.hometown) {
+        await dbQuery(() => db.insert(officialPrivate).values({
+          personId: official.personId,
+          officialPublicId: official.id,
+          personalAddress: null,
+          addressSource: "tribune_not_found"
+        }), `mark-not-found ${official.fullName}`);
+        console.log(`[BulkFill] Not found, marked checked: ${official.fullName}`);
         result.notFound++;
         result.details.push({
           name: official.fullName,
           status: "not_found",
-          reason: "Not found in Texas Tribune directory"
+          reason: "Not found in Texas Tribune directory (marked so it won't be re-checked)"
         });
         continue;
       }
-      if (existingPrivate) {
-        await dbQuery(() => db.update(officialPrivate).set({
-          personalAddress: lookup.hometown,
-          addressSource: "tribune",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq6(officialPrivate.id, existingPrivate.id)), `update ${official.fullName}`);
-        console.log(`[BulkFill] Updated ${official.fullName}: ${lookup.hometown}`);
-      } else {
-        await dbQuery(() => db.insert(officialPrivate).values({
-          personId: official.personId,
-          officialPublicId: official.id,
-          personalAddress: lookup.hometown,
-          addressSource: "tribune"
-        }), `insert ${official.fullName}`);
-        console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
-      }
+      await dbQuery(() => db.insert(officialPrivate).values({
+        personId: official.personId,
+        officialPublicId: official.id,
+        personalAddress: lookup.hometown,
+        addressSource: "tribune"
+      }), `insert ${official.fullName}`);
+      console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
       result.filled++;
       result.details.push({
         name: official.fullName,
@@ -2591,6 +2549,42 @@ var init_bulkFillHometowns = __esm({
     init_db();
     init_schema();
     init_texasTribuneLookup();
+  }
+});
+
+// server/lib/backfillUtils.ts
+var backfillUtils_exports = {};
+__export(backfillUtils_exports, {
+  isEffectivelyEmpty: () => isEffectivelyEmpty,
+  normalizeAddress: () => normalizeAddress
+});
+function isEffectivelyEmpty(value) {
+  if (!value) return true;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return true;
+  if (EMPTY_PLACEHOLDERS.includes(trimmed.toLowerCase())) return true;
+  return false;
+}
+function normalizeAddress(value) {
+  if (isEffectivelyEmpty(value)) return null;
+  return value.trim();
+}
+var EMPTY_PLACEHOLDERS;
+var init_backfillUtils = __esm({
+  "server/lib/backfillUtils.ts"() {
+    "use strict";
+    EMPTY_PLACEHOLDERS = [
+      "n/a",
+      "na",
+      "unknown",
+      "tbd",
+      "not available",
+      "none",
+      "\u2014",
+      "-",
+      ".",
+      "pending"
+    ];
   }
 });
 
@@ -3247,7 +3241,7 @@ function registerPrayerRoutes(app2) {
 init_schema();
 init_refreshOfficials();
 import { desc as desc2 } from "drizzle-orm";
-import { eq as eq7, and as and6, sql as sql7, or as or3, inArray as inArray2, isNull as isNull4 } from "drizzle-orm";
+import { eq as eq7, and as and6, sql as sql8, or as or3, inArray as inArray2, isNull as isNull4 } from "drizzle-orm";
 import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
 
@@ -5670,27 +5664,13 @@ async function registerRoutes(app2) {
     console.error("[Startup] Failed to check scheduled refresh:", err);
   });
   setTimeout(async () => {
-    const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
-    const maxRounds = 5;
-    let totalFilled = 0;
-    for (let round = 1; round <= maxRounds; round++) {
-      try {
-        console.log(`[Startup] Hometown backfill round ${round}/${maxRounds}...`);
-        const result = await bulkFillHometowns2();
-        totalFilled += result.filled;
-        console.log(`[Startup] Round ${round} done: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}, errors=${result.errors}`);
-        if (result.filled === 0) {
-          console.log(`[Startup] No new hometowns found, stopping backfill. Total filled: ${totalFilled}`);
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 1e4));
-      } catch (err) {
-        console.error(`[Startup] Backfill round ${round} crashed:`, err instanceof Error ? err.message : err);
-        if (round < maxRounds) {
-          console.log(`[Startup] Waiting 30s before retry...`);
-          await new Promise((r) => setTimeout(r, 3e4));
-        }
-      }
+    try {
+      const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
+      console.log(`[Startup] Checking for new officials needing hometown lookup...`);
+      const result = await bulkFillHometowns2();
+      console.log(`[Startup] Hometown check done: filled=${result.filled}, notFound=${result.notFound}, errors=${result.errors}`);
+    } catch (err) {
+      console.error(`[Startup] Hometown check failed:`, err instanceof Error ? err.message : err);
     }
   }, 9e4);
   startOfficialsRefreshScheduler();
@@ -5904,7 +5884,7 @@ async function registerRoutes(app2) {
       }).from(officialPublic).innerJoin(officialPrivate, eq7(officialPublic.id, officialPrivate.officialPublicId)).where(
         and6(
           eq7(officialPublic.active, true),
-          sql7`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
+          sql8`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
         )
       );
       res.json({
@@ -6245,7 +6225,7 @@ async function registerRoutes(app2) {
     try {
       const counts = await db.select({
         source: officialPublic.source,
-        count: sql7`count(*)::int`
+        count: sql8`count(*)::int`
       }).from(officialPublic).where(eq7(officialPublic.active, true)).groupBy(officialPublic.source);
       const countsBySource = {
         TX_HOUSE: 0,
@@ -6294,7 +6274,7 @@ async function registerRoutes(app2) {
     try {
       const counts = await db.select({
         source: officialPublic.source,
-        count: sql7`count(*)::int`
+        count: sql8`count(*)::int`
       }).from(officialPublic).where(eq7(officialPublic.active, true)).groupBy(officialPublic.source);
       const stats = {
         tx_house: 0,
