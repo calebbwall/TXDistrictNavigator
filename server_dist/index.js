@@ -5566,15 +5566,29 @@ async function registerRoutes(app2) {
     console.error("[Startup] Failed to check scheduled refresh:", err);
   });
   setTimeout(async () => {
-    try {
-      const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
-      console.log("[Startup] Running automatic hometown backfill...");
-      const result = await bulkFillHometowns2();
-      console.log(`[Startup] Hometown backfill complete: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}, errors=${result.errors}`);
-    } catch (err) {
-      console.error("[Startup] Hometown backfill failed:", err);
+    const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
+    const maxRounds = 5;
+    let totalFilled = 0;
+    for (let round = 1; round <= maxRounds; round++) {
+      try {
+        console.log(`[Startup] Hometown backfill round ${round}/${maxRounds}...`);
+        const result = await bulkFillHometowns2();
+        totalFilled += result.filled;
+        console.log(`[Startup] Round ${round} done: filled=${result.filled}, skipped=${result.skipped}, notFound=${result.notFound}, errors=${result.errors}`);
+        if (result.filled === 0) {
+          console.log(`[Startup] No new hometowns found, stopping backfill. Total filled: ${totalFilled}`);
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1e4));
+      } catch (err) {
+        console.error(`[Startup] Backfill round ${round} crashed:`, err instanceof Error ? err.message : err);
+        if (round < maxRounds) {
+          console.log(`[Startup] Waiting 30s before retry...`);
+          await new Promise((r) => setTimeout(r, 3e4));
+        }
+      }
     }
-  }, 6e4);
+  }, 9e4);
   startOfficialsRefreshScheduler();
   registerPrayerRoutes(app2);
   app2.get("/api/geojson/tx_house", (_req, res) => {
