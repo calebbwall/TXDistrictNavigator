@@ -28,9 +28,22 @@ function nameToSlug(fullName: string): string {
     .replace(/^-|-$/g, "");
 }
 
+function splitInitials(name: string): string {
+  return name.replace(/([A-Z])(?=[A-Z])/g, '$1 ');
+}
+
 function generateSlugVariants(fullName: string): string[] {
-  const cleanName = fullName.replace(/\./g, '').trim();
-  const parts = cleanName.split(/\s+/);
+  let cleanName = fullName.replace(/\./g, '').trim();
+  
+  const nicknameMatch = cleanName.match(/"([^"]+)"/);
+  const nickname = nicknameMatch ? nicknameMatch[1] : null;
+  cleanName = cleanName.replace(/"[^"]+"\s*/g, '').trim();
+  
+  const suffixMatch = cleanName.match(/,?\s*(Jr|Sr|III|IV|II|V)\.?\s*$/i);
+  const suffix = suffixMatch ? suffixMatch[1].toLowerCase() : null;
+  const nameWithoutSuffix = cleanName.replace(/,?\s*(Jr|Sr|III|IV|II|V)\.?\s*$/i, '').trim();
+  
+  const parts = nameWithoutSuffix.split(/\s+/);
   const slugs: string[] = [];
   
   if (parts.length >= 2) {
@@ -40,16 +53,46 @@ function generateSlugVariants(fullName: string): string[] {
     
     slugs.push(nameToSlug(`${firstName} ${lastName}`));
     
+    if (suffix) {
+      slugs.push(nameToSlug(`${firstName} ${lastName} ${suffix}`));
+    }
+    
+    if (/^[A-Z]{2,3}$/.test(firstName)) {
+      const splitFirst = splitInitials(firstName);
+      slugs.push(nameToSlug(`${splitFirst} ${lastName}`));
+      if (suffix) {
+        slugs.push(nameToSlug(`${splitFirst} ${lastName} ${suffix}`));
+      }
+    }
+    
+    if (nickname) {
+      slugs.push(nameToSlug(`${nickname} ${lastName}`));
+      if (suffix) {
+        slugs.push(nameToSlug(`${nickname} ${lastName} ${suffix}`));
+      }
+      if (middleParts.length > 0) {
+        slugs.push(nameToSlug(`${nickname} ${middleParts.join(' ')} ${lastName}`));
+      }
+    }
+    
     if (middleParts.length > 0) {
       slugs.push(nameToSlug(parts.join(' ')));
+      if (suffix) {
+        slugs.push(nameToSlug(`${parts.join(' ')} ${suffix}`));
+      }
       
       for (const middle of middleParts) {
         slugs.push(nameToSlug(`${firstName} ${middle} ${lastName}`));
       }
       
       if (middleParts.length === 1 && middleParts[0].length === 1) {
-        slugs.push(nameToSlug(`${firstName} ${middleParts[0]} ${lastName}`));
+        const expandedInitial = splitInitials(middleParts[0]);
+        slugs.push(nameToSlug(`${firstName} ${expandedInitial} ${lastName}`));
       }
+    }
+    
+    if (/^[A-Z]$/.test(firstName) && middleParts.length > 0) {
+      slugs.push(nameToSlug(`${middleParts[0]} ${lastName}`));
     }
   } else {
     slugs.push(nameToSlug(fullName));
