@@ -140,19 +140,3 @@ export async function bulkFillHometowns(): Promise<BulkFillResult> {
   return result;
 }
 
-if (typeof require !== 'undefined' && require.main === module) {
-  bulkFillHometowns()
-    .then(result => {
-      console.log("\n=== BULK FILL SUMMARY ===");
-      console.log(`Total officials: ${result.total}`);
-      console.log(`Filled: ${result.filled}`);
-      console.log(`Skipped (already had address): ${result.skipped}`);
-      console.log(`Not found in Tribune: ${result.notFound}`);
-      console.log(`Errors: ${result.errors}`);
-      process.exit(0);
-    })
-    .catch(err => {
-      console.error("Bulk fill failed:", err);
-      process.exit(1);
-    });
-}
