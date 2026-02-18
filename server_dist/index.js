@@ -422,6 +422,22 @@ function generateSlugVariants(fullName) {
   if (override) {
     return [override];
   }
+  const commaMatch = cleanName2.match(/^([^,]+),\s*(.+)$/);
+  if (commaMatch) {
+    let lastName = commaMatch[1].trim();
+    let restParts = commaMatch[2].trim();
+    const restSuffixMatch = restParts.match(/\s+(Jr|Sr|III|IV|II|V)\s*$/i);
+    let commaSuffix = "";
+    if (restSuffixMatch) {
+      commaSuffix = restSuffixMatch[1];
+      restParts = restParts.replace(/\s+(Jr|Sr|III|IV|II|V)\s*$/i, "").trim();
+    }
+    cleanName2 = commaSuffix ? `${restParts} ${lastName} ${commaSuffix}` : `${restParts} ${lastName}`;
+    const commaOverride = SLUG_OVERRIDES[cleanName2] || SLUG_OVERRIDES[cleanName2.replace(/"/g, "").trim()];
+    if (commaOverride) {
+      return [commaOverride];
+    }
+  }
   const nicknameMatch = cleanName2.match(/"([^"]+)"/);
   const nickname = nicknameMatch ? nicknameMatch[1] : null;
   cleanName2 = cleanName2.replace(/"[^"]+"\s*/g, "").trim();

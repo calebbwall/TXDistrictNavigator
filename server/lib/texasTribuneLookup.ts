@@ -97,9 +97,15 @@ function generateSlugVariants(fullName: string): string[] {
   
   const commaMatch = cleanName.match(/^([^,]+),\s*(.+)$/);
   if (commaMatch) {
-    const lastName = commaMatch[1].trim();
-    const restParts = commaMatch[2].trim();
-    cleanName = `${restParts} ${lastName}`;
+    let lastName = commaMatch[1].trim();
+    let restParts = commaMatch[2].trim();
+    const restSuffixMatch = restParts.match(/\s+(Jr|Sr|III|IV|II|V)\s*$/i);
+    let commaSuffix = '';
+    if (restSuffixMatch) {
+      commaSuffix = restSuffixMatch[1];
+      restParts = restParts.replace(/\s+(Jr|Sr|III|IV|II|V)\s*$/i, '').trim();
+    }
+    cleanName = commaSuffix ? `${restParts} ${lastName} ${commaSuffix}` : `${restParts} ${lastName}`;
     const commaOverride = SLUG_OVERRIDES[cleanName] || SLUG_OVERRIDES[cleanName.replace(/"/g, '').trim()];
     if (commaOverride) {
       return [commaOverride];
