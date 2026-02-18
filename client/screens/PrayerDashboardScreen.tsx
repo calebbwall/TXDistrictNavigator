@@ -252,7 +252,7 @@ export default function PrayerDashboardScreen() {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Feather name="alert-circle" size={18} color={theme.warning} style={{ marginRight: Spacing.sm }} />
-                <ThemedText type="h3">Needs Attention</ThemedText>
+                <ThemedText type="h3">Open Prayer Requests</ThemedText>
               </View>
             </View>
             {needsAttention.slice(0, 5).map((prayer) => (

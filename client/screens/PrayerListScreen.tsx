@@ -59,7 +59,7 @@ const STATUS_TABS = [
 const SORT_OPTIONS = [
   { key: "newest", label: "Newest" },
   { key: "oldest", label: "Oldest" },
-  { key: "needsAttention", label: "Needs Attention" },
+  { key: "needsAttention", label: "Open Prayer Requests" },
   { key: "recentlyAnswered", label: "Recently Answered" },
 ] as const;
 
