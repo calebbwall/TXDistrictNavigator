@@ -523,7 +523,7 @@ async function lookupHometownFromTexasTribune(fullName) {
         continue;
       }
       const html = await response.text();
-      if (html.includes("Page not found") || html.includes("404")) {
+      if (html.includes("Page not found") || html.includes("<title>404</title>")) {
         console.log(`[TexasTribune] ${slug}: Page not found`);
         continue;
       }
@@ -562,7 +562,7 @@ async function lookupHeadshotFromTexasTribune(fullName) {
       });
       if (!response.ok) continue;
       const html = await response.text();
-      if (html.includes("Page not found") || html.includes("404")) continue;
+      if (html.includes("Page not found") || html.includes("<title>404</title>")) continue;
       const photoUrl = parseHeadshotFromHtml(html);
       if (photoUrl) {
         console.log(`[TexasTribune] Found headshot for "${fullName}": ${photoUrl}`);
@@ -588,7 +588,16 @@ var init_texasTribuneLookup = __esm({
       "Rhetta Bowers": "rhetta-andrews-bowers",
       "Borris Miles": "borris-l-miles",
       "C\xE9sar Blanco": "cesar-j-blanco",
-      "Juan Hinojosa": "juan-chuy-hinojosa"
+      "Juan Hinojosa": "juan-chuy-hinojosa",
+      "Erin G\xE1mez": "erin-elizabeth-gamez",
+      "Armando Martinez": "armando-mando-martinez",
+      "Lulu Flores": "maria-luisa-flores",
+      "Liz Campos": "elizabeth-liz-campos",
+      "Sam Harless": "e-sam-harless",
+      "John Bucy III": "john-h-bucy-iii",
+      "Lauren A Simmons": "lauren-ashley-simmons",
+      "Steve Toth": "steve-toth",
+      "Shelley Luther": "shelley-luther"
     };
     FIRST_NAME_ALTERNATES = {
       "jeff": ["jeffrey"],

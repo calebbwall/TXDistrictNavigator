@@ -43,6 +43,15 @@ const SLUG_OVERRIDES: Record<string, string> = {
   'Borris Miles': 'borris-l-miles',
   'César Blanco': 'cesar-j-blanco',
   'Juan Hinojosa': 'juan-chuy-hinojosa',
+  'Erin Gámez': 'erin-elizabeth-gamez',
+  'Armando Martinez': 'armando-mando-martinez',
+  'Lulu Flores': 'maria-luisa-flores',
+  'Liz Campos': 'elizabeth-liz-campos',
+  'Sam Harless': 'e-sam-harless',
+  'John Bucy III': 'john-h-bucy-iii',
+  'Lauren A Simmons': 'lauren-ashley-simmons',
+  'Steve Toth': 'steve-toth',
+  'Shelley Luther': 'shelley-luther',
 };
 
 const FIRST_NAME_ALTERNATES: Record<string, string[]> = {
@@ -212,7 +221,7 @@ export async function lookupHometownFromTexasTribune(fullName: string): Promise<
       
       const html = await response.text();
       
-      if (html.includes("Page not found") || html.includes("404")) {
+      if (html.includes("Page not found") || html.includes("<title>404</title>")) {
         console.log(`[TexasTribune] ${slug}: Page not found`);
         continue;
       }
@@ -267,7 +276,7 @@ export async function lookupHeadshotFromTexasTribune(fullName: string): Promise<
       if (!response.ok) continue;
       
       const html = await response.text();
-      if (html.includes("Page not found") || html.includes("404")) continue;
+      if (html.includes("Page not found") || html.includes("<title>404</title>")) continue;
       
       const photoUrl = parseHeadshotFromHtml(html);
       if (photoUrl) {
