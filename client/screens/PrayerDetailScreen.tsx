@@ -14,6 +14,7 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -39,6 +40,16 @@ type Prayer = {
   priority: number;
   lastShownAt: string | null;
   lastPrayedAt: string | null;
+  eventDate: string | null;
+  autoAfterEventAction: string;
+  autoAfterEventDaysOffset: number;
+};
+
+type OfficialItem = {
+  id: string;
+  fullName: string;
+  source: string;
+  district: string;
 };
 
 type PrayerCategory = {
@@ -64,6 +75,11 @@ export default function PrayerDetailScreen() {
   const [priority, setPriority] = useState(0);
   const [hasChanges, setHasChanges] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [eventDate, setEventDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [autoAfterEventAction, setAutoAfterEventAction] = useState<"none" | "markAnswered" | "archive">("none");
+  const [autoAfterEventDaysOffset, setAutoAfterEventDaysOffset] = useState(0);
+  const [showAutoActionPicker, setShowAutoActionPicker] = useState(false);
 
   const { data: prayer, isLoading } = useQuery<Prayer>({
     queryKey: ["/api/prayers", prayerId],
@@ -73,6 +89,11 @@ export default function PrayerDetailScreen() {
     queryKey: ["/api/prayer-categories"],
   });
 
+  const { data: officialsData } = useQuery<{ officials: OfficialItem[] }>({
+    queryKey: ["/api/officials"],
+  });
+  const officialsMap = new Map((officialsData?.officials ?? []).map((o) => [o.id, o.fullName]));
+
   useEffect(() => {
     if (prayer) {
       setTitle(prayer.title);
@@ -80,9 +101,14 @@ export default function PrayerDetailScreen() {
       setCategoryId(prayer.categoryId);
       setPinnedDaily(prayer.pinnedDaily);
       setPriority(prayer.priority);
+      setEventDate(prayer.eventDate ? new Date(prayer.eventDate) : null);
+      setAutoAfterEventAction((prayer.autoAfterEventAction as "none" | "markAnswered" | "archive") || "none");
+      setAutoAfterEventDaysOffset(prayer.autoAfterEventDaysOffset || 0);
       setHasChanges(false);
     }
   }, [prayer]);
+
+  const autoActionLabel = autoAfterEventAction === "markAnswered" ? "Mark Answered" : autoAfterEventAction === "archive" ? "Archive" : "No Action";
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -93,6 +119,9 @@ export default function PrayerDetailScreen() {
         officialIds: prayer?.officialIds ?? [],
         pinnedDaily,
         priority,
+        eventDate: eventDate ? eventDate.toISOString() : null,
+        autoAfterEventAction,
+        autoAfterEventDaysOffset,
       });
     },
     onSuccess: () => {
@@ -398,13 +427,14 @@ export default function PrayerDetailScreen() {
         </ThemedText>
         <View style={styles.chipsContainer}>
           {prayer.officialIds.length > 0 ? (
-            prayer.officialIds.map((officialId) => (
+            prayer.officialIds.map((oid) => (
               <View
-                key={officialId}
-                style={[styles.chip, { backgroundColor: theme.backgroundSecondary }]}
+                key={oid}
+                style={[styles.chip, { backgroundColor: theme.primary + "12" }]}
               >
-                <ThemedText type="small" style={{ color: theme.text }}>
-                  {officialId}
+                <Feather name="user" size={12} color={theme.primary} style={{ marginRight: 4 }} />
+                <ThemedText type="small" style={{ color: theme.primary, fontWeight: "500" }}>
+                  {officialsMap.get(oid) || oid}
                 </ThemedText>
               </View>
             ))
@@ -414,15 +444,108 @@ export default function PrayerDetailScreen() {
             </ThemedText>
           )}
         </View>
-        {prayer.officialIds.length > 0 ? (
-          <ThemedText
-            type="small"
-            style={{ color: theme.secondaryText, marginTop: Spacing.xs }}
-          >
-            {prayer.officialIds.length} official(s) attached. Full search coming soon.
-          </ThemedText>
-        ) : null}
       </View>
+
+      <Card elevation={1} style={{ marginTop: Spacing.lg, padding: Spacing.md }}>
+        <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+          Event Date
+        </ThemedText>
+        <Pressable
+          style={[styles.dropdownButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Feather name="calendar" size={16} color={eventDate ? theme.warning : theme.secondaryText} style={{ marginRight: Spacing.sm }} />
+          <ThemedText type="body" style={{ color: eventDate ? theme.text : theme.secondaryText, flex: 1 }}>
+            {eventDate ? eventDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "No event date"}
+          </ThemedText>
+          {eventDate ? (
+            <Pressable onPress={() => { setEventDate(null); setAutoAfterEventAction("none"); markChanged(); }} hitSlop={8}>
+              <Feather name="x-circle" size={16} color={theme.secondaryText} />
+            </Pressable>
+          ) : null}
+        </Pressable>
+        {showDatePicker ? (
+          <DateTimePicker
+            value={eventDate || new Date()}
+            mode="date"
+            display={Platform.OS === "ios" ? "inline" : "default"}
+            onChange={(ev, date) => {
+              if (Platform.OS === "android") setShowDatePicker(false);
+              if (date) { setEventDate(date); markChanged(); }
+            }}
+            themeVariant="light"
+          />
+        ) : null}
+        {Platform.OS === "ios" && showDatePicker ? (
+          <Pressable onPress={() => setShowDatePicker(false)} style={{ alignSelf: "flex-end", marginTop: Spacing.xs }}>
+            <ThemedText type="body" style={{ color: theme.primary, fontWeight: "600" }}>Done</ThemedText>
+          </Pressable>
+        ) : null}
+
+        {eventDate ? (
+          <View style={{ marginTop: Spacing.md }}>
+            <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+              After Event
+            </ThemedText>
+            <Pressable
+              style={[styles.dropdownButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+              onPress={() => setShowAutoActionPicker(!showAutoActionPicker)}
+            >
+              <ThemedText type="body" style={{ color: theme.text, flex: 1 }}>
+                {autoActionLabel}
+              </ThemedText>
+              <Feather name={showAutoActionPicker ? "chevron-up" : "chevron-down"} size={18} color={theme.secondaryText} />
+            </Pressable>
+            {showAutoActionPicker ? (
+              <Card elevation={2} style={{ marginTop: Spacing.xs, padding: Spacing.sm }}>
+                {([
+                  { key: "none" as const, label: "No Action" },
+                  { key: "markAnswered" as const, label: "Mark Answered" },
+                  { key: "archive" as const, label: "Archive" },
+                ]).map((opt) => (
+                  <Pressable
+                    key={opt.key}
+                    style={[styles.categoryOption, autoAfterEventAction === opt.key ? { backgroundColor: theme.primary + "15" } : null]}
+                    onPress={() => { setAutoAfterEventAction(opt.key); setShowAutoActionPicker(false); markChanged(); }}
+                  >
+                    <ThemedText type="body" style={{ color: autoAfterEventAction === opt.key ? theme.primary : theme.text }}>
+                      {opt.label}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </Card>
+            ) : null}
+
+            {autoAfterEventAction !== "none" ? (
+              <View style={{ marginTop: Spacing.sm }}>
+                <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+                  Days after event to trigger ({autoAfterEventDaysOffset})
+                </ThemedText>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.sm }}>
+                  <Pressable
+                    onPress={() => { setAutoAfterEventDaysOffset(Math.max(0, autoAfterEventDaysOffset - 1)); markChanged(); }}
+                    style={[styles.stepperBtn, { borderColor: theme.border }]}
+                  >
+                    <Feather name="minus" size={16} color={theme.text} />
+                  </Pressable>
+                  <ThemedText type="body" style={{ minWidth: 30, textAlign: "center" }}>
+                    {autoAfterEventDaysOffset}
+                  </ThemedText>
+                  <Pressable
+                    onPress={() => { setAutoAfterEventDaysOffset(autoAfterEventDaysOffset + 1); markChanged(); }}
+                    style={[styles.stepperBtn, { borderColor: theme.border }]}
+                  >
+                    <Feather name="plus" size={16} color={theme.text} />
+                  </Pressable>
+                  <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+                    days after event
+                  </ThemedText>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </Card>
 
       <Card elevation={1} style={{ marginTop: Spacing.lg, padding: Spacing.md }}>
         <View style={styles.toggleRow}>
@@ -674,6 +797,14 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     minHeight: 48,
+  },
+  stepperBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   deleteRow: {
     flexDirection: "row",
