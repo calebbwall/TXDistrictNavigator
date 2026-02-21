@@ -1,0 +1,106 @@
+You are working on TXDistrictNavigator. Change the Prayers tab UI to a grouped “browse” model and keep all existing functionality (status, detail view, event dates, etc.).
+
+====================================================
+GOAL: REPLACE CATEGORY FILTER WITH GROUPED BROWSE
+====================================================
+
+Current:
+- Prayers tab has filtering options by category.
+Requested change:
+- Remove category filter chips/controls entirely from the main list.
+- Instead, add a “Browse by” toggle: Officials | Categories.
+- The Prayers tab should become a two-level navigation:
+   1) Choose status (Open / Answered / Archived / All)
+   2) Choose browse mode (Officials / Categories)
+   3) Show grouped list of Officials or Categories that have prayers in the selected status
+   4) Tap a group to drill into the prayers for that official/category
+
+====================================================
+REQUIRED UI/UX
+====================================================
+
+Prayers Tab layout:
+1) Top segmented control: Open | Answered | Archived | All
+2) Second segmented control: Officials | Categories
+
+When “Officials” is selected:
+- Show a list of officials that have prayers matching the selected status.
+- Each row shows:
+   - Official name
+   - Count badge (# of prayers in that status)
+   - Optional small subtitle: top 1–2 prayer titles (optional, only if easy)
+- Row is tappable -> navigates to a shared PrayerList screen:
+   PrayerListScreen({ filterOfficialId, status })
+
+When “Categories” is selected:
+- Show a list of categories that have prayers matching the selected status.
+- Each row shows:
+   - Category name (use “Uncategorized” bucket for null categoryId)
+   - Count badge
+- Row is tappable -> navigates to the same shared PrayerList screen:
+   PrayerListScreen({ filterCategoryId OR filterCategoryName, status })
+
+Important:
+- “All” status means include open+answered+archived.
+- The grouped list should not show officials/categories with zero prayers for that status.
+
+====================================================
+DRILL-IN: SHARED PRAYER LIST SCREEN
+====================================================
+
+Implement/ensure a single PrayerListScreen that can be used for:
+- Official bucket
+- Category bucket
+- (Optionally) no bucket = All prayers
+
+PrayerListScreen requirements:
+- Shows a header label/chip like:
+   "Open • Official: <Name>" or "Answered • Category: <Name>"
+- Shows list of prayers matching the chosen bucket + status.
+- Each prayer row MUST be tappable -> opens PrayerDetailScreen(prayerId).
+- Add Prayer CTA must exist and be visible.
+- If entering from an official bucket, Add Prayer preselects that official.
+- If entering from a category bucket, Add Prayer preselects that category.
+
+Navigation escape hatch:
+- User must always be able to return to the main Prayers tab easily via standard back nav.
+- No dead-end routes.
+
+====================================================
+KEEP EXISTING FEATURES
+====================================================
+
+- PrayerDetailScreen must exist:
+  - Open from any prayer list item tap
+  - Show full details and allow edits/status changes
+- Event date fields + optional auto status change logic must remain:
+  - eventDate, autoAfterEventAction, autoAfterEventDaysOffset
+  - Upcoming grouping can be kept INSIDE PrayerListScreen for Open status if desired,
+    but do NOT add category filter controls back.
+
+====================================================
+DATA / QUERY REQUIREMENTS
+====================================================
+
+- Implement efficient grouping:
+  - For selected status + browse mode:
+     - Return aggregated counts by official (or category)
+- Ensure the app supports:
+  - Uncategorized bucket (categoryId null)
+  - Many-to-many official linking (preferred) or one-to-many (if already used)
+
+====================================================
+OUTPUT REQUIRED
+====================================================
+
+1) Files changed (paths)
+2) What old UI controls were removed and what replaced them
+3) How grouping queries are implemented (where counts come from)
+4) Confirm prayer rows are tappable and open PrayerDetail
+5) Manual test checklist:
+   - Open -> Officials list shows only officials with open prayers + counts
+   - Open -> Categories list shows only categories with open prayers + counts (includes Uncategorized if needed)
+   - Tap an official/category -> PrayerListScreen shows correct prayers
+   - Tap a prayer -> PrayerDetail opens
+   - Back returns correctly to Prayers tab
+   - Add Prayer works from both main tab and bucket screens

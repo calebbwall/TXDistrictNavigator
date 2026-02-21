@@ -346,6 +346,61 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
+  app.get("/api/prayers/grouped", async (req, res) => {
+    try {
+      const { status, groupBy } = req.query;
+      const conditions: any[] = [];
+      if (status && status !== "ALL") {
+        conditions.push(eq(prayers.status, status as "OPEN" | "ANSWERED" | "ARCHIVED"));
+      }
+
+      const allPrayers = await db.select().from(prayers)
+        .where(conditions.length > 0 ? and(...conditions) : undefined);
+
+      if (groupBy === "officials") {
+        const officialCounts = new Map<string, number>();
+        for (const p of allPrayers) {
+          const ids = (p.officialIds as string[]) || [];
+          if (ids.length === 0) {
+            officialCounts.set("__none__", (officialCounts.get("__none__") || 0) + 1);
+          } else {
+            for (const oid of ids) {
+              officialCounts.set(oid, (officialCounts.get(oid) || 0) + 1);
+            }
+          }
+        }
+        const groups = Array.from(officialCounts.entries()).map(([id, count]) => ({
+          id,
+          name: id === "__none__" ? "No Official" : id,
+          count,
+        }));
+        groups.sort((a, b) => b.count - a.count);
+        return res.json({ groupBy: "officials", groups });
+      }
+
+      if (groupBy === "categories") {
+        const cats = await db.select().from(prayerCategories);
+        const catMap = new Map(cats.map(c => [c.id, c.name]));
+        const categoryCounts = new Map<string, number>();
+        for (const p of allPrayers) {
+          const key = p.categoryId || "__uncategorized__";
+          categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
+        }
+        const groups = Array.from(categoryCounts.entries()).map(([id, count]) => ({
+          id,
+          name: id === "__uncategorized__" ? "Uncategorized" : (catMap.get(id) || id),
+          count,
+        }));
+        groups.sort((a, b) => b.count - a.count);
+        return res.json({ groupBy: "categories", groups });
+      }
+
+      res.status(400).json({ error: "groupBy must be 'officials' or 'categories'" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/prayers/upcoming", async (req, res) => {
     try {
       const result = await db.select().from(prayers)
