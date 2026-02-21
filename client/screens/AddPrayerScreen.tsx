@@ -48,13 +48,13 @@ export default function AddPrayerScreen() {
   const route = useRoute();
   const queryClient = useQueryClient();
 
-  const params = route.params as { officialId?: string; officialName?: string } | undefined;
+  const params = route.params as { officialId?: string; officialName?: string; categoryId?: string; categoryName?: string } | undefined;
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [pinnedDaily, setPinnedDaily] = useState(false);
   const [priority, setPriority] = useState(0);
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [categoryId, setCategoryId] = useState<string | null>(params?.categoryId || null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [selectedOfficialIds, setSelectedOfficialIds] = useState<string[]>(
     params?.officialId ? [params.officialId] : []

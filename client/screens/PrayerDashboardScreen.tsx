@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   StyleSheet,
   View,
@@ -50,11 +50,33 @@ type StreakResponse = {
   lastCompletedDateKey: string | null;
 };
 
-type PrayerCategory = {
+type GroupItem = {
   id: string;
   name: string;
-  sortOrder: number;
+  count: number;
 };
+
+type GroupedResponse = {
+  groupBy: string;
+  groups: GroupItem[];
+};
+
+type OfficialItem = {
+  id: string;
+  fullName: string;
+};
+
+const STATUS_TABS = [
+  { key: "OPEN", label: "Open" },
+  { key: "ANSWERED", label: "Answered" },
+  { key: "ARCHIVED", label: "Archived" },
+  { key: "ALL", label: "All" },
+] as const;
+
+const BROWSE_MODES = [
+  { key: "officials", label: "Officials" },
+  { key: "categories", label: "Categories" },
+] as const;
 
 function getTodayDateKey(): string {
   const localeStr = new Date().toLocaleDateString("en-US", { timeZone: "America/Chicago" });
@@ -74,6 +96,9 @@ export default function PrayerDashboardScreen() {
   let tabBarHeight = 0;
   try { tabBarHeight = useBottomTabBarHeight(); } catch { tabBarHeight = 0; }
 
+  const [statusTab, setStatusTab] = useState<string>("OPEN");
+  const [browseMode, setBrowseMode] = useState<string>("officials");
+
   const { data: dailyPicks, isLoading: dailyLoading, refetch: refetchDaily } = useQuery<DailyPicksResponse>({
     queryKey: ["/api/daily-prayer-picks"],
   });
@@ -82,34 +107,22 @@ export default function PrayerDashboardScreen() {
     queryKey: ["/api/prayer-streak"],
   });
 
-  const { data: needsAttention = [], refetch: refetchAttention } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers/needs-attention"],
+  const groupedUrl = `/api/prayers/grouped?status=${statusTab}&groupBy=${browseMode}`;
+  const { data: groupedData, isLoading: groupedLoading, refetch: refetchGrouped } = useQuery<GroupedResponse>({
+    queryKey: [groupedUrl],
   });
 
-  const { data: recentlyAnswered = [], refetch: refetchAnswered } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers/recently-answered"],
+  const { data: officialsData } = useQuery<{ officials: OfficialItem[] }>({
+    queryKey: ["/api/officials"],
   });
-
-  const { data: categories = [], refetch: refetchCategories } = useQuery<PrayerCategory[]>({
-    queryKey: ["/api/prayer-categories"],
-  });
-
-  const { data: openPrayers = [] } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers?status=OPEN"],
-  });
-
-  const { data: archivedPrayers = [] } = useQuery<Prayer[]>({
-    queryKey: ["/api/prayers?status=ARCHIVED"],
-  });
+  const officialsMap = new Map((officialsData?.officials ?? []).map((o) => [o.id, o.fullName]));
 
   useFocusEffect(
     useCallback(() => {
       refetchDaily();
       refetchStreak();
-      refetchAttention();
-      refetchAnswered();
-      refetchCategories();
-    }, [refetchDaily, refetchStreak, refetchAttention, refetchAnswered, refetchCategories])
+      refetchGrouped();
+    }, [refetchDaily, refetchStreak, refetchGrouped])
   );
 
   const completeTodayMutation = useMutation({
@@ -121,34 +134,49 @@ export default function PrayerDashboardScreen() {
     },
   });
 
-  const reopenMutation = useMutation({
-    mutationFn: async (prayerId: string) => {
-      await apiRequest("POST", `/api/prayers/${prayerId}/reopen`);
-    },
-    onSuccess: () => {
-      invalidatePrayerQueries(queryClient);
-    },
-  });
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "";
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  };
-
   const getFirstLine = (body: string) => {
     const line = body.split("\n")[0];
     return line.length > 80 ? line.substring(0, 80) + "..." : line;
   };
 
-  const getCategoryCount = (categoryId: string) => {
-    return openPrayers.filter((p) => p.categoryId === categoryId).length;
-  };
-
-  const uncategorizedCount = openPrayers.filter((p) => !p.categoryId).length;
-
   const todayKey = getTodayDateKey();
   const completedToday = streak ? streak.lastCompletedDateKey === todayKey : false;
+
+  const groups = groupedData?.groups ?? [];
+
+  const handleGroupPress = (group: GroupItem) => {
+    if (browseMode === "officials") {
+      if (group.id === "__none__") {
+        navigation.navigate("PrayerList", { status: statusTab });
+      } else {
+        const officialName = officialsMap.get(group.id) || group.name;
+        navigation.navigate("PrayerList", {
+          status: statusTab,
+          officialId: group.id,
+          officialName,
+        });
+      }
+    } else {
+      if (group.id === "__uncategorized__") {
+        navigation.navigate("PrayerList", {
+          status: statusTab,
+          categoryId: "uncategorized",
+          categoryName: "Uncategorized",
+        });
+      } else {
+        navigation.navigate("PrayerList", {
+          status: statusTab,
+          categoryId: group.id,
+          categoryName: group.name,
+        });
+      }
+    }
+  };
+
+  const resolveOfficialName = (group: GroupItem) => {
+    if (group.id === "__none__") return "No Official";
+    return officialsMap.get(group.id) || group.id.substring(0, 8) + "...";
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -247,159 +275,125 @@ export default function PrayerDashboardScreen() {
           )}
         </View>
 
-        {needsAttention.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <Feather name="alert-circle" size={18} color={theme.warning} style={{ marginRight: Spacing.sm }} />
-                <ThemedText type="h3">Open Prayer Requests</ThemedText>
-              </View>
-            </View>
-            {needsAttention.slice(0, 5).map((prayer) => (
-              <Pressable
-                key={prayer.id}
-                style={[styles.attentionRow, { borderBottomColor: theme.border }]}
-                onPress={() => navigation.navigate("PrayerDetail", { prayerId: prayer.id })}
-              >
-                <View style={{ flex: 1, marginRight: Spacing.sm }}>
-                  <ThemedText type="body" numberOfLines={1}>{prayer.title}</ThemedText>
-                  <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }} numberOfLines={1}>
-                    {getFirstLine(prayer.body)}
-                  </ThemedText>
-                </View>
-                <Pressable
-                  style={[styles.prayButton, { backgroundColor: theme.primary }]}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    navigation.navigate("FocusedMode", {
-                      prayerIds: [prayer.id],
-                      startIndex: 0,
-                    });
-                  }}
-                >
-                  <ThemedText type="small" style={{ color: theme.buttonText, fontWeight: "600" }}>
-                    Pray
-                  </ThemedText>
-                </Pressable>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-
-        {recentlyAnswered.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <Feather name="check-circle" size={18} color={theme.success} style={{ marginRight: Spacing.sm }} />
-                <ThemedText type="h3">Recently Answered</ThemedText>
-              </View>
-            </View>
-            {recentlyAnswered.slice(0, 5).map((prayer) => (
-              <Pressable
-                key={prayer.id}
-                style={[styles.answeredRow, { borderBottomColor: theme.border }]}
-                onPress={() => navigation.navigate("PrayerDetail", { prayerId: prayer.id })}
-              >
-                <View style={{ flex: 1, marginRight: Spacing.sm }}>
-                  <ThemedText type="body" numberOfLines={1}>
-                    {prayer.title}
-                  </ThemedText>
-                  {prayer.answerNote ? (
-                    <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }} numberOfLines={1}>
-                      {prayer.answerNote}
-                    </ThemedText>
-                  ) : null}
-                </View>
-                <View style={styles.answeredActions}>
-                  <ThemedText type="caption" style={{ color: theme.success, marginRight: Spacing.sm }}>
-                    {formatDate(prayer.answeredAt)}
-                  </ThemedText>
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      reopenMutation.mutate(prayer.id);
-                    }}
-                    style={({ pressed }) => [
-                      styles.reopenButton,
-                      { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 },
-                    ]}
-                  >
-                    <ThemedText type="small" style={{ color: theme.primary, fontWeight: "600" }}>
-                      Reopen
-                    </ThemedText>
-                  </Pressable>
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Feather name="folder" size={18} color={theme.secondaryText} style={{ marginRight: Spacing.sm }} />
-              <ThemedText type="h3">Categories</ThemedText>
-            </View>
-          </View>
-          {categories.length > 0 ? (
-            <View>
-              {categories.map((cat) => {
-                const count = getCategoryCount(cat.id);
-                return (
-                  <Pressable
-                    key={cat.id}
-                    style={[styles.categoryRow, { borderBottomColor: theme.border }]}
-                    onPress={() => navigation.navigate("AllPrayers", { categoryId: cat.id })}
-                  >
-                    <ThemedText type="body">{cat.name}</ThemedText>
-                    <View style={styles.categoryRight}>
-                      <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-                        {count} open
-                      </ThemedText>
-                      <Feather name="chevron-right" size={16} color={theme.secondaryText} />
-                    </View>
-                  </Pressable>
-                );
-              })}
-              {uncategorizedCount > 0 ? (
-                <Pressable
-                  style={[styles.categoryRow, { borderBottomColor: theme.border }]}
-                  onPress={() => navigation.navigate("AllPrayers", {})}
-                >
-                  <ThemedText type="body" style={{ color: theme.secondaryText }}>Uncategorized</ThemedText>
-                  <View style={styles.categoryRight}>
-                    <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-                      {uncategorizedCount} open
-                    </ThemedText>
-                    <Feather name="chevron-right" size={16} color={theme.secondaryText} />
-                  </View>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : (
-            <ThemedText type="small" style={{ color: theme.secondaryText, paddingVertical: Spacing.md }}>
-              No categories yet.{" "}
-              <ThemedText
-                type="small"
-                style={{ color: theme.primary, fontWeight: "600" }}
-                onPress={() => navigation.navigate("ManageCategories")}
+          <View style={styles.segmentedRow}>
+            {STATUS_TABS.map((tab) => (
+              <Pressable
+                key={tab.key}
+                style={[
+                  styles.segmentItem,
+                  {
+                    backgroundColor: statusTab === tab.key ? theme.primary : "transparent",
+                    borderColor: theme.border,
+                  },
+                ]}
+                onPress={() => setStatusTab(tab.key)}
               >
-                Create one.
-              </ThemedText>
-            </ThemedText>
-          )}
+                <ThemedText
+                  type="caption"
+                  style={{
+                    color: statusTab === tab.key ? theme.buttonText : theme.text,
+                    fontWeight: statusTab === tab.key ? "700" : "400",
+                  }}
+                >
+                  {tab.label}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={[styles.segmentedRow, { marginTop: Spacing.sm }]}>
+            {BROWSE_MODES.map((mode) => (
+              <Pressable
+                key={mode.key}
+                style={[
+                  styles.browseSegmentItem,
+                  {
+                    backgroundColor: browseMode === mode.key ? theme.backgroundSecondary : "transparent",
+                    borderColor: browseMode === mode.key ? theme.primary : theme.border,
+                    borderWidth: browseMode === mode.key ? 1.5 : 1,
+                  },
+                ]}
+                onPress={() => setBrowseMode(mode.key)}
+              >
+                <Feather
+                  name={mode.key === "officials" ? "users" : "folder"}
+                  size={14}
+                  color={browseMode === mode.key ? theme.primary : theme.secondaryText}
+                  style={{ marginRight: Spacing.xs }}
+                />
+                <ThemedText
+                  type="caption"
+                  style={{
+                    color: browseMode === mode.key ? theme.primary : theme.text,
+                    fontWeight: browseMode === mode.key ? "700" : "400",
+                  }}
+                >
+                  {mode.label}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
-        <ThemedText type="caption" style={{ color: theme.secondaryText, textAlign: "center", marginBottom: Spacing.md }}>
-          Archived: {archivedPrayers.length} total
-        </ThemedText>
+        <View style={styles.section}>
+          {groupedLoading ? (
+            <ActivityIndicator style={{ paddingVertical: Spacing.lg }} />
+          ) : groups.length === 0 ? (
+            <View style={{ paddingVertical: Spacing.xl, alignItems: "center" }}>
+              <Feather
+                name={browseMode === "officials" ? "users" : "folder"}
+                size={32}
+                color={theme.secondaryText}
+                style={{ marginBottom: Spacing.sm }}
+              />
+              <ThemedText type="body" style={{ color: theme.secondaryText, textAlign: "center" }}>
+                No {browseMode === "officials" ? "officials" : "categories"} with {statusTab === "ALL" ? "" : statusTab.toLowerCase() + " "}prayers
+              </ThemedText>
+            </View>
+          ) : (
+            groups.map((group) => (
+              <Pressable
+                key={group.id}
+                style={[styles.groupRow, { borderBottomColor: theme.border }]}
+                onPress={() => handleGroupPress(group)}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: Spacing.sm }}>
+                  <View style={[styles.groupIcon, { backgroundColor: theme.primary + "12" }]}>
+                    <Feather
+                      name={browseMode === "officials" ? "user" : "tag"}
+                      size={14}
+                      color={theme.primary}
+                    />
+                  </View>
+                  <ThemedText type="body" style={{ flex: 1, fontWeight: "500" }} numberOfLines={1}>
+                    {browseMode === "officials" ? resolveOfficialName(group) : group.name}
+                  </ThemedText>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View style={[styles.countBadge, { backgroundColor: theme.primary + "18" }]}>
+                    <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "700" }}>
+                      {group.count}
+                    </ThemedText>
+                  </View>
+                  <Feather name="chevron-right" size={16} color={theme.secondaryText} />
+                </View>
+              </Pressable>
+            ))
+          )}
 
-        <Button
-          onPress={() => navigation.navigate("AllPrayers", {})}
-          style={{ marginBottom: Spacing.lg }}
-        >
-          View All Prayers
-        </Button>
+          <Pressable
+            style={[styles.viewAllRow]}
+            onPress={() => navigation.navigate("AllPrayers", {})}
+          >
+            <ThemedText type="body" style={{ color: theme.primary, fontWeight: "600" }}>
+              View All Prayers
+            </ThemedText>
+            <Feather name="arrow-right" size={16} color={theme.primary} />
+          </Pressable>
+        </View>
       </ScrollView>
 
       <Pressable
@@ -407,7 +401,7 @@ export default function PrayerDashboardScreen() {
           styles.fab,
           { backgroundColor: theme.primary, bottom: tabBarHeight + Spacing.lg },
         ]}
-        onPress={() => navigation.navigate("AddPrayer")}
+        onPress={() => navigation.navigate("AddPrayer", {})}
       >
         <Feather name="plus" size={24} color={theme.buttonText} />
       </Pressable>
@@ -462,44 +456,59 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     paddingVertical: Spacing.sm,
   },
-  attentionRow: {
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: Spacing.sm,
+  },
+  segmentedRow: {
     flexDirection: "row",
-    alignItems: "center",
+    gap: Spacing.xs,
+  },
+  segmentItem: {
+    flex: 1,
     paddingVertical: Spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  prayButton: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs + 2,
-    borderRadius: BorderRadius.full,
-  },
-  answeredRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  answeredActions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  reopenButton: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.md,
     borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  categoryRow: {
+  browseSegmentItem: {
+    flex: 1,
+    flexDirection: "row",
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  groupRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: Spacing.sm + 2,
+    paddingVertical: Spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  categoryRight: {
+  groupIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.sm,
+  },
+  countBadge: {
+    minWidth: 28,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.xs,
+    marginRight: Spacing.xs,
+  },
+  viewAllRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.lg,
     gap: Spacing.xs,
   },
   fab: {

@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  ScrollView,
   Linking,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -76,17 +75,15 @@ export default function PrayerListScreen() {
   const queryClient = useQueryClient();
 
   const routeParams = route.params as
-    | { status?: string; officialId?: string; officialName?: string; categoryId?: string }
+    | { status?: string; officialId?: string; officialName?: string; categoryId?: string; categoryName?: string }
     | undefined;
   const initialStatus = routeParams?.status || "OPEN";
   const officialId = routeParams?.officialId;
   const officialName = routeParams?.officialName;
-  const initialCategoryId = routeParams?.categoryId;
+  const routeCategoryId = routeParams?.categoryId;
+  const routeCategoryName = routeParams?.categoryName;
 
   const [activeTab, setActiveTab] = useState(initialStatus);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
-    initialCategoryId || null
-  );
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("newest");
@@ -142,10 +139,10 @@ export default function PrayerListScreen() {
   if (activeTab !== "ALL") queryParams.set("status", activeTab);
   if (debouncedSearch) queryParams.set("q", debouncedSearch);
   if (officialId) queryParams.set("officialId", officialId);
-  if (selectedCategoryId === "UNCATEGORIZED") {
+  if (routeCategoryId === "uncategorized") {
     queryParams.set("categoryId", "uncategorized");
-  } else if (selectedCategoryId) {
-    queryParams.set("categoryId", selectedCategoryId);
+  } else if (routeCategoryId) {
+    queryParams.set("categoryId", routeCategoryId);
   }
   if (sortKey === "needsAttention") queryParams.set("sort", "needsAttention");
 
@@ -556,12 +553,19 @@ export default function PrayerListScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <View style={{ paddingTop: headerHeight + Spacing.sm, paddingHorizontal: Spacing.md }}>
-        {officialName ? (
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm }}>
+        {officialName || routeCategoryName ? (
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm, flexWrap: "wrap", gap: Spacing.xs }}>
+            {activeTab !== "ALL" ? (
+              <View style={[styles.officialFilterChip, { backgroundColor: theme.success + "15" }]}>
+                <ThemedText type="caption" style={{ color: theme.success, fontWeight: "600" }}>
+                  {getStatusLabel(activeTab)}
+                </ThemedText>
+              </View>
+            ) : null}
             <View style={[styles.officialFilterChip, { backgroundColor: theme.primary + "15" }]}>
-              <Feather name="user" size={14} color={theme.primary} />
+              <Feather name={officialName ? "user" : "tag"} size={14} color={theme.primary} />
               <ThemedText type="caption" style={{ color: theme.primary, marginLeft: Spacing.xs, fontWeight: "600" }}>
-                {officialName}
+                {officialName || routeCategoryName}
               </ThemedText>
               <Pressable
                 onPress={() => navigation.goBack()}
@@ -574,7 +578,7 @@ export default function PrayerListScreen() {
           </View>
         ) : null}
 
-        {officialId ? null : (
+        {!officialId && !routeCategoryId ? (
           <View style={styles.tabRow}>
             {STATUS_TABS.map((tab) => (
               <Pressable
@@ -600,81 +604,7 @@ export default function PrayerListScreen() {
               </Pressable>
             ))}
           </View>
-        )}
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoryRow}
-          contentContainerStyle={{ gap: Spacing.sm, paddingRight: Spacing.md }}
-        >
-          <Pressable
-            style={[
-              styles.categoryChip,
-              {
-                backgroundColor: selectedCategoryId === null ? theme.primary : "transparent",
-                borderColor: theme.border,
-              },
-            ]}
-            onPress={() => setSelectedCategoryId(null)}
-          >
-            <ThemedText
-              type="small"
-              style={{
-                color: selectedCategoryId === null ? theme.buttonText : theme.text,
-                fontWeight: selectedCategoryId === null ? "600" : "400",
-              }}
-            >
-              All
-            </ThemedText>
-          </Pressable>
-          {categories.map((cat) => (
-            <Pressable
-              key={cat.id}
-              style={[
-                styles.categoryChip,
-                {
-                  backgroundColor:
-                    selectedCategoryId === cat.id ? theme.primary : "transparent",
-                  borderColor: theme.border,
-                },
-              ]}
-              onPress={() => setSelectedCategoryId(cat.id)}
-            >
-              <ThemedText
-                type="small"
-                style={{
-                  color: selectedCategoryId === cat.id ? theme.buttonText : theme.text,
-                  fontWeight: selectedCategoryId === cat.id ? "600" : "400",
-                }}
-              >
-                {cat.name}
-              </ThemedText>
-            </Pressable>
-          ))}
-          <Pressable
-            style={[
-              styles.categoryChip,
-              {
-                backgroundColor:
-                  selectedCategoryId === "UNCATEGORIZED" ? theme.primary : "transparent",
-                borderColor: theme.border,
-              },
-            ]}
-            onPress={() => setSelectedCategoryId("UNCATEGORIZED")}
-          >
-            <ThemedText
-              type="small"
-              style={{
-                color:
-                  selectedCategoryId === "UNCATEGORIZED" ? theme.buttonText : theme.text,
-                fontWeight: selectedCategoryId === "UNCATEGORIZED" ? "600" : "400",
-              }}
-            >
-              Uncategorized
-            </ThemedText>
-          </Pressable>
-        </ScrollView>
+        ) : null}
 
         <View style={styles.searchRow}>
           <View
@@ -740,13 +670,15 @@ export default function PrayerListScreen() {
                   ? "No matches. Try fewer words."
                   : officialId
                     ? "No prayers for this official yet."
-                    : activeTab === "OPEN"
-                      ? "No active prayers yet.\nTap + to add your first prayer."
-                      : activeTab === "ANSWERED"
-                        ? "No answered prayers yet."
-                        : activeTab === "ARCHIVED"
-                          ? "No archived prayers."
-                          : "No prayers found."}
+                    : routeCategoryId
+                      ? "No prayers in this category yet."
+                      : activeTab === "OPEN"
+                        ? "No active prayers yet.\nTap + to add your first prayer."
+                        : activeTab === "ANSWERED"
+                          ? "No answered prayers yet."
+                          : activeTab === "ARCHIVED"
+                            ? "No archived prayers."
+                            : "No prayers found."}
               </ThemedText>
             </View>
           }
@@ -762,12 +694,12 @@ export default function PrayerListScreen() {
             styles.fab,
             { backgroundColor: theme.primary, bottom: tabBarHeight + Spacing.lg },
           ]}
-          onPress={() =>
-            navigation.navigate(
-              "AddPrayer",
-              officialId ? { officialId, officialName } : undefined
-            )
-          }
+          onPress={() => {
+            const addParams: any = {};
+            if (officialId) { addParams.officialId = officialId; addParams.officialName = officialName; }
+            if (routeCategoryId && routeCategoryId !== "uncategorized") { addParams.categoryId = routeCategoryId; addParams.categoryName = routeCategoryName; }
+            navigation.navigate("AddPrayer", Object.keys(addParams).length > 0 ? addParams : undefined);
+          }}
         >
           <Feather name="plus" size={24} color={theme.buttonText} />
         </Pressable>
@@ -786,16 +718,6 @@ const styles = StyleSheet.create({
   tab: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs + 2,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-  },
-  categoryRow: {
-    marginBottom: Spacing.sm,
-    maxHeight: 36,
-  },
-  categoryChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
   },

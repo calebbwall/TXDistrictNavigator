@@ -17,9 +17,20 @@ import { useTheme } from "@/hooks/useTheme";
 
 export type PrayerStackParamList = {
   PrayerDashboard: undefined;
-  PrayerList: { status?: string; officialId?: string; officialName?: string } | undefined;
+  PrayerList: {
+    status?: string;
+    officialId?: string;
+    officialName?: string;
+    categoryId?: string;
+    categoryName?: string;
+  } | undefined;
   AllPrayers: { categoryId?: string } | undefined;
-  AddPrayer: { officialId?: string; officialName?: string } | undefined;
+  AddPrayer: {
+    officialId?: string;
+    officialName?: string;
+    categoryId?: string;
+    categoryName?: string;
+  } | undefined;
   PrayerDetail: { prayerId: string };
   FocusedMode: { prayerIds: string[]; startIndex: number };
   ManageCategories: undefined;
