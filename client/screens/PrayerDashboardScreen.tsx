@@ -306,29 +306,52 @@ export default function PrayerDashboardScreen() {
 
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
-        {nextUpcoming ? (
-          <Card
-            elevation={1}
-            style={styles.upcomingCard}
-            onPress={() => navigation.navigate("PrayerDetail", { prayerId: nextUpcoming.id })}
-          >
-            <View style={styles.upcomingHeader}>
-              <View style={[styles.upcomingIcon, { backgroundColor: theme.warning + "18" }]}>
-                <Feather name="calendar" size={16} color={theme.warning} />
-              </View>
-              <ThemedText type="caption" style={{ color: theme.warning, fontWeight: "700", flex: 1 }}>
-                Next Upcoming Event
-              </ThemedText>
-              <Feather name="chevron-right" size={16} color={theme.secondaryText} />
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Feather name="calendar" size={18} color={theme.warning} style={{ marginRight: Spacing.sm }} />
+              <ThemedText type="h3">Upcoming Events</ThemedText>
             </View>
-            <ThemedText type="body" style={{ fontWeight: "600", marginTop: Spacing.sm }} numberOfLines={1}>
-              {nextUpcoming.title}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: 4 }}>
-              {formatEventDate(nextUpcoming.eventDate!)}
-            </ThemedText>
-          </Card>
-        ) : null}
+            <Pressable
+              onPress={() => navigation.navigate("UpcomingEvents")}
+              style={{ flexDirection: "row", alignItems: "center" }}
+            >
+              <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600", marginRight: 4 }}>
+                View All
+              </ThemedText>
+              <Feather name="arrow-right" size={14} color={theme.primary} />
+            </Pressable>
+          </View>
+
+          {nextUpcoming ? (
+            <Card
+              elevation={1}
+              style={styles.upcomingCard}
+              onPress={() => navigation.navigate("PrayerDetail", { prayerId: nextUpcoming.id })}
+            >
+              <View style={styles.upcomingHeader}>
+                <View style={[styles.upcomingIcon, { backgroundColor: theme.warning + "18" }]}>
+                  <Feather name="calendar" size={16} color={theme.warning} />
+                </View>
+                <ThemedText type="body" style={{ fontWeight: "600", flex: 1 }} numberOfLines={1}>
+                  {nextUpcoming.title}
+                </ThemedText>
+                <Feather name="chevron-right" size={16} color={theme.secondaryText} />
+              </View>
+              <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: 4, marginLeft: 40 }}>
+                {formatEventDate(nextUpcoming.eventDate!)}
+              </ThemedText>
+            </Card>
+          ) : (
+            <View style={{ paddingVertical: Spacing.md, alignItems: "center" }}>
+              <ThemedText type="caption" style={{ color: theme.secondaryText, textAlign: "center" }}>
+                No upcoming events. Set event dates on your prayers to track them here.
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
         <View style={styles.section}>
           <View style={styles.segmentedRow}>

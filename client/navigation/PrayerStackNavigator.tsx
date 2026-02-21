@@ -11,6 +11,7 @@ import FocusedModeScreen from "@/screens/FocusedModeScreen";
 import ManageCategoriesScreen from "@/screens/ManageCategoriesScreen";
 import PrayerSettingsScreen from "@/screens/PrayerSettingsScreen";
 import PrayerDiagnosticsScreen from "@/screens/PrayerDiagnosticsScreen";
+import UpcomingEventsScreen from "@/screens/UpcomingEventsScreen";
 import { ThemedText } from "@/components/ThemedText";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useTheme } from "@/hooks/useTheme";
@@ -33,6 +34,7 @@ export type PrayerStackParamList = {
   } | undefined;
   PrayerDetail: { prayerId: string };
   FocusedMode: { prayerIds: string[]; startIndex: number };
+  UpcomingEvents: undefined;
   ManageCategories: undefined;
   PrayerSettings: undefined;
   PrayerDiagnostics: undefined;
@@ -119,6 +121,13 @@ export default function PrayerStackNavigator() {
         options={{
           headerShown: false,
           presentation: "fullScreenModal",
+        }}
+      />
+      <Stack.Screen
+        name="UpcomingEvents"
+        component={UpcomingEventsScreen}
+        options={{
+          headerTitle: "Upcoming Events",
         }}
       />
       <Stack.Screen
