@@ -36,6 +36,7 @@ type Prayer = {
   priority: number;
   lastShownAt: string | null;
   lastPrayedAt: string | null;
+  eventDate: string | null;
 };
 
 type DailyPicksResponse = {
@@ -112,6 +113,10 @@ export default function PrayerDashboardScreen() {
     queryKey: [groupedUrl],
   });
 
+  const { data: upcomingPrayers = [], refetch: refetchUpcoming } = useQuery<Prayer[]>({
+    queryKey: ["/api/prayers/upcoming"],
+  });
+
   const { data: officialsData } = useQuery<{ officials: OfficialItem[] }>({
     queryKey: ["/api/officials"],
   });
@@ -122,7 +127,8 @@ export default function PrayerDashboardScreen() {
       refetchDaily();
       refetchStreak();
       refetchGrouped();
-    }, [refetchDaily, refetchStreak, refetchGrouped])
+      refetchUpcoming();
+    }, [refetchDaily, refetchStreak, refetchGrouped, refetchUpcoming])
   );
 
   const completeTodayMutation = useMutation({
@@ -141,6 +147,29 @@ export default function PrayerDashboardScreen() {
 
   const todayKey = getTodayDateKey();
   const completedToday = streak ? streak.lastCompletedDateKey === todayKey : false;
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const nextUpcoming = upcomingPrayers.find((p) => {
+    if (!p.eventDate) return false;
+    const d = new Date(p.eventDate);
+    d.setHours(0, 0, 0, 0);
+    return d >= now;
+  });
+
+  const formatEventDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const eventDay = new Date(d);
+    eventDay.setHours(0, 0, 0, 0);
+    const diffMs = eventDay.getTime() - today.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    const formatted = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    if (diffDays === 0) return `Today, ${formatted}`;
+    if (diffDays === 1) return `Tomorrow, ${formatted}`;
+    return `In ${diffDays} days, ${formatted}`;
+  };
 
   const groups = groupedData?.groups ?? [];
 
@@ -276,6 +305,30 @@ export default function PrayerDashboardScreen() {
         </View>
 
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+        {nextUpcoming ? (
+          <Card
+            elevation={1}
+            style={styles.upcomingCard}
+            onPress={() => navigation.navigate("PrayerDetail", { prayerId: nextUpcoming.id })}
+          >
+            <View style={styles.upcomingHeader}>
+              <View style={[styles.upcomingIcon, { backgroundColor: theme.warning + "18" }]}>
+                <Feather name="calendar" size={16} color={theme.warning} />
+              </View>
+              <ThemedText type="caption" style={{ color: theme.warning, fontWeight: "700", flex: 1 }}>
+                Next Upcoming Event
+              </ThemedText>
+              <Feather name="chevron-right" size={16} color={theme.secondaryText} />
+            </View>
+            <ThemedText type="body" style={{ fontWeight: "600", marginTop: Spacing.sm }} numberOfLines={1}>
+              {nextUpcoming.title}
+            </ThemedText>
+            <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: 4 }}>
+              {formatEventDate(nextUpcoming.eventDate!)}
+            </ThemedText>
+          </Card>
+        ) : null}
 
         <View style={styles.section}>
           <View style={styles.segmentedRow}>
@@ -425,6 +478,22 @@ const styles = StyleSheet.create({
   streakBadge: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  upcomingCard: {
+    marginBottom: Spacing.lg,
+    padding: Spacing.md,
+  },
+  upcomingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  upcomingIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.sm,
   },
   dailyCard: {
     marginBottom: Spacing.sm,
