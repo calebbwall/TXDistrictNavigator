@@ -1,0 +1,106 @@
+You are working on TXDistrictNavigator. Implement the following Prayers improvements with minimal refactors and verify on iOS + Android.
+
+====================================================
+A) FIX NAVIGATION TRAP (OFFICIAL PRAYER LIST)
+====================================================
+Problem:
+- When opening an official’s prayers list from the official card, users cannot easily return to the normal Prayers tab / All Prayers view.
+
+Fix:
+- Do NOT create a dead-end “OfficialPrayersScreen”.
+- Make the main Prayers screen support route params:
+    filterOfficialId?: string
+    initialStatusTab?: "open" | "answered" | "archived"
+- From official cards, navigate to Prayers screen with filterOfficialId set.
+- In Prayers screen UI, show a prominent filter chip:
+    "Official: <Name>  [x]"
+  Tapping [x] clears the filter and returns to All Prayers.
+- Ensure iOS back swipe + Android back both behave normally.
+
+====================================================
+B) IMPROVE PRAYERS TAB LAYOUT
+====================================================
+- Add an “Upcoming” section at the top of the prayers list (agenda-style).
+- Upcoming shows OPEN prayers with eventDate set, sorted ascending.
+- Below Upcoming, show remaining OPEN prayers.
+- Answered / Archived accessible via tabs/segmented control.
+
+Prayer list rows should show:
+- Title
+- Category badge (if any)
+- Official badge(s) / name
+- If eventDate exists: “Event: <formatted date>”
+
+====================================================
+C) ADD EVENT DATE TO PRAYERS + OPTIONAL AUTO STATUS CHANGE
+====================================================
+Data model changes (migrate safely, no data loss):
+- eventDate (nullable)
+- autoAfterEventAction: "none" | "markAnswered" | "archive" (default "none")
+- autoAfterEventDaysOffset integer (default 0)
+
+UI changes:
+- Add/Edit Prayer screen:
+  - Date picker for eventDate
+  - Dropdown for autoAfterEventAction
+  - Offset control (0, 1, 7 days or custom)
+
+Automation logic:
+- On app launch AND when Prayers screen loads:
+  - Find OPEN prayers with eventDate set and autoAfterEventAction != "none"
+  - If (today >= eventDate + offset) update status:
+      markAnswered => answered
+      archive => archived
+- Update UI immediately after auto-change.
+- Add a subtle audit note (or a single console log) when an auto-change happens.
+
+====================================================
+D) MAKE PRAYER LIST ITEMS TAPPABLE + ADD PRAYER DETAIL VIEW (NEW REQUIREMENT)
+====================================================
+Problem:
+- On the Prayers tab, tapping a prayer does nothing. Users cannot open prayer details.
+
+Fix:
+1) Ensure each prayer list row is pressable:
+- Wrap row in Pressable/TouchableOpacity.
+- Provide proper hitSlop and visual feedback.
+
+2) Add navigation route: PrayerDetailScreen (or PrayerDetailModal).
+- From Prayers list, navigate to PrayerDetail with prayerId.
+- From Official card prayers list, navigate to same detail route.
+
+3) PrayerDetail must display (readable, scrollable):
+- Title
+- Full description text
+- Status (Open/Answered/Archived)
+- Category (if any)
+- Linked official(s)
+- Event date + autoAfterEvent settings (if any)
+- Created/updated timestamps (optional)
+
+4) PrayerDetail must allow edits (minimum viable):
+- Edit title/description
+- Change category
+- Change eventDate + autoAfterEvent settings
+- Change status via actions:
+    - Mark Answered (neutral styling, NOT green)
+    - Archive
+    - Re-open (optional)
+- Save persists correctly and returns to list with updated state.
+
+5) Ensure “Add Prayer” still exists and works from Prayers tab and from Official card.
+
+====================================================
+E) REQUIRED OUTPUT
+====================================================
+1) Files changed (paths)
+2) Schema/migration changes (and confirmation no data loss)
+3) How navigation is structured (routes + params)
+4) What caused prayer rows to be non-tappable and the fix
+5) Manual test checklist results:
+   - Tap prayer from Prayers tab => opens detail
+   - Tap prayer from official => opens same detail
+   - Back returns correctly
+   - Clear official chip returns to All Prayers
+   - Upcoming section renders and sorts
+   - Event date saves + auto status change works

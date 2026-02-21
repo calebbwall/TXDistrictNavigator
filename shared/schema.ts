@@ -292,6 +292,9 @@ export const prayers = pgTable("prayers", {
   priority: integer("priority").default(0).notNull(),
   lastShownAt: timestamp("last_shown_at"),
   lastPrayedAt: timestamp("last_prayed_at"),
+  eventDate: timestamp("event_date"),
+  autoAfterEventAction: varchar("auto_after_event_action", { length: 20 }).default("none").notNull(),
+  autoAfterEventDaysOffset: integer("auto_after_event_days_offset").default(0).notNull(),
 });
 
 export const dailyPrayerPicks = pgTable("daily_prayer_picks", {
@@ -334,6 +337,9 @@ export const insertPrayerSchema = z.object({
   officialIds: z.array(z.string()).optional(),
   pinnedDaily: z.boolean().optional(),
   priority: z.number().int().min(0).max(1).optional(),
+  eventDate: z.string().nullable().optional(),
+  autoAfterEventAction: z.enum(["none", "markAnswered", "archive"]).optional(),
+  autoAfterEventDaysOffset: z.number().int().min(0).optional(),
 });
 
 export const updatePrayerSchema = z.object({
@@ -344,6 +350,9 @@ export const updatePrayerSchema = z.object({
   pinnedDaily: z.boolean().optional(),
   priority: z.number().int().min(0).max(1).optional(),
   lastPrayedAt: z.string().nullable().optional(),
+  eventDate: z.string().nullable().optional(),
+  autoAfterEventAction: z.enum(["none", "markAnswered", "archive"]).optional(),
+  autoAfterEventDaysOffset: z.number().int().min(0).optional(),
 });
 
 export type InsertPrayerInput = z.infer<typeof insertPrayerSchema>;
