@@ -256,7 +256,11 @@ export default function PrayerDashboardScreen() {
               </View>
             </View>
             {needsAttention.slice(0, 5).map((prayer) => (
-              <View key={prayer.id} style={[styles.attentionRow, { borderBottomColor: theme.border }]}>
+              <Pressable
+                key={prayer.id}
+                style={[styles.attentionRow, { borderBottomColor: theme.border }]}
+                onPress={() => navigation.navigate("PrayerDetail", { prayerId: prayer.id })}
+              >
                 <View style={{ flex: 1, marginRight: Spacing.sm }}>
                   <ThemedText type="body" numberOfLines={1}>{prayer.title}</ThemedText>
                   <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }} numberOfLines={1}>
@@ -265,18 +269,19 @@ export default function PrayerDashboardScreen() {
                 </View>
                 <Pressable
                   style={[styles.prayButton, { backgroundColor: theme.primary }]}
-                  onPress={() =>
+                  onPress={(e) => {
+                    e.stopPropagation();
                     navigation.navigate("FocusedMode", {
                       prayerIds: [prayer.id],
                       startIndex: 0,
-                    })
-                  }
+                    });
+                  }}
                 >
                   <ThemedText type="small" style={{ color: theme.buttonText, fontWeight: "600" }}>
                     Pray
                   </ThemedText>
                 </Pressable>
-              </View>
+              </Pressable>
             ))}
           </View>
         ) : null}
@@ -290,7 +295,11 @@ export default function PrayerDashboardScreen() {
               </View>
             </View>
             {recentlyAnswered.slice(0, 5).map((prayer) => (
-              <View key={prayer.id} style={[styles.answeredRow, { borderBottomColor: theme.border }]}>
+              <Pressable
+                key={prayer.id}
+                style={[styles.answeredRow, { borderBottomColor: theme.border }]}
+                onPress={() => navigation.navigate("PrayerDetail", { prayerId: prayer.id })}
+              >
                 <View style={{ flex: 1, marginRight: Spacing.sm }}>
                   <ThemedText type="body" numberOfLines={1}>
                     {prayer.title}
@@ -306,7 +315,10 @@ export default function PrayerDashboardScreen() {
                     {formatDate(prayer.answeredAt)}
                   </ThemedText>
                   <Pressable
-                    onPress={() => reopenMutation.mutate(prayer.id)}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      reopenMutation.mutate(prayer.id);
+                    }}
                     style={({ pressed }) => [
                       styles.reopenButton,
                       { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 },
@@ -317,7 +329,7 @@ export default function PrayerDashboardScreen() {
                     </ThemedText>
                   </Pressable>
                 </View>
-              </View>
+              </Pressable>
             ))}
           </View>
         ) : null}
