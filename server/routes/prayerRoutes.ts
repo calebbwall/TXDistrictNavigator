@@ -70,6 +70,39 @@ async function autoArchiveAnswered(): Promise<void> {
     ));
 }
 
+async function processEventDateActions(): Promise<void> {
+  try {
+    const now = new Date();
+    const openWithEvents = await db.select().from(prayers)
+      .where(and(
+        eq(prayers.status, "OPEN"),
+        not(eq(prayers.autoAfterEventAction, "none")),
+      ));
+
+    for (const prayer of openWithEvents) {
+      if (!prayer.eventDate) continue;
+      const triggerDate = new Date(prayer.eventDate);
+      triggerDate.setDate(triggerDate.getDate() + (prayer.autoAfterEventDaysOffset || 0));
+      if (now >= triggerDate) {
+        if (prayer.autoAfterEventAction === "markAnswered") {
+          await db.update(prayers).set({
+            status: "ANSWERED",
+            answeredAt: now,
+            answerNote: "Auto-marked answered after event date",
+            updatedAt: now,
+          }).where(eq(prayers.id, prayer.id));
+        } else if (prayer.autoAfterEventAction === "archive") {
+          await db.update(prayers).set({
+            status: "ARCHIVED",
+            archivedAt: now,
+            updatedAt: now,
+          }).where(eq(prayers.id, prayer.id));
+        }
+      }
+    }
+  } catch (_) {}
+}
+
 async function ensureStreakRow() {
   const rows = await db.select().from(prayerStreak).limit(1);
   if (rows.length === 0) {
@@ -149,6 +182,7 @@ export function registerPrayerRoutes(app: Express) {
   app.get("/api/prayers", async (req, res) => {
     try {
       autoArchiveAnswered().catch(() => {});
+      processEventDateActions().catch(() => {});
 
       const { status, categoryId, officialId, q, limit: lim, offset: off, sort } = req.query;
       const conditions: any[] = [];
@@ -194,7 +228,7 @@ export function registerPrayerRoutes(app: Express) {
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.issues });
       }
-      const { title, body, categoryId, officialIds, pinnedDaily, priority } = parsed.data;
+      const { title, body, categoryId, officialIds, pinnedDaily, priority, eventDate, autoAfterEventAction, autoAfterEventDaysOffset } = parsed.data;
       const [prayer] = await db.insert(prayers).values({
         title,
         body,
@@ -202,6 +236,9 @@ export function registerPrayerRoutes(app: Express) {
         officialIds: officialIds ?? [],
         pinnedDaily: pinnedDaily ?? false,
         priority: priority ?? 0,
+        eventDate: eventDate ? new Date(eventDate) : null,
+        autoAfterEventAction: autoAfterEventAction ?? "none",
+        autoAfterEventDaysOffset: autoAfterEventDaysOffset ?? 0,
       }).returning();
       res.status(201).json(prayer);
     } catch (err: any) {
@@ -309,6 +346,21 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
+  app.get("/api/prayers/upcoming", async (req, res) => {
+    try {
+      const result = await db.select().from(prayers)
+        .where(and(
+          eq(prayers.status, "OPEN"),
+          not(isNull(prayers.eventDate)),
+        ))
+        .orderBy(asc(prayers.eventDate))
+        .limit(10);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/prayers/:id", async (req, res) => {
     try {
       const [prayer] = await db.select().from(prayers).where(eq(prayers.id, req.params.id)).limit(1);
@@ -328,6 +380,9 @@ export function registerPrayerRoutes(app: Express) {
       const updates: any = { ...parsed.data, updatedAt: new Date() };
       if (updates.lastPrayedAt && typeof updates.lastPrayedAt === 'string') {
         updates.lastPrayedAt = new Date(updates.lastPrayedAt);
+      }
+      if (updates.eventDate !== undefined) {
+        updates.eventDate = updates.eventDate ? new Date(updates.eventDate) : null;
       }
       const [prayer] = await db.update(prayers).set(updates).where(eq(prayers.id, req.params.id)).returning();
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });

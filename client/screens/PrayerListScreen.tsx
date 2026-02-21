@@ -42,6 +42,9 @@ type Prayer = {
   priority: number;
   lastShownAt: string | null;
   lastPrayedAt: string | null;
+  eventDate: string | null;
+  autoAfterEventAction: string;
+  autoAfterEventDaysOffset: number;
 };
 
 type PrayerCategory = {
@@ -458,6 +461,26 @@ export default function PrayerListScreen() {
             </View>
           )}
           <View style={styles.prayerFooter}>
+            {item.categoryId ? (
+              (() => {
+                const cat = categories.find((c) => c.id === item.categoryId);
+                return cat ? (
+                  <View style={[styles.categoryBadge, { backgroundColor: theme.primary + "12" }]}>
+                    <ThemedText type="small" style={{ color: theme.primary, fontWeight: "500" }}>
+                      {cat.name}
+                    </ThemedText>
+                  </View>
+                ) : null;
+              })()
+            ) : null}
+            {item.eventDate ? (
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Feather name="calendar" size={12} color={theme.warning} />
+                <ThemedText type="small" style={{ color: theme.warning, marginLeft: 3 }}>
+                  {formatDate(item.eventDate)}
+                </ThemedText>
+              </View>
+            ) : null}
             <ThemedText type="caption" style={{ color: theme.secondaryText }}>
               {formatDate(item.createdAt)}
             </ThemedText>
@@ -534,12 +557,21 @@ export default function PrayerListScreen() {
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <View style={{ paddingTop: headerHeight + Spacing.sm, paddingHorizontal: Spacing.md }}>
         {officialName ? (
-          <ThemedText
-            type="caption"
-            style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
-          >
-            Showing prayers for {officialName}
-          </ThemedText>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm }}>
+            <View style={[styles.officialFilterChip, { backgroundColor: theme.primary + "15" }]}>
+              <Feather name="user" size={14} color={theme.primary} />
+              <ThemedText type="caption" style={{ color: theme.primary, marginLeft: Spacing.xs, fontWeight: "600" }}>
+                {officialName}
+              </ThemedText>
+              <Pressable
+                onPress={() => navigation.goBack()}
+                hitSlop={8}
+                style={{ marginLeft: Spacing.sm }}
+              >
+                <Feather name="x" size={14} color={theme.primary} />
+              </Pressable>
+            </View>
+          </View>
         ) : null}
 
         {officialId ? null : (
@@ -827,6 +859,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     elevation: 4,
+  },
+  officialFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+  },
+  categoryBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 1,
+    borderRadius: BorderRadius.full,
   },
   emptyContainer: { alignItems: "center", paddingTop: 80 },
   bulkBar: {
