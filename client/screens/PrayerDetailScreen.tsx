@@ -465,16 +465,38 @@ export default function PrayerDetailScreen() {
           ) : null}
         </Pressable>
         {showDatePicker ? (
-          <DateTimePicker
-            value={eventDate || new Date()}
-            mode="date"
-            display={Platform.OS === "ios" ? "inline" : "default"}
-            onChange={(ev, date) => {
-              if (Platform.OS === "android") setShowDatePicker(false);
-              if (date) { setEventDate(date); markChanged(); }
-            }}
-            themeVariant="light"
-          />
+          Platform.OS === "web" ? (
+            <View style={{ marginTop: Spacing.sm }}>
+              <TextInput
+                style={[styles.textInput, { color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+                value={eventDate ? eventDate.toISOString().split("T")[0] : ""}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={theme.secondaryText}
+                onChangeText={(text) => {
+                  const parsed = new Date(text + "T12:00:00");
+                  if (!isNaN(parsed.getTime()) && text.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    setEventDate(parsed);
+                    markChanged();
+                  }
+                }}
+                keyboardType="default"
+              />
+              <Pressable onPress={() => setShowDatePicker(false)} style={{ alignSelf: "flex-end", marginTop: Spacing.xs }}>
+                <ThemedText type="body" style={{ color: theme.primary, fontWeight: "600" }}>Done</ThemedText>
+              </Pressable>
+            </View>
+          ) : (
+            <DateTimePicker
+              value={eventDate || new Date()}
+              mode="date"
+              display={Platform.OS === "ios" ? "inline" : "default"}
+              onChange={(ev, date) => {
+                if (Platform.OS === "android") setShowDatePicker(false);
+                if (date) { setEventDate(date); markChanged(); }
+              }}
+              themeVariant="dark"
+            />
+          )
         ) : null}
         {Platform.OS === "ios" && showDatePicker ? (
           <Pressable onPress={() => setShowDatePicker(false)} style={{ alignSelf: "flex-end", marginTop: Spacing.xs }}>
