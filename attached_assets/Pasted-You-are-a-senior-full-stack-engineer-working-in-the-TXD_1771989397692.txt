@@ -1,0 +1,224 @@
+You are a senior full-stack engineer working in the TXDistrictNavigator codebase.
+
+Goal:
+Implement a low-cost legislative data refresh system:
+1) Poll TLO-related RSS feeds every 60 minutes using conditional requests (ETag + Last-Modified). Store feed state and items. When new items are detected, create in-app alerts and trigger targeted refresh.
+2) Run a daily refresh at 5:00 AM America/Chicago that refreshes upcoming hearings + calendars and only fetches/updates detail pages when content changed (fingerprint).
+3) Scope crawling to minimize cost: default to committees related to "saved officials" and any committees/bills explicitly subscribed/followed. Do NOT attempt to ingest all bills statewide.
+
+Do not change existing committee assignment pulling logic except to reuse helpers where appropriate.
+
+Work plan:
+A) Inspect existing project structure:
+- Identify Express server entry (likely server/index.ts or similar)
+- Identify scheduler/job runner (server/jobs/*, server/scheduler.ts, etc.)
+- Identify Drizzle schema folder (db/schema or shared/schema)
+- Identify existing TLO parsing utilities and fetch helpers
+
+B) Database schema (Drizzle + migrations):
+Add these tables (names can be adjusted to match naming conventions, but keep fields):
+1) rss_feeds
+- id (uuid pk)
+- feed_type (text)
+- url (text unique)
+- scope_json (jsonb) // committeeId, billId, chamber, etc.
+- enabled (boolean default true)
+- etag (text nullable)
+- last_modified (text nullable)
+- last_polled_at (timestamp nullable)
+- created_at, updated_at
+
+2) rss_items
+- id (uuid pk)
+- feed_id (fk)
+- guid (text) unique per feed
+- title (text)
+- link (text)
+- summary (text nullable)
+- published_at (timestamp nullable)
+- fingerprint (text) // hash(title+link+publishedAt+summary)
+- created_at
+
+3) user_subscriptions (single user now, but future-proof)
+- id (uuid pk)
+- user_id (text or uuid depending on your auth model; if no auth, store "default")
+- type (text enum-like: COMMITTEE, BILL, CHAMBER, OFFICIAL)
+- committee_id (fk nullable)
+- bill_id (fk nullable)
+- chamber (text nullable)
+- official_public_id (text nullable)
+- notification_preference (text default "IN_APP_ONLY")
+- created_at
+
+4) alerts
+- id (uuid pk)
+- user_id
+- alert_type (text: HEARING_POSTED, HEARING_UPDATED, CALENDAR_UPDATED, BILL_ACTION, etc.)
+- entity_type (text: rss_item, event, bill, committee)
+- entity_id (uuid/text)
+- title (text)
+- body (text)
+- created_at
+- read_at (timestamp nullable)
+
+Also add tables to support events if not already present (if events already exist, adapt):
+5) legislative_events
+- id uuid pk
+- source (text default "TLO")
+- event_type (text: COMMITTEE_HEARING, FLOOR_CALENDAR, SESSION_DAY)
+- chamber (text nullable)
+- committee_id (fk nullable)
+- title (text)
+- starts_at (timestamp nullable)
+- ends_at (timestamp nullable)
+- timezone (text default "America/Chicago")
+- location (text nullable)
+- status (text default "POSTED")
+- source_url (text)
+- external_id (text unique) // derived stable id from TLO url params
+- fingerprint (text)
+- last_seen_at (timestamp)
+- created_at, updated_at
+
+6) hearing_details
+- event_id fk unique
+- notice_text (text nullable)
+- meeting_type (text nullable)
+- posting_date (timestamp nullable)
+- updated_date (timestamp nullable)
+- video_url (text nullable)
+- witness_count (int default 0)
+
+7) hearing_agenda_items
+- id uuid pk
+- event_id fk
+- bill_id fk nullable (if bills table exists; otherwise store bill_number text nullable)
+- item_text (text)
+- sort_order (int)
+
+8) witnesses
+- id uuid pk
+- event_id fk
+- full_name (text)
+- organization (text nullable)
+- position (text nullable)
+- bill_id fk nullable
+- sort_order (int)
+
+If a bills/bill_actions model exists already, reuse it; otherwise add:
+- bills (bill_number, leg_session, caption, source_url, external_id)
+- bill_actions (bill_id, action_at, action_text, parsed_action_type, committee_id nullable)
+
+C) Jobs + scheduling:
+Create new job modules under server/jobs/:
+1) pollRssFeeds.ts
+- For each enabled rss_feed:
+  - Fetch using conditional headers:
+    - If rss_feeds.etag exists, send If-None-Match
+    - If rss_feeds.last_modified exists, send If-Modified-Since
+  - If 304 Not Modified: update last_polled_at and continue
+  - If 200: parse RSS XML (use a small library already in deps or add a lightweight parser)
+  - Upsert rss_items by (feed_id + guid). Insert only new items.
+  - For each new item:
+    - Create an alert row for user "default"
+    - Trigger targeted refresh by enqueuing task in a lightweight in-process queue:
+      - Parse item.link to determine committee/hearing/bill identifiers if possible
+      - Call targeted refresh functions (see below)
+
+2) refreshDailyLegislative.ts
+- Runs daily at 5:00 AM America/Chicago
+- Steps:
+  - Determine scoped committees:
+    - committees of saved officials + committees in user_subscriptions (type=COMMITTEE)
+    - If no saved officials exist yet, fallback to a small safe default set (e.g., top N committees already in db) to avoid empty UI
+  - For each scoped committee:
+    - refresh upcoming hearings list
+    - for new/changed hearings, fetch detail pages to fill hearing_details + agenda + witness list
+  - Refresh session calendars (House/Senate) into legislative_events (event_type=FLOOR_CALENDAR/SESSION_DAY) using fingerprints to avoid churn
+  - Update last_seen_at for items found; optionally mark stale/cancelled if previously existed but disappeared
+
+3) targetedRefresh.ts (utility module)
+Export functions used by pollRssFeeds and daily refresh:
+- refreshCommitteeHearings(committeeId, windowDays=14)
+- refreshHearingDetail(externalId or sourceUrl)
+- refreshBillHistory(billNumber) but ONLY for bills that are:
+  a) on a hearing agenda, or
+  b) explicitly subscribed (type=BILL)
+
+D) Scheduler implementation:
+Integrate with existing scheduler pattern. Requirements:
+- Hourly RSS poll: every 60 minutes (aligned to the clock is fine).
+- Daily refresh: at 5:00 AM America/Chicago.
+- Do NOT require a paid external cron if the server is always-on; otherwise provide a fallback endpoint that can be pinged by an external cron (e.g. /api/admin/run-hourly and /api/admin/run-daily with a secret token).
+
+Implement either:
+Option 1 (preferred): in-process timers + timezone-safe daily schedule:
+- On server start:
+  - start hourly interval for pollRssFeeds
+  - compute ms until next 5:00 AM CT then setTimeout, then setInterval every 24h thereafter (or recompute daily to be DST-safe)
+
+Option 2: keep your existing scheduler.ts and add new schedules there.
+
+Add concurrency guards:
+- A job lock table or in-memory mutex per job to prevent overlap.
+- If server restarts mid-run, it should safely resume on next run.
+
+E) API endpoints:
+Add Express routes:
+- GET /api/alerts?unreadOnly=true
+- POST /api/alerts/:id/read
+- GET /api/events/upcoming?days=7&scope=savedOfficials|allFollowed
+- GET /api/committees/:id/hearings?range=upcoming|past
+- GET /api/hearings/:eventId (details + agenda summary + witness_count)
+- GET /api/hearings/:eventId/witnesses
+- POST /api/subscriptions (committee/bill/chamber)
+- DELETE /api/subscriptions/:id
+
+F) UI updates (React Native / Expo):
+Add a "Legislative" screen (place in Profile tab or add a new tab if that’s already easy).
+Screen requirements:
+1) Legislative Dashboard
+- "Today / Next 48 hours" list of events (committee hearings + calendars)
+- "This Week" list below
+- Filter chips: House, Senate, Followed, Saved Officials
+- Each card shows: title, datetime, location, status chip, Bills count, Witnesses count
+- Tap -> Hearing detail screen
+
+2) Committee Detail screen:
+Add segmented control tabs: Members | Hearings | Bills
+- Hearings list uses /api/committees/:id/hearings
+
+3) Alerts screen:
+- List alerts with unread emphasis
+- Tap alert deep-links to hearing/event if entity link exists
+
+Use existing navigation patterns and styling in the app.
+Keep it simple and performant: paginate lists, use React Query with caching.
+
+G) RSS feed selection:
+Create a seed function or config list that inserts rss_feeds rows on startup if missing.
+Start with a small set:
+- Committee meeting notices feed(s) if available by chamber/committee (use TLO rss links you already know or can find from existing pages in codebase)
+- If you cannot find official RSS links reliably, implement polling of a small set of “notices” index pages instead, but keep the conditional caching behavior and hourly cadence.
+
+H) Acceptance criteria:
+1) On server start, rss_feeds is populated with default feed rows (idempotent).
+2) Every hour, pollRssFeeds runs and updates last_polled_at. If feed unchanged, it uses 304 and does not create alerts.
+3) When RSS has new items, rss_items rows are inserted and alerts are created.
+4) Daily at 5:00 AM CT, refreshDailyLegislative runs and updates legislative_events for scoped committees.
+5) UI shows Legislative dashboard events and Alerts list.
+6) Add logs for each job run: start/end, counts of fetched pages, new events, new alerts.
+
+Deliverables:
+- Code changes implementing all above
+- Migrations
+- Any needed documentation in README (how to configure always-on scheduling; env vars; admin endpoints)
+- Ensure TypeScript types are clean and lint/build passes.
+
+Important constraints:
+- Avoid expensive full-crawls; scope by saved officials/subscriptions.
+- No LLM usage.
+- Respect rate limits: cap concurrent fetches to a small number (e.g., 3-5).
+- All times normalized to America/Chicago.
+
+Start by exploring the existing codebase and adapting naming conventions rather than inventing new patterns.
