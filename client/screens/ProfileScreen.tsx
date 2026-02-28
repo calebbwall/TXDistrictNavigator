@@ -161,8 +161,6 @@ export default function ProfileScreen() {
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <SettingRow icon="flag" label="Follow-up Dashboard" onPress={() => navigation.navigate("FollowUpDashboard")} />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
-            <SettingRow icon="users" label="Committees" onPress={() => navigation.navigate("Committees")} />
-            <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <SettingRow icon="briefcase" label="Statewide Texas Officials" onPress={() => navigation.navigate("OtherTexasOfficials")} />
           </View>
         </View>

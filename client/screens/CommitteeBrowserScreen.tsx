@@ -35,7 +35,6 @@ import * as Haptics from "expo-haptics";
 
 type NavigationProp = NativeStackNavigationProp<LegislativeStackParamList>;
 type ChamberFilter = "all" | "TX_HOUSE" | "TX_SENATE";
-type SortKey = "name" | "hearings";
 
 interface Committee {
   id: string;
@@ -168,38 +167,14 @@ function CommitteeRow({
   );
 }
 
-// ── Sort/stats bar ──
-function SortBar({
-  sort,
-  onSort,
-  total,
-}: {
-  sort: SortKey;
-  onSort: (s: SortKey) => void;
-  total: number;
-}) {
+// ── Stats bar ──
+function StatsBar({ total }: { total: number }) {
   const { theme } = useTheme();
   return (
     <View style={[styles.sortBar, { borderBottomColor: theme.border }]}>
       <ThemedText type="small" style={{ color: theme.secondaryText }}>
         {total} committee{total !== 1 ? "s" : ""}
       </ThemedText>
-      <View style={styles.sortButtons}>
-        {([["name", "A–Z"], ["hearings", "Hearings"]] as [SortKey, string][]).map(([key, label]) => (
-          <Pressable
-            key={key}
-            onPress={() => onSort(key)}
-            style={[styles.sortBtn, sort === key && { borderBottomWidth: 2, borderBottomColor: theme.primary }]}
-          >
-            <ThemedText
-              type="small"
-              style={{ color: sort === key ? theme.primary : theme.secondaryText, fontWeight: sort === key ? "700" : "400" }}
-            >
-              {label}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </View>
     </View>
   );
 }
@@ -213,7 +188,6 @@ export default function CommitteeBrowserScreen() {
   try { tabBarHeight = useBottomTabBarHeight(); } catch { tabBarHeight = 80; }
 
   const [chamberFilter, setChamberFilter] = useState<ChamberFilter>("all");
-  const [sort, setSort] = useState<SortKey>("name");
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: committeesData, isLoading: committeesLoading, refetch: refetchCommittees } = useQuery<Committee[]>({
@@ -266,21 +240,14 @@ export default function CommitteeBrowserScreen() {
     [navigation],
   );
 
-  // Flatten committees (parent + subcommittees) respecting chamber filter, then sort
+  // Flatten committees (parent + subcommittees) respecting chamber filter, sorted A-Z
   const flatList = useMemo<{ committee: Committee; isSubcommittee: boolean }[]>(() => {
     const all = committeesData ?? [];
     const filtered = chamberFilter === "all"
       ? all
       : all.filter((c) => c.chamber === chamberFilter);
 
-    // Sort parents
-    const sorted = [...filtered].sort((a, b) => {
-      if (sort === "hearings") {
-        const diff = (hearingCounts[b.id] ?? 0) - (hearingCounts[a.id] ?? 0);
-        if (diff !== 0) return diff;
-      }
-      return a.name.localeCompare(b.name);
-    });
+    const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
 
     const rows: { committee: Committee; isSubcommittee: boolean }[] = [];
     for (const parent of sorted) {
@@ -288,17 +255,12 @@ export default function CommitteeBrowserScreen() {
       const subs = (parent.subcommittees ?? []).filter(
         (s) => chamberFilter === "all" || s.chamber === chamberFilter,
       );
-      const sortedSubs = [...subs].sort((a, b) =>
-        sort === "hearings"
-          ? (hearingCounts[b.id] ?? 0) - (hearingCounts[a.id] ?? 0)
-          : a.name.localeCompare(b.name),
-      );
-      for (const sub of sortedSubs) {
+      for (const sub of [...subs].sort((a, b) => a.name.localeCompare(b.name))) {
         rows.push({ committee: sub, isSubcommittee: true });
       }
     }
     return rows;
-  }, [committeesData, chamberFilter, sort, hearingCounts]);
+  }, [committeesData, chamberFilter]);
 
   if (committeesLoading) {
     return (
@@ -325,8 +287,8 @@ export default function CommitteeBrowserScreen() {
         />
       </View>
 
-      {/* Sort / stats */}
-      <SortBar sort={sort} onSort={setSort} total={flatList.length} />
+      {/* Stats */}
+      <StatsBar total={flatList.length} />
 
       {/* Committee list */}
       <FlatList
@@ -386,8 +348,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sortButtons: { flexDirection: "row", gap: Spacing.md },
-  sortBtn: { paddingVertical: Spacing.xs, paddingHorizontal: Spacing.xs },
   committeeRow: {
     flexDirection: "row",
     alignItems: "center",
