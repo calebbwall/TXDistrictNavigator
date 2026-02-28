@@ -4,6 +4,9 @@ import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
+import { db } from "./db";
+import { alerts } from "@shared/schema";
+import { and, eq, like } from "drizzle-orm";
 const app = express();
 const log = console.log;
 
@@ -261,12 +264,28 @@ function setupErrorHandler(app: express.Application) {
   });
 }
 
+async function cleanupBootstrapAlerts(): Promise<void> {
+  try {
+    const result = await db
+      .delete(alerts)
+      .where(and(eq(alerts.alertType, "RSS_ITEM"), like(alerts.body, "Page content updated%")))
+      .returning({ id: alerts.id });
+    if (result.length > 0) {
+      console.log(`[Startup] Cleaned up ${result.length} false-positive RSS bootstrap alert(s)`);
+    }
+  } catch (err) {
+    console.error("[Startup] Alert cleanup failed:", err);
+  }
+}
+
 (async () => {
   setupCors(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
 
   configureExpoAndLanding(app);
+
+  await cleanupBootstrapAlerts();
 
   const server = await registerRoutes(app);
 
