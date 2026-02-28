@@ -192,6 +192,16 @@ async function processFeed(
 
   await db.update(rssFeeds).set(headerUpdate).where(eq(rssFeeds.id, feed.id));
 
+  // Check if this feed has ever been polled before (has any existing items).
+  // On the very first poll we seed the baseline but never fire alerts —
+  // alerts only fire when content changes from a known baseline.
+  const existingCount = await db
+    .select({ id: rssItems.id })
+    .from(rssItems)
+    .where(eq(rssItems.feedId, feed.id))
+    .limit(1);
+  const isFirstPoll = existingCount.length === 0;
+
   // Upsert items, track new ones
   for (const entry of entries) {
     const fp = itemFingerprint([entry.title, entry.link, entry.summary, entry.publishedAt?.toISOString()]);
@@ -214,7 +224,7 @@ async function processFeed(
       continue;
     }
 
-    // New item
+    // New item — insert into rss_items
     await db.insert(rssItems).values({
       feedId: feed.id,
       guid: entry.guid,
@@ -228,28 +238,31 @@ async function processFeed(
     stats.items++;
     stats.feedsNew++;
 
-    // Insert alert
-    await db.insert(alerts).values({
-      userId: "default",
-      alertType: "RSS_ITEM",
-      entityType: "rss_item",
-      entityId: entry.guid,
-      title: entry.title.slice(0, 200),
-      body: entry.summary?.slice(0, 500) ?? entry.link,
-    } satisfies InsertAlert);
-    stats.alerts++;
+    // Only create alerts and trigger targeted refresh after baseline is established.
+    // On the first-ever poll of a feed we just record the baseline silently.
+    if (!isFirstPoll) {
+      await db.insert(alerts).values({
+        userId: "default",
+        alertType: "RSS_ITEM",
+        entityType: "rss_item",
+        entityId: entry.guid,
+        title: entry.title.slice(0, 200),
+        body: entry.summary?.slice(0, 500) ?? entry.link,
+      } satisfies InsertAlert);
+      stats.alerts++;
 
-    // Trigger targeted refresh if scope is a committee
-    const scope = feed.scopeJson as { committeeId?: string } | null;
-    if (scope?.committeeId) {
-      try {
-        await refreshCommitteeHearings(scope.committeeId, 14);
-      } catch (err) {
-        console.error(`${tag} Targeted refresh failed for committee ${scope.committeeId}:`, err);
+      // Trigger targeted refresh if scope is a committee
+      const scope = feed.scopeJson as { committeeId?: string } | null;
+      if (scope?.committeeId) {
+        try {
+          await refreshCommitteeHearings(scope.committeeId, 14);
+        } catch (err) {
+          console.error(`${tag} Targeted refresh failed for committee ${scope.committeeId}:`, err);
+        }
       }
-    }
 
-    console.log(`${tag} New item: "${entry.title.slice(0, 80)}"`);
+      console.log(`${tag} New item: "${entry.title.slice(0, 80)}"`);
+    }
   }
 }
 
