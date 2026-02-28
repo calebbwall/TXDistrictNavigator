@@ -44,6 +44,98 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Other Texas Officials**: Displays all 28 statewide officials in grouped categories (9 Executive, 1 Secretary of State, 9 Supreme Court justices, 9 Court of Criminal Appeals judges). Executive officials use curated static data (updated every 4 years with elections), while court rosters are scraped from txcourts.gov with static fallback. Officials display their specific roleTitle (e.g., "Chief Justice of the Texas Supreme Court") in detail screens.
 - **Admin Functionalities**: Endpoints for triggering manual data refreshes, checking refresh status, and managing explicit person identity overrides.
 
+## Legislative Refresh System (Added Feb 2026)
+
+### Overview
+Hourly RSS/HTML polling + daily 5 AM data refresh for Texas Legislature Online (TLO) committee hearings, bill referral history, and in-app alerts.
+
+### Scheduling Behavior
+
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| `pollAllFeeds` | Every 60 min | Polls all enabled `rss_feeds` rows with conditional GET (ETag / Last-Modified). Inserts new items, creates alerts, triggers targeted refresh. |
+| `runDailyRefresh` | 5:00 AM America/Chicago (DST-safe) | Refreshes upcoming hearings for all scoped committees (saved officials' committees + explicit subscriptions). Fetches detail pages when fingerprint changes. |
+| `targetedRefresh` | On-demand | Called after RSS detects a change, or for admin manual triggers. |
+
+The daily refresh timer is recomputed each day to handle DST transitions correctly.
+
+### Required Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `ADMIN_CRON_SECRET` | Recommended | Secret token for admin endpoints. If unset, endpoints are open (dev mode). |
+| `ADMIN_REFRESH_TOKEN` | Optional | Existing admin token for official/committee refresh endpoints |
+| `CONGRESS_API_KEY` | Optional | Congress.gov API key for US House member data |
+
+### Admin Endpoints (Manual Job Triggers)
+
+All admin endpoints require `X-Admin-Secret: <ADMIN_CRON_SECRET>` header (or `Authorization: Bearer <ADMIN_CRON_SECRET>`).
+
+```bash
+# Trigger hourly RSS/HTML poll manually
+curl -X POST https://your-app.replit.app/api/admin/run-hourly \
+  -H "X-Admin-Secret: $ADMIN_CRON_SECRET"
+
+# Trigger daily legislative refresh manually
+curl -X POST https://your-app.replit.app/api/admin/run-daily \
+  -H "X-Admin-Secret: $ADMIN_CRON_SECRET"
+
+# Check scheduler status (existing endpoint)
+curl https://your-app.replit.app/admin/refresh/status \
+  -H "Authorization: Bearer $ADMIN_REFRESH_TOKEN"
+```
+
+### Database Schema (New Tables)
+
+Apply with: `npm run db:push` (or `psql $DATABASE_URL -f migrations/0001_legislative_refresh.sql`)
+
+- `bills` — bill metadata (bill_number + leg_session unique)
+- `bill_actions` — referral history, votes, amendments
+- `rss_feeds` — polling feed registry (HTML_PAGE type for TLO committee meeting pages)
+- `rss_items` — polled/RSS items with fingerprints
+- `user_subscriptions` — per-user committee/bill/chamber subscriptions (userId="default" currently)
+- `alerts` — in-app notifications (HEARING_POSTED, HEARING_UPDATED, BILL_ACTION, RSS_ITEM)
+- `legislative_events` — committee hearings, floor calendars, session days
+- `hearing_details` — extended hearing info (notice text, witnesses count, video URL)
+- `hearing_agenda_items` — bills on hearing agendas
+- `witnesses` — registered witnesses per hearing
+
+### New API Routes
+
+```
+GET  /api/alerts                  ?unreadOnly=true
+POST /api/alerts/:id/read
+GET  /api/events/upcoming         ?days=7
+GET  /api/committees/:id/hearings ?range=upcoming|past
+GET  /api/hearings/:eventId       (details + agenda + witness_count)
+GET  /api/hearings/:eventId/witnesses
+GET  /api/subscriptions
+POST /api/subscriptions           { type, committeeId?, billId?, chamber?, officialPublicId? }
+DELETE /api/subscriptions/:id
+POST /api/admin/run-hourly        (admin protected)
+POST /api/admin/run-daily         (admin protected)
+```
+
+### New UI Screens
+
+- **Legislative Tab** (5th bottom tab, calendar icon): Legislative Dashboard
+- **Legislative Dashboard**: Upcoming hearings grouped by day, House/Senate/All filter chips, event cards with bill count + witness count
+- **Hearing Detail**: Committee header, time/location/status, Open-on-TLO button, Agenda section, Witnesses (lazy), collapsible Notice Text
+- **Alerts**: All/Unread tabs, per-type icons, tap → deep link to hearing or TLO URL
+- **CommitteeDetailScreen extended**: now has Members | Hearings | Bills segmented tabs
+
+### Running Tests
+
+```bash
+# Runtime assertion tests (no DB required):
+npx tsx server/jobs/__tests__/legislativeJobs.test.ts
+```
+
+### Feed Seeding
+
+On server startup (`startOfficialsRefreshScheduler`), `seedLegislativeFeeds()` runs automatically. It creates one `rss_feeds` row per committee in the DB, pointing at the TLO `MeetingsByCmte.aspx` page (HTML_PAGE poll type). This is idempotent — safe to run multiple times.
+
 ## External Dependencies
 - **PostgreSQL**: Main database.
 - **Express.js**: Backend framework.

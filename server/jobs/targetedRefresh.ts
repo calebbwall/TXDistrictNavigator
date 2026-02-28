@@ -88,9 +88,12 @@ function parseIsoDateTime(dateStr: string, timeStr: string): Date | null {
     let hour = rawHour;
     if (ampm?.toUpperCase() === "PM" && hour !== 12) hour += 12;
     if (ampm?.toUpperCase() === "AM" && hour === 12) hour = 0;
+    // Validate parsed numbers before building ISO string
+    if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour)) return null;
     // Build ISO string in America/Chicago context (store as UTC, display with tz)
     const dateIso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(rawMin ?? 0).padStart(2, "0")}:00`;
-    return new Date(dateIso); // naive local → caller note: UTC offset not adjusted; fine for storage
+    const d = new Date(dateIso);
+    return isNaN(d.getTime()) ? null : d;
   } catch {
     return null;
   }
@@ -549,8 +552,9 @@ async function findOrCreateBill(billNumber: string): Promise<string | null> {
 function parsedActionType(text: string): string {
   const t = text.toLowerCase();
   if (t.includes("referred to")) return "COMMITTEE_REFERRAL";
+  // Check unfavorable before favorable (substring match ordering)
+  if (t.includes("unfavorable") || t.includes("failed")) return "FAILED";
   if (t.includes("passed") || t.includes("favorable")) return "PASSED";
-  if (t.includes("failed") || t.includes("unfavorable")) return "FAILED";
   if (t.includes("filed")) return "FILED";
   if (t.includes("signed")) return "SIGNED";
   if (t.includes("vetoed")) return "VETOED";
