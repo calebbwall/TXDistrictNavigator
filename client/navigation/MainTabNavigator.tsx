@@ -7,6 +7,7 @@ import MapStackNavigator from "@/navigation/MapStackNavigator";
 import BrowseStackNavigator from "@/navigation/BrowseStackNavigator";
 import PrayerStackNavigator from "@/navigation/PrayerStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
+import LegislativeStackNavigator from "@/navigation/LegislativeStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
 
 import type { FocusDistrictParams } from "@/navigation/MapStackNavigator";
@@ -17,6 +18,7 @@ export type MainTabParamList = {
   BrowseTab: undefined;
   PrayerTab: undefined;
   ProfileTab: undefined;
+  LegislativeTab: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -87,6 +89,16 @@ export default function MainTabNavigator() {
           title: "Profile",
           tabBarIcon: ({ color, size }) => (
             <Feather name="user" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="LegislativeTab"
+        component={LegislativeStackNavigator}
+        options={{
+          title: "Legislative",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="calendar" size={size} color={color} />
           ),
         }}
       />
