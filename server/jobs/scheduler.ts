@@ -16,12 +16,23 @@ import {
 } from "./refreshCommittees";
 import { refreshOtherTexasOfficials } from "./refreshOtherTexasOfficials";
 import { resolveAllMissingPersonIds } from "../lib/identityResolver";
+import { pollAllFeeds, getIsPollingRss } from "./pollRssFeeds";
+import { runDailyRefresh, getIsDailyRefreshing, msUntilNext5amChicago } from "./refreshDailyLegislative";
+import { seedLegislativeFeeds } from "./seedLegislativeFeeds";
 
 let schedulerInterval: NodeJS.Timeout | null = null;
 let lastCheckWindowRun: Date | null = null;
 let refreshCycleInProgress = false;
 
 const CHECK_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+// ── Legislative scheduler state ──
+let rssInterval: NodeJS.Timeout | null = null;
+let dailyTimer: NodeJS.Timeout | null = null;
+let lastRssPollAt: Date | null = null;
+let lastDailyRefreshAt: Date | null = null;
+
+const RSS_POLL_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
 
 /**
  * Run a full refresh cycle with explicit ordering and logging.
@@ -163,7 +174,7 @@ export function startOfficialsRefreshScheduler(): void {
   }
 
   console.log(`[Scheduler] Starting officials refresh scheduler (check every ${CHECK_INTERVAL_MS / 60000} minutes)`);
-  
+
   schedulerInterval = setInterval(schedulerTick, CHECK_INTERVAL_MS);
 
   setTimeout(() => {
@@ -171,6 +182,9 @@ export function startOfficialsRefreshScheduler(): void {
       console.error("[Scheduler] Initial tick failed:", err);
     });
   }, 5000);
+
+  // ── Legislative schedulers ──
+  startLegislativeSchedulers();
 }
 
 export function stopOfficialsRefreshScheduler(): void {
@@ -179,12 +193,19 @@ export function stopOfficialsRefreshScheduler(): void {
     schedulerInterval = null;
     console.log("[Scheduler] Stopped");
   }
+  stopLegislativeSchedulers();
 }
 
 export function getSchedulerStatus(): {
   running: boolean;
   lastCheckWindowRun: Date | null;
   nextCheckIn: string;
+  legislative: {
+    rssRunning: boolean;
+    lastRssPollAt: Date | null;
+    lastDailyRefreshAt: Date | null;
+    nextDailyRefreshIn: string;
+  };
 } {
   const now = new Date();
   const centralOptions: Intl.DateTimeFormatOptions = {
@@ -194,10 +215,107 @@ export function getSchedulerStatus(): {
     minute: "numeric",
     hour12: true,
   };
-  
+
+  const msUntilDaily = msUntilNext5amChicago();
+  const hoursUntil = Math.floor(msUntilDaily / 3600000);
+  const minsUntil = Math.floor((msUntilDaily % 3600000) / 60000);
+
   return {
     running: schedulerInterval !== null,
     lastCheckWindowRun,
     nextCheckIn: `Check window: Monday 3:00-4:00 AM Central Time (current: ${now.toLocaleString("en-US", centralOptions)})`,
+    legislative: {
+      rssRunning: rssInterval !== null,
+      lastRssPollAt,
+      lastDailyRefreshAt,
+      nextDailyRefreshIn: `${hoursUntil}h ${minsUntil}m (5:00 AM America/Chicago)`,
+    },
   };
+}
+
+// ── Legislative scheduler internals ──
+
+function scheduleNextDailyRefresh(): void {
+  if (dailyTimer) {
+    clearTimeout(dailyTimer);
+    dailyTimer = null;
+  }
+  const delay = msUntilNext5amChicago();
+  const h = Math.floor(delay / 3600000);
+  const m = Math.floor((delay % 3600000) / 60000);
+  console.log(`[Scheduler/daily] Next daily legislative refresh in ${h}h ${m}m (5:00 AM America/Chicago)`);
+
+  dailyTimer = setTimeout(async () => {
+    console.log("[Scheduler/daily] 5:00 AM trigger — running daily legislative refresh");
+    lastDailyRefreshAt = new Date();
+    try {
+      await runDailyRefresh();
+    } catch (err) {
+      console.error("[Scheduler/daily] Daily refresh failed:", err);
+    }
+    // Schedule the next day's run
+    scheduleNextDailyRefresh();
+  }, delay);
+}
+
+async function runRssPoll(): Promise<void> {
+  if (getIsPollingRss() || getIsDailyRefreshing()) {
+    console.log("[Scheduler/rss] Poll or daily refresh in progress, skipping");
+    return;
+  }
+  lastRssPollAt = new Date();
+  try {
+    await pollAllFeeds();
+  } catch (err) {
+    console.error("[Scheduler/rss] Poll failed:", err);
+  }
+}
+
+function startLegislativeSchedulers(): void {
+  console.log("[Scheduler/legislative] Starting RSS poller (every 60 min) + daily refresh (5 AM Chicago)");
+
+  // Seed feeds first (idempotent) then start polling
+  seedLegislativeFeeds()
+    .catch((err) => console.error("[Scheduler/legislative] Seed failed:", err))
+    .finally(() => {
+      // Start hourly RSS polling — first poll after 30 seconds
+      setTimeout(() => {
+        runRssPoll();
+        rssInterval = setInterval(runRssPoll, RSS_POLL_INTERVAL_MS);
+      }, 30_000);
+    });
+
+  // Schedule DST-safe daily refresh
+  scheduleNextDailyRefresh();
+}
+
+function stopLegislativeSchedulers(): void {
+  if (rssInterval) {
+    clearInterval(rssInterval);
+    rssInterval = null;
+  }
+  if (dailyTimer) {
+    clearTimeout(dailyTimer);
+    dailyTimer = null;
+  }
+  console.log("[Scheduler/legislative] Stopped");
+}
+
+// ── Manual trigger exports for admin endpoints ──
+export async function triggerRssPoll(): Promise<{ success: boolean; error?: string; result?: unknown }> {
+  try {
+    const result = await pollAllFeeds();
+    return { success: true, result };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function triggerDailyRefresh(): Promise<{ success: boolean; error?: string; result?: unknown }> {
+  try {
+    const result = await runDailyRefresh();
+    return { success: true, result };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
 }

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, json, pgEnum, uniqueIndex, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, json, pgEnum, uniqueIndex, index, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -357,3 +357,246 @@ export const updatePrayerSchema = z.object({
 
 export type InsertPrayerInput = z.infer<typeof insertPrayerSchema>;
 export type UpdatePrayerInput = z.infer<typeof updatePrayerSchema>;
+
+// ── Legislative Refresh System ──
+
+// Enums
+export const subscriptionTypeEnum = pgEnum("subscription_type", [
+  "COMMITTEE",
+  "BILL",
+  "CHAMBER",
+  "OFFICIAL",
+]);
+
+export const alertTypeEnum = pgEnum("alert_type_enum", [
+  "HEARING_POSTED",
+  "HEARING_UPDATED",
+  "CALENDAR_UPDATED",
+  "BILL_ACTION",
+  "RSS_ITEM",
+]);
+
+export const eventTypeEnum = pgEnum("event_type_enum", [
+  "COMMITTEE_HEARING",
+  "FLOOR_CALENDAR",
+  "SESSION_DAY",
+  "NOTICE_ONLY",
+]);
+
+export const eventStatusEnum = pgEnum("event_status_enum", [
+  "POSTED",
+  "SCHEDULED",
+  "CANCELLED",
+  "COMPLETED",
+]);
+
+export const notificationPrefEnum = pgEnum("notification_pref_enum", [
+  "IN_APP_ONLY",
+  "PUSH_AND_IN_APP",
+]);
+
+// Bills table – reused by agenda items, bill_actions, and subscriptions
+export const bills = pgTable("bills", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  billNumber: varchar("bill_number", { length: 30 }).notNull(),
+  legSession: varchar("leg_session", { length: 10 }).notNull(),
+  caption: text("caption"),
+  sourceUrl: text("source_url"),
+  externalId: varchar("external_id", { length: 100 }).unique(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  billNumberSessionIdx: uniqueIndex("bills_number_session_idx").on(table.billNumber, table.legSession),
+}));
+
+// Bill actions (referral history, votes, amendments, etc.)
+export const billActions = pgTable("bill_actions", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  billId: varchar("bill_id", { length: 255 })
+    .notNull()
+    .references(() => bills.id, { onDelete: "cascade" }),
+  actionAt: timestamp("action_at"),
+  actionText: text("action_text").notNull(),
+  parsedActionType: varchar("parsed_action_type", { length: 50 }),
+  committeeId: varchar("committee_id", { length: 255 })
+    .references(() => committees.id, { onDelete: "set null" }),
+  chamber: varchar("chamber", { length: 50 }),
+  sourceUrl: text("source_url"),
+  externalId: varchar("external_id", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  billActionIdx: index("bill_actions_bill_action_at_idx").on(table.billId, table.actionAt),
+}));
+
+// RSS / polling feeds
+export const rssFeeds = pgTable("rss_feeds", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  feedType: varchar("feed_type", { length: 50 }).notNull(), // RSS_XML | HTML_PAGE
+  url: text("url").notNull().unique(),
+  scopeJson: json("scope_json").$type<{
+    committeeId?: string;
+    cmteCode?: string;
+    chamber?: string;
+    billId?: string;
+  }>(),
+  enabled: boolean("enabled").default(true).notNull(),
+  etag: text("etag"),
+  lastModified: text("last_modified"),
+  lastPolledAt: timestamp("last_polled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Individual RSS / polled items
+export const rssItems = pgTable("rss_items", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  feedId: varchar("feed_id", { length: 255 })
+    .notNull()
+    .references(() => rssFeeds.id, { onDelete: "cascade" }),
+  guid: text("guid").notNull(),
+  title: text("title").notNull(),
+  link: text("link").notNull(),
+  summary: text("summary"),
+  publishedAt: timestamp("published_at"),
+  fingerprint: text("fingerprint").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  feedGuidIdx: uniqueIndex("rss_items_feed_guid_idx").on(table.feedId, table.guid),
+}));
+
+// User subscriptions (single user now, future-proof)
+export const userSubscriptions = pgTable("user_subscriptions", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+  type: subscriptionTypeEnum("type").notNull(),
+  committeeId: varchar("committee_id", { length: 255 })
+    .references(() => committees.id, { onDelete: "cascade" }),
+  billId: varchar("bill_id", { length: 255 })
+    .references(() => bills.id, { onDelete: "cascade" }),
+  chamber: varchar("chamber", { length: 50 }),
+  officialPublicId: varchar("official_public_id", { length: 255 })
+    .references(() => officialPublic.id, { onDelete: "cascade" }),
+  notificationPreference: notificationPrefEnum("notification_preference")
+    .default("IN_APP_ONLY")
+    .notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// In-app alerts
+export const alerts = pgTable("alerts", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+  alertType: alertTypeEnum("alert_type").notNull(),
+  entityType: varchar("entity_type", { length: 50 }).notNull(), // rss_item, event, bill, committee
+  entityId: text("entity_id"),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  readAt: timestamp("read_at"),
+}, (table) => ({
+  alertsUserReadIdx: index("alerts_user_read_at_idx").on(table.userId, table.readAt),
+}));
+
+// Core legislative events (hearings, floor calendars, session days)
+export const legislativeEvents = pgTable("legislative_events", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  source: varchar("source", { length: 20 }).default("TLO").notNull(),
+  eventType: eventTypeEnum("event_type").notNull(),
+  chamber: varchar("chamber", { length: 50 }),
+  committeeId: varchar("committee_id", { length: 255 })
+    .references(() => committees.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  startsAt: timestamp("starts_at"),
+  endsAt: timestamp("ends_at"),
+  timezone: varchar("timezone", { length: 50 }).default("America/Chicago").notNull(),
+  location: text("location"),
+  status: eventStatusEnum("status").default("POSTED").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  externalId: varchar("external_id", { length: 100 }).unique(),
+  fingerprint: text("fingerprint").notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  committeeStartsAtIdx: index("leg_events_committee_starts_at_idx").on(table.committeeId, table.startsAt),
+}));
+
+// Hearing details (one per event)
+export const hearingDetails = pgTable("hearing_details", {
+  eventId: varchar("event_id", { length: 255 })
+    .primaryKey()
+    .references(() => legislativeEvents.id, { onDelete: "cascade" }),
+  noticeText: text("notice_text"),
+  meetingType: varchar("meeting_type", { length: 100 }),
+  postingDate: timestamp("posting_date"),
+  updatedDate: timestamp("updated_date"),
+  videoUrl: text("video_url"),
+  witnessCount: integer("witness_count").default(0).notNull(),
+});
+
+// Hearing agenda items
+export const hearingAgendaItems = pgTable("hearing_agenda_items", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id", { length: 255 })
+    .notNull()
+    .references(() => legislativeEvents.id, { onDelete: "cascade" }),
+  billId: varchar("bill_id", { length: 255 })
+    .references(() => bills.id, { onDelete: "set null" }),
+  billNumber: varchar("bill_number", { length: 30 }), // denormalized for quick display
+  itemText: text("item_text").notNull(),
+  sortOrder: integer("sort_order").notNull(),
+});
+
+// Witnesses registered for hearings
+export const witnesses = pgTable("witnesses", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id", { length: 255 })
+    .notNull()
+    .references(() => legislativeEvents.id, { onDelete: "cascade" }),
+  fullName: text("full_name").notNull(),
+  organization: text("organization"),
+  position: text("position"), // FOR, AGAINST, ON
+  billId: varchar("bill_id", { length: 255 })
+    .references(() => bills.id, { onDelete: "set null" }),
+  sortOrder: integer("sort_order").notNull(),
+});
+
+// ── Legislative Types ──
+export type Bill = typeof bills.$inferSelect;
+export type InsertBill = typeof bills.$inferInsert;
+export type BillAction = typeof billActions.$inferSelect;
+export type InsertBillAction = typeof billActions.$inferInsert;
+export type RssFeed = typeof rssFeeds.$inferSelect;
+export type InsertRssFeed = typeof rssFeeds.$inferInsert;
+export type RssItem = typeof rssItems.$inferSelect;
+export type InsertRssItem = typeof rssItems.$inferInsert;
+export type UserSubscription = typeof userSubscriptions.$inferSelect;
+export type InsertUserSubscription = typeof userSubscriptions.$inferInsert;
+export type Alert = typeof alerts.$inferSelect;
+export type InsertAlert = typeof alerts.$inferInsert;
+export type LegislativeEvent = typeof legislativeEvents.$inferSelect;
+export type InsertLegislativeEvent = typeof legislativeEvents.$inferInsert;
+export type HearingDetail = typeof hearingDetails.$inferSelect;
+export type InsertHearingDetail = typeof hearingDetails.$inferInsert;
+export type HearingAgendaItem = typeof hearingAgendaItems.$inferSelect;
+export type InsertHearingAgendaItem = typeof hearingAgendaItems.$inferInsert;
+export type Witness = typeof witnesses.$inferSelect;
+export type InsertWitness = typeof witnesses.$inferInsert;
