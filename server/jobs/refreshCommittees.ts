@@ -84,24 +84,69 @@ function normalizeName(name: string): string {
 async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]> {
   const url = `${TLO_BASE_URL}/committees/Committees.aspx?Chamber=${chamber}`;
   console.log(`[RefreshCommittees] Fetching committee list from ${url}`);
-  
+
   const response = await fetchWithRetry(url);
   const html = await response.text();
   const $ = cheerio.load(html);
-  
+
   const rawCommittees: Array<{ name: string; code: string }> = [];
-  
-  $('a[href*="MeetingsByCmte.aspx"]').each((_, el) => {
+  const seenCodes = new Set<string>();
+  const GENERIC_LABELS = new Set(["meetings", "members", "bills", "membership", "home"]);
+
+  function extractCommitteeName(el: ReturnType<typeof $>[number]): string {
+    const linkText = $(el).text().trim();
+    if (linkText && !GENERIC_LABELS.has(linkText.toLowerCase())) {
+      return linkText;
+    }
+    // Link text is generic — look for committee name in the parent row
+    const row = $(el).closest("tr");
+    if (row.length) {
+      // Prefer cells with no links (just name text)
+      let found = "";
+      row.find("td").each((_, cell) => {
+        if (found) return;
+        const $cell = $(cell);
+        if ($cell.find("a").length === 0) {
+          const txt = $cell.text().trim();
+          if (txt && !GENERIC_LABELS.has(txt.toLowerCase()) && txt.length > 3) {
+            found = txt;
+          }
+        }
+      });
+      if (found) return found;
+      // Also try link text in cells that doesn't point to a committee nav page
+      row.find("td a").each((_, a) => {
+        if (found) return;
+        const aText = $(a).text().trim();
+        const aHref = $(a).attr("href") || "";
+        if (
+          aText &&
+          !GENERIC_LABELS.has(aText.toLowerCase()) &&
+          !aHref.includes("MeetingsByCmte") &&
+          !aHref.includes("MembershipCmte") &&
+          aText.length > 3
+        ) {
+          found = aText;
+        }
+      });
+      if (found) return found;
+    }
+    return linkText;
+  }
+
+  // Look for committee links — both meetings and membership pages carry CmteCode
+  $('a[href*="MeetingsByCmte.aspx"], a[href*="MembershipCmte.aspx"]').each((_, el) => {
     const href = $(el).attr("href") || "";
-    const name = $(el).text().trim();
-    
-    if (!name || !href) return;
-    
+    if (!href) return;
+
     const codeMatch = href.match(/CmteCode=([A-Z0-9]+)/i);
     const code = codeMatch ? codeMatch[1] : "";
-    
-    if (!code) return;
-    
+    if (!code || seenCodes.has(code)) return;
+
+    const name = extractCommitteeName(el);
+    if (!name) return;
+
+    seenCodes.add(code);
     rawCommittees.push({ name, code });
   });
   
@@ -388,21 +433,25 @@ async function refreshChamberCommittees(
     codeToId.set(committee.code, committeeId);
     committeesCount++;
     
-    await db
-      .delete(committeeMemberships)
-      .where(eq(committeeMemberships.committeeId, committeeId));
-    
-    for (const member of members) {
-      const officialId = await matchMemberToOfficial(member.memberName, member.legCode, chamber);
-      
-      await db.insert(committeeMemberships).values({
-        committeeId,
-        officialPublicId: officialId,
-        memberName: member.memberName,
-        roleTitle: member.roleTitle,
-        sortOrder: String(member.sortOrder),
-      });
-      membershipsCount++;
+    // Only replace memberships when we actually got member data back.
+    // An empty list most likely means the fetch failed — don't wipe existing data.
+    if (members.length > 0) {
+      await db
+        .delete(committeeMemberships)
+        .where(eq(committeeMemberships.committeeId, committeeId));
+
+      for (const member of members) {
+        const officialId = await matchMemberToOfficial(member.memberName, member.legCode, chamber);
+
+        await db.insert(committeeMemberships).values({
+          committeeId,
+          officialPublicId: officialId,
+          memberName: member.memberName,
+          roleTitle: member.roleTitle,
+          sortOrder: String(member.sortOrder),
+        });
+        membershipsCount++;
+      }
     }
   }
   
@@ -525,6 +574,22 @@ export async function checkAndRefreshCommitteesIfChanged(
   console.log(`[RefreshCommittees] Complete in ${durationMs}ms`);
   
   return { results, durationMs };
+}
+
+/**
+ * Run a committee refresh on startup if neither chamber has been checked in the
+ * past week. This ensures the database is seeded even when the Monday scheduler
+ * window hasn't fired yet (e.g., first deployment or after a DB reset).
+ */
+export async function maybeRunCommitteeRefresh(): Promise<void> {
+  if (isRefreshing) return;
+  const alreadyChecked = await wasCommitteesCheckedThisWeek();
+  if (alreadyChecked) {
+    console.log("[RefreshCommittees] Already checked this week, skipping startup seed");
+    return;
+  }
+  console.log("[RefreshCommittees] Committees not checked this week — running startup seed");
+  await checkAndRefreshCommitteesIfChanged(false);
 }
 
 export async function wasCommitteesCheckedThisWeek(): Promise<boolean> {

@@ -1234,6 +1234,7 @@ import {
   checkAndRefreshCommitteesIfChanged,
   getAllCommitteeRefreshStates,
   getIsRefreshingCommittees,
+  maybeRunCommitteeRefresh,
 } from "./jobs/refreshCommittees";
 import { lookupPlace, lookupPlaceCandidates, getCacheStats, type PlaceResult } from "./geonames";
 import { committees, committeeMemberships } from "@shared/schema";
@@ -1270,6 +1271,10 @@ function mergeOfficial(pub: OfficialPublic, priv: OfficialPrivate | null): Merge
 export async function registerRoutes(app: Express): Promise<Server> {
   maybeRunScheduledRefresh().catch(err => {
     console.error("[Startup] Failed to check scheduled refresh:", err);
+  });
+
+  maybeRunCommitteeRefresh().catch(err => {
+    console.error("[Startup] Failed to check committee refresh:", err);
   });
 
   setTimeout(async () => {
