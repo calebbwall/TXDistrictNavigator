@@ -15,9 +15,7 @@ import { db } from "../db";
 import {
   rssFeeds,
   rssItems,
-  alerts,
   type InsertRssItem,
-  type InsertAlert,
   type RssFeed,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -156,7 +154,7 @@ function parseHtmlPageAsItem(html: string, feedUrl: string): RssEntry | null {
 // ---------- process a single feed ----------
 async function processFeed(
   feed: RssFeed,
-  stats: { feeds304: number; feedsNew: number; items: number; alerts: number },
+  stats: { feeds304: number; feedsNew: number; items: number },
 ): Promise<void> {
   const tag = `[pollRss][${feed.feedType}]`;
   const result = await conditionalFetch(feed);
@@ -238,20 +236,11 @@ async function processFeed(
     stats.items++;
     stats.feedsNew++;
 
-    // Only create alerts and trigger targeted refresh after baseline is established.
-    // On the first-ever poll of a feed we just record the baseline silently.
+    // After the baseline is established, trigger targeted hearing refreshes for
+    // committee-scoped feeds. We no longer create generic RSS_ITEM alerts —
+    // meaningful alerts (HEARING_POSTED, COMMITTEE_MEMBER_CHANGE, etc.) are
+    // created by the targeted refresh jobs instead.
     if (!isFirstPoll) {
-      await db.insert(alerts).values({
-        userId: "default",
-        alertType: "RSS_ITEM",
-        entityType: "rss_item",
-        entityId: entry.guid,
-        title: entry.title.slice(0, 200),
-        body: entry.summary?.slice(0, 500) ?? entry.link,
-      } satisfies InsertAlert);
-      stats.alerts++;
-
-      // Trigger targeted refresh if scope is a committee
       const scope = feed.scopeJson as { committeeId?: string } | null;
       if (scope?.committeeId) {
         try {
@@ -299,7 +288,7 @@ export async function pollAllFeeds(): Promise<{
   const start = Date.now();
   console.log("[pollRss] BEGIN hourly RSS/HTML poll");
 
-  const stats = { feeds304: 0, feedsNew: 0, items: 0, alerts: 0 };
+  const stats = { feeds304: 0, feedsNew: 0, items: 0 };
 
   try {
     const feeds = await db
@@ -318,8 +307,7 @@ export async function pollAllFeeds(): Promise<{
     const duration = Date.now() - start;
     console.log(
       `[pollRss] END poll: ${feeds.length} feeds, ${stats.feeds304} unchanged (304), ` +
-        `${stats.feedsNew} with new items, ${stats.items} new items, ` +
-        `${stats.alerts} alerts created (${duration}ms)`,
+        `${stats.feedsNew} with new items, ${stats.items} new items (${duration}ms)`,
     );
 
     return {
@@ -327,7 +315,7 @@ export async function pollAllFeeds(): Promise<{
       feeds304: stats.feeds304,
       feedsNew: stats.feedsNew,
       newItems: stats.items,
-      newAlerts: stats.alerts,
+      newAlerts: 0,
     };
   } finally {
     isPolling = false;

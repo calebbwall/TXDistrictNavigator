@@ -6,7 +6,6 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
-  Linking,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
@@ -55,7 +54,7 @@ function alertIcon(alertType: string): keyof typeof Feather.glyphMap {
     case "HEARING_UPDATED": return "edit-2";
     case "CALENDAR_UPDATED": return "grid";
     case "BILL_ACTION": return "file-text";
-    case "RSS_ITEM": return "rss";
+    case "COMMITTEE_MEMBER_CHANGE": return "users";
     default: return "bell";
   }
 }
@@ -65,7 +64,7 @@ function alertAccentColor(alertType: string, theme: { primary: string; success: 
     case "HEARING_POSTED": return theme.success;
     case "HEARING_UPDATED": return theme.warning;
     case "BILL_ACTION": return theme.primary;
-    case "RSS_ITEM": return theme.secondary;
+    case "COMMITTEE_MEMBER_CHANGE": return theme.warning;
     default: return theme.primary;
   }
 }
@@ -164,11 +163,11 @@ export default function AlertsScreen() {
           eventId: alert.entityId,
           title: alert.title,
         });
-      } else if (alert.entityType === "rss_item" && alert.entityId) {
-        // entityId for rss_items is the guid which may be a URL
-        if (alert.entityId.startsWith("http")) {
-          Linking.openURL(alert.entityId);
-        }
+      } else if (alert.entityType === "committee" && alert.entityId) {
+        navigation.navigate("CommitteeDetail", {
+          committeeId: alert.entityId,
+          committeeName: alert.title.replace(/^Committee Updated:\s*/i, ""),
+        });
       }
     },
     [navigation],

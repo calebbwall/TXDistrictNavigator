@@ -374,6 +374,7 @@ export const alertTypeEnum = pgEnum("alert_type_enum", [
   "CALENDAR_UPDATED",
   "BILL_ACTION",
   "RSS_ITEM",
+  "COMMITTEE_MEMBER_CHANGE",
 ]);
 
 export const eventTypeEnum = pgEnum("event_type_enum", [
