@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import * as crypto from "crypto";
 import { db } from "../db";
-import { committees, committeeMemberships, committeeRefreshState, officialPublic, type InsertCommittee, type InsertCommitteeMembership } from "@shared/schema";
+import { committees, committeeMemberships, committeeRefreshState, officialPublic, alerts, type InsertCommittee, type InsertCommitteeMembership, type InsertAlert } from "@shared/schema";
 import { eq, and, sql, ilike } from "drizzle-orm";
 
 const TLO_BASE_URL = "https://capitol.texas.gov";
@@ -436,6 +436,14 @@ async function refreshChamberCommittees(
     // Only replace memberships when we actually got member data back.
     // An empty list most likely means the fetch failed — don't wipe existing data.
     if (members.length > 0) {
+      // Snapshot existing roster before we touch anything
+      const existingRows = await db
+        .select({ memberName: committeeMemberships.memberName, roleTitle: committeeMemberships.roleTitle })
+        .from(committeeMemberships)
+        .where(eq(committeeMemberships.committeeId, committeeId));
+      const existingSet = new Set(existingRows.map(r => `${r.memberName}|${r.roleTitle}`));
+      const newSet = new Set(members.map(m => `${m.memberName}|${m.roleTitle}`));
+
       await db
         .delete(committeeMemberships)
         .where(eq(committeeMemberships.committeeId, committeeId));
@@ -451,6 +459,23 @@ async function refreshChamberCommittees(
           sortOrder: String(member.sortOrder),
         });
         membershipsCount++;
+      }
+
+      // Alert only when the roster actually changed (not on every routine refresh)
+      const added = [...newSet].filter(k => !existingSet.has(k)).length;
+      const removed = [...existingSet].filter(k => !newSet.has(k)).length;
+      if (added > 0 || removed > 0) {
+        const parts: string[] = [];
+        if (added > 0) parts.push(`${added} member${added > 1 ? "s" : ""} added`);
+        if (removed > 0) parts.push(`${removed} member${removed > 1 ? "s" : ""} removed`);
+        await db.insert(alerts).values({
+          userId: "default",
+          alertType: "COMMITTEE_MEMBER_CHANGE",
+          entityType: "committee",
+          entityId: committeeId,
+          title: `Committee Updated: ${committee.name}`,
+          body: parts.join(", "),
+        } satisfies InsertAlert);
       }
     }
   }
