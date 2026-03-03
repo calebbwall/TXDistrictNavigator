@@ -2343,8 +2343,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/officials/:officialId/committees", async (req, res) => {
     try {
-      const { officialId } = req.params;
-      
+      let { officialId } = req.params;
+
+      // Resolve SOURCE:DISTRICT format (e.g., "TX_HOUSE:5") to UUID
+      const sourceDistrictMatch = officialId.match(/^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/);
+      if (sourceDistrictMatch) {
+        const source = sourceDistrictMatch[1] as DistrictSourceType;
+        const district = sourceDistrictMatch[2];
+        const [pub] = await db.select({ id: officialPublic.id })
+          .from(officialPublic)
+          .where(and(
+            eq(officialPublic.source, source),
+            eq(officialPublic.district, district),
+            eq(officialPublic.active, true)
+          ))
+          .limit(1);
+        if (pub) officialId = pub.id;
+      }
+
       const memberships = await db
         .select({
           committeeId: committees.id,
@@ -2356,7 +2372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .innerJoin(committees, eq(committeeMemberships.committeeId, committees.id))
         .where(eq(committeeMemberships.officialPublicId, officialId))
         .orderBy(committees.name);
-      
+
       res.json(memberships);
     } catch (err) {
       console.error("[API] Error fetching official committees:", err);
