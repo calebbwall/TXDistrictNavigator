@@ -20,7 +20,13 @@ import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { useToast } from "@/components/Toast";
 import { Spacing, BorderRadius } from "@/constants/theme";
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest, getApiUrl } from "@/lib/query-client";
+import * as WebBrowser from "expo-web-browser";
+import {
+  requestNotificationPermissions,
+  scheduleDailyPrayerReminder,
+  cancelDailyPrayerReminder,
+} from "@/lib/notifications";
 
 type AutoArchiveSettings = {
   enabled: boolean;
@@ -86,41 +92,55 @@ export default function PrayerSettingsScreen() {
     [archiveSettings, archiveMutation]
   );
 
+  const applyReminder = useCallback(async (enabled: boolean, time: string) => {
+    if (enabled) {
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        setNotificationsUnavailable(true);
+        setReminderEnabled(false);
+        await AsyncStorage.setItem("prayerReminderEnabled", "false");
+        return;
+      }
+      setNotificationsUnavailable(false);
+      const [h, m] = time.split(":").map(Number);
+      await scheduleDailyPrayerReminder(h, m);
+    } else {
+      await cancelDailyPrayerReminder();
+    }
+    setReminderEnabled(enabled);
+    await AsyncStorage.setItem("prayerReminderEnabled", String(enabled));
+  }, []);
+
   const handleReminderToggle = useCallback(
     async (enabled: boolean) => {
-      if (enabled) {
-        try {
-          const Notifications = await import("expo-notifications");
-          const { status } = await Notifications.getPermissionsAsync();
-          if (status !== "granted") {
-            const { status: newStatus } = await Notifications.requestPermissionsAsync();
-            if (newStatus !== "granted") {
-              setNotificationsUnavailable(true);
-              setReminderEnabled(false);
-              await AsyncStorage.setItem("prayerReminderEnabled", "false");
-              return;
-            }
-          }
-          setNotificationsUnavailable(false);
-        } catch {
-          setNotificationsUnavailable(true);
-          setReminderEnabled(false);
-          await AsyncStorage.setItem("prayerReminderEnabled", "false");
-          return;
-        }
-      }
-      setReminderEnabled(enabled);
-      await AsyncStorage.setItem("prayerReminderEnabled", String(enabled));
+      await applyReminder(enabled, reminderTime);
     },
-    []
+    [applyReminder, reminderTime]
   );
 
   const handleTimeChange = useCallback(async (time: string) => {
     setReminderTime(time);
     await AsyncStorage.setItem("prayerReminderTime", time);
-  }, []);
+    if (reminderEnabled) {
+      const [h, m] = time.split(":").map(Number);
+      await scheduleDailyPrayerReminder(h, m);
+    }
+  }, [reminderEnabled]);
 
   const timeOptions = ["06:00", "07:00", "08:00", "09:00", "12:00", "18:00", "21:00"];
+
+  const [exportStatus, setExportStatus] = useState<"ALL" | "OPEN" | "ANSWERED">("ALL");
+  const [exportIncludeBody, setExportIncludeBody] = useState(true);
+
+  const handleExport = useCallback(async () => {
+    const base = getApiUrl();
+    const url = `${base}/api/prayers/export?status=${exportStatus}&includeBody=${exportIncludeBody}`;
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch {
+      showToast("Could not open export URL");
+    }
+  }, [exportStatus, exportIncludeBody, showToast]);
 
   if (isLoading) {
     return (
@@ -265,6 +285,67 @@ export default function PrayerSettingsScreen() {
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
+            <Feather name="download" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <ThemedText type="h3">Export Prayers</ThemedText>
+          </View>
+
+          <View style={styles.optionRow}>
+            <View style={{ flex: 1 }}>
+              <ThemedText type="body">Include prayer body</ThemedText>
+            </View>
+            <Switch value={exportIncludeBody} onValueChange={setExportIncludeBody} />
+          </View>
+
+          <View style={styles.daysSection}>
+            <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}>
+              Filter by status
+            </ThemedText>
+            <View style={styles.pillRow}>
+              {(["ALL", "OPEN", "ANSWERED"] as const).map((s) => {
+                const isSelected = exportStatus === s;
+                return (
+                  <Pressable
+                    key={s}
+                    onPress={() => setExportStatus(s)}
+                    style={[
+                      styles.pill,
+                      {
+                        backgroundColor: isSelected ? theme.primary : theme.backgroundSecondary,
+                        borderColor: isSelected ? theme.primary : theme.border,
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      type="caption"
+                      style={{
+                        color: isSelected ? "#FFFFFF" : theme.text,
+                        fontWeight: isSelected ? "700" : "400",
+                      }}
+                    >
+                      {s}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <Pressable
+            onPress={handleExport}
+            style={({ pressed }) => [
+              styles.exportButton,
+              { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Feather name="download" size={16} color="#FFFFFF" style={{ marginRight: Spacing.sm }} />
+            <ThemedText type="body" style={{ color: "#FFFFFF", fontWeight: "600" }}>
+              Export as CSV
+            </ThemedText>
+          </Pressable>
+        </Card>
+
+        <Card elevation={1} style={styles.card}>
+          <View style={styles.sectionTitleRow}>
             <Feather name="tag" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
             <ThemedText type="h3">Categories</ThemedText>
           </View>
@@ -326,5 +407,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  exportButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.md,
   },
 });

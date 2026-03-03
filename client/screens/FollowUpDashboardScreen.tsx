@@ -60,7 +60,16 @@ export default function FollowUpDashboardScreen() {
           isVacant: official?.isVacant || !official,
         };
       });
+      const now = new Date();
+      const isOverdue = (entries: NotePrayerEntry[]) =>
+        entries.some(e => e.dueDate && new Date(e.dueDate + "T23:59:59") < now && !e.followUpArchivedAt);
+
       const sorted = enriched.sort((a, b) => {
+        // Overdue items sort to the top
+        const aOverdue = isOverdue(a.entries) ? 1 : 0;
+        const bOverdue = isOverdue(b.entries) ? 1 : 0;
+        if (bOverdue !== aOverdue) return bOverdue - aOverdue;
+        // Then by most recent
         const latestA = Math.max(...a.entries.map(e => new Date(e.createdAt).getTime()));
         const latestB = Math.max(...b.entries.map(e => new Date(e.createdAt).getTime()));
         return latestB - latestA;
@@ -151,13 +160,20 @@ export default function FollowUpDashboardScreen() {
         new Date(entry.createdAt) > new Date(latest.createdAt) ? entry : latest
       );
 
-      const title = item.isVacant 
-        ? "Vacant District" 
+      const now = new Date();
+      const overdueEntry = item.entries.find(
+        e => e.dueDate && new Date(e.dueDate + "T23:59:59") < now && !e.followUpArchivedAt
+      );
+      const isOverdue = !showArchived && !!overdueEntry;
+      const highPriority = item.entries.some(e => e.priority === "high" && !e.followUpArchivedAt);
+
+      const title = item.isVacant
+        ? "Vacant District"
         : (item.officialName || `${formatSource(item.source)} District ${item.districtNumber}`);
 
       return (
-        <Card 
-          style={styles.card}
+        <Card
+          style={[styles.card, isOverdue ? { borderLeftWidth: 3, borderLeftColor: "#DC3545" } : {}]}
           onPress={() => handleOfficialPress(item)}
         >
           <View style={styles.cardHeader}>
@@ -172,26 +188,46 @@ export default function FollowUpDashboardScreen() {
                 {item.entries.length} follow-up{item.entries.length !== 1 ? "s" : ""}
               </ThemedText>
             </View>
-            <View style={[styles.badge, { backgroundColor: showArchived ? theme.success + "20" : theme.warning + "20" }]}>
-              <Feather 
-                name={showArchived ? "check-circle" : "flag"} 
-                size={12} 
-                color={showArchived ? theme.success : theme.warning} 
-              />
-              <ThemedText style={[styles.badgeText, { color: showArchived ? theme.success : theme.warning }]}>
-                {showArchived ? "Resolved" : "Follow Up"}
-              </ThemedText>
+            <View style={{ alignItems: "flex-end", gap: 4 }}>
+              {isOverdue ? (
+                <View style={[styles.badge, { backgroundColor: "#DC354520" }]}>
+                  <Feather name="alert-circle" size={12} color="#DC3545" />
+                  <ThemedText style={[styles.badgeText, { color: "#DC3545" }]}>Overdue</ThemedText>
+                </View>
+              ) : (
+                <View style={[styles.badge, { backgroundColor: showArchived ? theme.success + "20" : theme.warning + "20" }]}>
+                  <Feather
+                    name={showArchived ? "check-circle" : "flag"}
+                    size={12}
+                    color={showArchived ? theme.success : theme.warning}
+                  />
+                  <ThemedText style={[styles.badgeText, { color: showArchived ? theme.success : theme.warning }]}>
+                    {showArchived ? "Resolved" : "Follow Up"}
+                  </ThemedText>
+                </View>
+              )}
+              {highPriority && !showArchived ? (
+                <View style={[styles.badge, { backgroundColor: "#DC354520" }]}>
+                  <ThemedText style={[styles.badgeText, { color: "#DC3545" }]}>High Priority</ThemedText>
+                </View>
+              ) : null}
             </View>
           </View>
           <View style={styles.notePreview}>
             <ThemedText style={styles.noteText} numberOfLines={2}>
               {latestEntry.text}
             </ThemedText>
-            <ThemedText style={[styles.dateText, { color: theme.secondaryText }]}>
-              {showArchived && latestEntry.followUpArchivedAt 
-                ? `Resolved ${formatDate(latestEntry.followUpArchivedAt)}`
-                : formatDate(latestEntry.createdAt)}
-            </ThemedText>
+            {isOverdue && overdueEntry?.dueDate ? (
+              <ThemedText style={[styles.dateText, { color: "#DC3545" }]}>
+                Due {new Date(overdueEntry.dueDate + "T12:00:00").toLocaleDateString()}
+              </ThemedText>
+            ) : (
+              <ThemedText style={[styles.dateText, { color: theme.secondaryText }]}>
+                {showArchived && latestEntry.followUpArchivedAt
+                  ? `Resolved ${formatDate(latestEntry.followUpArchivedAt)}`
+                  : formatDate(latestEntry.createdAt)}
+              </ThemedText>
+            )}
           </View>
           <View style={styles.cardFooter}>
             <Pressable

@@ -70,7 +70,7 @@ async function autoArchiveAnswered(): Promise<void> {
     ));
 }
 
-async function processEventDateActions(): Promise<void> {
+export async function processEventDateActions(): Promise<void> {
   try {
     const now = new Date();
     const openWithEvents = await db.select().from(prayers)

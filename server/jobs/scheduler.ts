@@ -18,6 +18,7 @@ import { refreshOtherTexasOfficials } from "./refreshOtherTexasOfficials";
 import { resolveAllMissingPersonIds } from "../lib/identityResolver";
 import { pollAllFeeds, getIsPollingRss } from "./pollRssFeeds";
 import { runDailyRefresh, getIsDailyRefreshing, msUntilNext5amChicago } from "./refreshDailyLegislative";
+import { processEventDateActions } from "../routes/prayerRoutes";
 import { seedLegislativeFeeds } from "./seedLegislativeFeeds";
 
 let schedulerInterval: NodeJS.Timeout | null = null;
@@ -252,6 +253,12 @@ function scheduleNextDailyRefresh(): void {
       await runDailyRefresh();
     } catch (err) {
       console.error("[Scheduler/daily] Daily refresh failed:", err);
+    }
+    try {
+      await processEventDateActions();
+      console.log("[Scheduler/daily] processEventDateActions completed");
+    } catch (err) {
+      console.error("[Scheduler/daily] processEventDateActions failed:", err);
     }
     // Schedule the next day's run
     scheduleNextDailyRefresh();

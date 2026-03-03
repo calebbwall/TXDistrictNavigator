@@ -137,9 +137,36 @@ export function buildSearchIndex(officials: Official[]): SearchableOfficial[] {
   return officials.map(buildSearchableOfficial);
 }
 
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+// Returns the minimum edit distance between a queryToken and any name token.
+function minDistToNameTokens(queryToken: string, nameTokens: string[]): number {
+  let best = Infinity;
+  for (const t of nameTokens) {
+    const d = levenshtein(queryToken, t);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 function scoreCandidate(candidate: SearchableOfficial, queryTokens: string[], normalizedQuery: string): number {
   let score = 0;
-  
+
   if (candidate.normalizedFirstLast.startsWith(normalizedQuery)) {
     score += 100;
   } else if (candidate.normalizedName.startsWith(normalizedQuery)) {
@@ -147,11 +174,11 @@ function scoreCandidate(candidate: SearchableOfficial, queryTokens: string[], no
   } else if (candidate.normalizedLastFirst.startsWith(normalizedQuery)) {
     score += 90;
   }
-  
+
   const nameTokens = candidate.normalizedFirstLast.split(" ");
   for (const queryToken of queryTokens) {
     let tokenMatched = false;
-    
+
     for (const nameToken of nameTokens) {
       if (nameToken.startsWith(queryToken)) {
         score += 70;
@@ -159,28 +186,45 @@ function scoreCandidate(candidate: SearchableOfficial, queryTokens: string[], no
         break;
       }
     }
-    
+
     if (!tokenMatched && candidate.searchKey.includes(queryToken)) {
       score += 40;
       tokenMatched = true;
     }
-    
+
     if (tokenMatched) {
       score += 25;
     }
   }
-  
+
   if (candidate.searchKey.includes(normalizedQuery)) {
     score += 30;
   }
-  
-  const allTokensPresent = queryTokens.every(qt => 
+
+  const allTokensPresent = queryTokens.every(qt =>
     candidate.searchKey.includes(qt)
   );
   if (!allTokensPresent) {
-    return 0;
+    // Fuzzy pass: check if each missing token is within edit distance of a name token
+    let fuzzyScore = 0;
+    let fuzzyMatched = true;
+    for (const qt of queryTokens) {
+      if (candidate.searchKey.includes(qt)) continue; // already matched
+      const dist = minDistToNameTokens(qt, nameTokens);
+      if (dist === 1) {
+        fuzzyScore += 40;
+      } else if (dist === 2 && qt.length >= 5) {
+        fuzzyScore += 20;
+      } else {
+        fuzzyMatched = false;
+        break;
+      }
+    }
+    if (!fuzzyMatched) return 0;
+    // Apply penalty for fuzzy results
+    return Math.floor((score + fuzzyScore) * 0.6);
   }
-  
+
   return score;
 }
 
