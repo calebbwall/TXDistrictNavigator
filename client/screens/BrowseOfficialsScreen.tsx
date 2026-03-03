@@ -171,8 +171,8 @@ export default function BrowseOfficialsScreen() {
       const query = debouncedSearch.trim();
       console.log(`[Browse] Searching for: "${query}"`);
 
-      if (isNameSearch(query)) {
-        console.log(`[Browse] Name search detected: "${query}" - fetching all for client-side filter`);
+      if (isNameSearch(query) || selectedSource === "OTHER_TX") {
+        console.log(`[Browse] Name/statewide search: "${query}" - fetching all for client-side filter`);
         const url = new URL("/api/officials", getApiUrl());
         url.searchParams.set("source", selectedSource);
         const response = await fetch(url.toString());
@@ -507,7 +507,7 @@ export default function BrowseOfficialsScreen() {
         </View>
       ) : null}
     </View>
-  ), [isOffline, showOfflineBanner, sources, selectedSource, theme, placeLabel, countLabel, searchText, debouncedSearch]);
+  ), [isOffline, showOfflineBanner, selectedSource, theme, placeLabel, countLabel, searchText, debouncedSearch, handleSourceChange]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
