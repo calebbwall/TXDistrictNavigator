@@ -354,11 +354,14 @@ export default function OfficialProfileScreen() {
 
   useEffect(() => {
     const fetchCommittees = async () => {
-      if (!officialId) return;
+      // Use official.id (UUID) rather than officialId route param, which may be
+      // in "SOURCE:DISTRICT" format that the committees endpoint doesn't handle.
+      const uuid = official?.id;
+      if (!uuid) return;
       setCommitteesLoading(true);
       try {
         const baseUrl = getApiUrl();
-        const url = new URL(`/api/officials/${officialId}/committees`, baseUrl);
+        const url = new URL(`/api/officials/${uuid}/committees`, baseUrl);
         const response = await fetch(url.toString());
         if (response.ok) {
           const data = await response.json();
@@ -370,7 +373,7 @@ export default function OfficialProfileScreen() {
       setCommitteesLoading(false);
     };
     fetchCommittees();
-  }, [officialId]);
+  }, [official?.id]);
 
   const handleNotesSectionLayout = useCallback((event: LayoutChangeEvent) => {
     const { y } = event.nativeEvent.layout;
