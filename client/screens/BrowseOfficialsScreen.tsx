@@ -45,7 +45,7 @@ import {
 
 type NavigationProp = NativeStackNavigationProp<BrowseStackParamList>;
 
-type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "ALL";
+type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX" | "ALL";
 
 interface PlaceResult {
   name: string;
@@ -63,6 +63,7 @@ const SOURCE_LABELS: Record<SourceType, string> = {
   TX_HOUSE: "TX House",
   TX_SENATE: "TX Senate",
   US_HOUSE: "US House",
+  OTHER_TX: "Statewide",
   ALL: "All",
 };
 
@@ -70,6 +71,7 @@ const SEARCH_PLACEHOLDERS: Record<SourceType, string> = {
   TX_HOUSE: "Search by name, district, city, ZIP...",
   TX_SENATE: "Search by name, district, city, ZIP...",
   US_HOUSE: "Search by name, district, city, ZIP...",
+  OTHER_TX: "Search by name or role...",
   ALL: "Search any TX city/ZIP or name...",
 };
 
@@ -124,7 +126,7 @@ export default function BrowseOfficialsScreen() {
       setShowOfflineBanner(false);
       
       if (!debouncedSearch.trim()) {
-        const apiSource = selectedSource as "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "ALL";
+        const apiSource = selectedSource;
         const url = new URL("/api/officials", getApiUrl());
         url.searchParams.set("source", apiSource);
         
@@ -339,17 +341,18 @@ export default function BrowseOfficialsScreen() {
   const countLabel = useMemo(() => {
     if (isLoading && !data) return "Loading...";
     const count = officials.length;
+    if (debouncedSearch.trim()) {
+      return `${count} result${count !== 1 ? "s" : ""}`;
+    }
+    if (selectedSource === "OTHER_TX") {
+      return `${count} official${count !== 1 ? "s" : ""}`;
+    }
     const vacancyCount = officials.filter(o => o.isVacant).length;
-    
-    const vacancyText = vacancyCount > 0 
+    const vacancyText = vacancyCount > 0
       ? ` (${vacancyCount} ${vacancyCount === 1 ? "vacancy" : "vacancies"})`
       : "";
-    
-    if (debouncedSearch.trim()) {
-      return `${count} result${count !== 1 ? "s" : ""}${vacancyText}`;
-    }
     return `${count} member${count !== 1 ? "s" : ""}${vacancyText}`;
-  }, [isLoading, data, officials, debouncedSearch]);
+  }, [isLoading, data, officials, debouncedSearch, selectedSource]);
 
   const placeLabel = useMemo(() => {
     if (!placeInfo) return null;
@@ -385,35 +388,51 @@ export default function BrowseOfficialsScreen() {
     );
   }, [isLoading, theme, debouncedSearch]);
 
-  const sources: SourceType[] = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "ALL"];
-
   const ListHeaderComponent = useMemo(() => (
     <View style={[styles.listHeader, { backgroundColor: theme.backgroundRoot }]}>
       <OfflineBanner visible={isOffline || showOfflineBanner} />
-      
-      {/* 1. Filter tiles (tabs) - FIRST */}
-      <View style={styles.segmentedControl}>
-        {sources.map((source) => (
+
+      {/* 1. Filter tiles - 2-row layout */}
+      {/* Row 1: TX House + TX Senate (most-used, larger) */}
+      <View style={styles.filterRow}>
+        {(["TX_HOUSE", "TX_SENATE"] as SourceType[]).map((source) => (
           <Pressable
             key={source}
             style={[
-              styles.segmentButton,
+              styles.filterButtonLarge,
               {
-                backgroundColor:
-                  selectedSource === source
-                    ? theme.primary
-                    : theme.inputBackground,
-                borderColor: theme.border,
+                backgroundColor: selectedSource === source ? theme.primary : theme.inputBackground,
+                borderColor: selectedSource === source ? theme.primary : theme.border,
+              },
+            ]}
+            onPress={() => handleSourceChange(source)}
+          >
+            <ThemedText
+              type="body"
+              style={{ color: selectedSource === source ? "#FFFFFF" : theme.text, fontWeight: "600" }}
+            >
+              {SOURCE_LABELS[source]}
+            </ThemedText>
+          </Pressable>
+        ))}
+      </View>
+      {/* Row 2: US House + Statewide + All (smaller) */}
+      <View style={[styles.filterRow, { marginTop: Spacing.xs }]}>
+        {(["US_HOUSE", "OTHER_TX", "ALL"] as SourceType[]).map((source) => (
+          <Pressable
+            key={source}
+            style={[
+              styles.filterButtonSmall,
+              {
+                backgroundColor: selectedSource === source ? theme.primary : theme.inputBackground,
+                borderColor: selectedSource === source ? theme.primary : theme.border,
               },
             ]}
             onPress={() => handleSourceChange(source)}
           >
             <ThemedText
               type="caption"
-              style={{
-                color: selectedSource === source ? "#FFFFFF" : theme.text,
-                fontWeight: selectedSource === source ? "600" : "400",
-              }}
+              style={{ color: selectedSource === source ? "#FFFFFF" : theme.text, fontWeight: selectedSource === source ? "600" : "400" }}
             >
               {SOURCE_LABELS[source]}
             </ThemedText>
@@ -462,15 +481,17 @@ export default function BrowseOfficialsScreen() {
             </Pressable>
           ) : null}
         </View>
-        <Pressable
-          onPress={() => setShowPlaceSearch(true)}
-          style={({ pressed }) => [
-            styles.placeSearchButton,
-            { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
-          ]}
-        >
-          <Feather name="map-pin" size={20} color="#FFFFFF" />
-        </Pressable>
+        {selectedSource !== "OTHER_TX" ? (
+          <Pressable
+            onPress={() => setShowPlaceSearch(true)}
+            style={({ pressed }) => [
+              styles.placeSearchButton,
+              { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Feather name="map-pin" size={20} color="#FFFFFF" />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* 4. Place label (if searching by location) */}
@@ -536,11 +557,20 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
     flexShrink: 0,
   },
-  segmentedControl: {
+  filterRow: {
     flexDirection: "row",
     gap: Spacing.xs,
   },
-  segmentButton: {
+  filterButtonLarge: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterButtonSmall: {
     flex: 1,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.xs,

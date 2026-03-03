@@ -8,7 +8,6 @@ import SavedOfficialsScreen from "@/screens/SavedOfficialsScreen";
 import CommitteesScreen from "@/screens/CommitteesScreen";
 import CommitteeListScreen from "@/screens/CommitteeListScreen";
 import CommitteeDetailScreen from "@/screens/CommitteeDetailScreen";
-import OtherTexasOfficialsScreen from "@/screens/OtherTexasOfficialsScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type ProfileStackParamList = {
@@ -20,7 +19,6 @@ export type ProfileStackParamList = {
   Committees: undefined;
   CommitteeList: { chamber: "TX_HOUSE" | "TX_SENATE" };
   CommitteeDetail: { committeeId: string; committeeName: string };
-  OtherTexasOfficials: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -85,13 +83,6 @@ export default function ProfileStackNavigator() {
         options={({ route }) => ({
           headerTitle: route.params.committeeName,
         })}
-      />
-      <Stack.Screen
-        name="OtherTexasOfficials"
-        component={OtherTexasOfficialsScreen}
-        options={{
-          headerTitle: "Statewide Texas Officials",
-        }}
       />
     </Stack.Navigator>
   );

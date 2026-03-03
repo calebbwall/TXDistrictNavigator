@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { StyleSheet, View, FlatList, Pressable, ActivityIndicator, Image, ScrollView } from "react-native";
+import React, { useState, useCallback } from "react";
+import { StyleSheet, View, FlatList, Pressable, ActivityIndicator, Image, ScrollView, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
@@ -263,7 +263,7 @@ export default function CommitteeDetailScreen() {
   const { committeeId } = route.params;
   const [activeTab, setActiveTab] = useState<TabKey>("members");
 
-  const { data, isLoading, error } = useQuery<CommitteeDetailData>({
+  const { data, isLoading, isFetching, error, refetch } = useQuery<CommitteeDetailData>({
     queryKey: ["/api/committees", committeeId],
     queryFn: async () => {
       const baseUrl = getApiUrl();
@@ -272,7 +272,12 @@ export default function CommitteeDetailScreen() {
       if (!response.ok) throw new Error("Failed to fetch committee details");
       return response.json();
     },
+    // 5-minute stale time so APK users can pull-to-refresh and see newly
+    // populated memberships without being stuck on an Infinity-stale empty cache.
+    staleTime: 5 * 60_000,
   });
+
+  const handleRefresh = useCallback(() => { refetch(); }, [refetch]);
 
   const renderItem = ({ item }: { item: CommitteeMember }) => (
     <MemberRow member={item} chamber={data?.committee.chamber || "TX_HOUSE"} />
@@ -367,6 +372,13 @@ export default function CommitteeDetailScreen() {
           ]}
           scrollIndicatorInsets={{ bottom: insets.bottom }}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={isFetching && !isLoading}
+              onRefresh={handleRefresh}
+              tintColor={theme.primary}
+            />
+          }
         />
       )}
       {activeTab === "hearings" && <HearingsTab committeeId={committeeId} />}

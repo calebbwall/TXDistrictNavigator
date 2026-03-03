@@ -610,6 +610,24 @@ export async function maybeRunCommitteeRefresh(): Promise<void> {
   if (isRefreshing) return;
   const alreadyChecked = await wasCommitteesCheckedThisWeek();
   if (alreadyChecked) {
+    // Even when recently checked, force re-run if committees are in the DB but
+    // memberships are empty. This self-heals the case where the initial scrape
+    // populated the committee list but failed to fetch individual member pages
+    // (e.g. TLO was temporarily unreachable), leaving committeeRefreshState
+    // updated but committeeMemberships empty.
+    const [{ committeeCount }] = await db
+      .select({ committeeCount: sql<number>`count(*)::int` })
+      .from(committees);
+    const [{ memberCount }] = await db
+      .select({ memberCount: sql<number>`count(*)::int` })
+      .from(committeeMemberships);
+    if (committeeCount > 0 && memberCount === 0) {
+      console.log(
+        `[RefreshCommittees] ${committeeCount} committees exist but 0 memberships — forcing re-run`
+      );
+      await checkAndRefreshCommitteesIfChanged(true);
+      return;
+    }
     console.log("[RefreshCommittees] Already checked this week, skipping startup seed");
     return;
   }
