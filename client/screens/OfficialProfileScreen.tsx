@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Modal,
   Dimensions,
+  Share,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
@@ -79,6 +80,10 @@ import {
   type EngagementEntry,
 } from "@/lib/storage";
 import type { MapStackParamList } from "@/navigation/MapStackNavigator";
+import {
+  scheduleAnnualReminder,
+  cancelAnnualReminder,
+} from "@/lib/notifications";
 
 type OfficialProfileParams = { officialId: string; initialSection?: "privateNotes"; initialTab?: "public" | "private" };
 type RouteParams = RouteProp<{ OfficialProfile: OfficialProfileParams }, "OfficialProfile">;
@@ -219,6 +224,10 @@ export default function OfficialProfileScreen() {
   const [engagementLog, setEngagementLog] = useState<EngagementEntry[]>([]);
   const [newNoteText, setNewNoteText] = useState("");
   const [newNoteFollowUp, setNewNoteFollowUp] = useState(false);
+  const [newNoteDueDate, setNewNoteDueDate] = useState<string | undefined>(undefined);
+  const [newNotePriority, setNewNotePriority] = useState<"low" | "medium" | "high" | undefined>(undefined);
+  const [showDueDatePicker, setShowDueDatePicker] = useState(false);
+  const [dueDatePickerDate, setDueDatePickerDate] = useState<Date>(new Date());
   const [showAddNote, setShowAddNote] = useState(false);
   const [showEngagementPicker, setShowEngagementPicker] = useState(false);
   const [engagementPickerDate, setEngagementPickerDate] = useState<Date>(new Date());
@@ -279,9 +288,6 @@ export default function OfficialProfileScreen() {
         setNotesPrayer(npEntries);
         const engEntries = await getEngagementLog(official.source, official.districtNumber);
         setEngagementLog(engEntries);
-        if (engEntries.length > 0 && engEntries[0].summary) {
-          setEngagementNote(engEntries[0].summary);
-        }
       }
     }
   }, [official]);
@@ -300,13 +306,33 @@ export default function OfficialProfileScreen() {
     }, [official, loadSavedState])
   );
 
+  const handleShare = useCallback(async () => {
+    if (!official) return;
+    const parts: string[] = [`${official.fullName}`];
+    if (official.party) parts[0] += ` (${official.party})`;
+    if (official.officeType) {
+      const chamber = official.officeType === "TX_HOUSE" ? "TX House" : official.officeType === "TX_SENATE" ? "TX Senate" : official.officeType === "US_HOUSE" ? "US House" : official.officeType;
+      parts.push(`${chamber} — District ${official.districtNumber}`);
+    }
+    if (official.capitolPhone) parts.push(`Capitol: ${formatPhone(official.capitolPhone)}`);
+    if (official.website) parts.push(`Website: ${official.website}`);
+    try {
+      await Share.share({ title: official.fullName, message: parts.join("\n") });
+    } catch {}
+  }, [official]);
+
   useEffect(() => {
     if (official) {
       navigation.setOptions({
         headerTitle: official.fullName,
+        headerRight: () => (
+          <Pressable onPress={handleShare} style={{ paddingHorizontal: 8 }}>
+            <Feather name="share-2" size={20} color={official ? undefined : "transparent"} />
+          </Pressable>
+        ),
       });
     }
-  }, [navigation, official]);
+  }, [navigation, official, handleShare]);
 
   useEffect(() => {
     if (
@@ -397,6 +423,27 @@ export default function OfficialProfileScreen() {
     console.log('[OfficialProfile] Saving notes for:', official.id, 'address:', privateNotes.personalAddress);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await savePrivateNotes(official.id, privateNotes);
+
+    // Schedule/cancel annual reminders for birthday and anniversary
+    const officialId = official.id;
+    const name = official.fullName;
+    if (privateNotes.birthday) {
+      const [yyyy, mm, dd] = privateNotes.birthday.split("-").map(Number);
+      if (mm && dd) {
+        scheduleAnnualReminder(officialId, name, mm, dd, "birthday").catch(() => {});
+      }
+    } else {
+      cancelAnnualReminder(officialId, "birthday").catch(() => {});
+    }
+    if (privateNotes.anniversary) {
+      const [yyyy, mm, dd] = privateNotes.anniversary.split("-").map(Number);
+      if (mm && dd) {
+        scheduleAnnualReminder(officialId, name, mm, dd, "anniversary").catch(() => {});
+      }
+    } else {
+      cancelAnnualReminder(officialId, "anniversary").catch(() => {});
+    }
+
     try {
       await updateOfficialPrivate(official.id, {
         personalPhone: privateNotes.personalPhone || null,
@@ -454,12 +501,21 @@ export default function OfficialProfileScreen() {
   const handleAddNotePrayer = useCallback(async () => {
     if (!official?.source || !official?.districtNumber || !newNoteText.trim()) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const entry = await addNotePrayer(official.source, official.districtNumber, newNoteText.trim(), newNoteFollowUp);
+    const entry = await addNotePrayer(
+      official.source,
+      official.districtNumber,
+      newNoteText.trim(),
+      newNoteFollowUp,
+      newNoteDueDate,
+      newNotePriority
+    );
     setNotesPrayer(prev => [entry, ...prev]);
     setNewNoteText("");
     setNewNoteFollowUp(false);
+    setNewNoteDueDate(undefined);
+    setNewNotePriority(undefined);
     setShowAddNote(false);
-  }, [official, newNoteText, newNoteFollowUp]);
+  }, [official, newNoteText, newNoteFollowUp, newNoteDueDate, newNotePriority]);
 
   const handleDeleteNotePrayer = useCallback(async (entryId: string) => {
     if (!official?.source || !official?.districtNumber) return;
@@ -477,52 +533,36 @@ export default function OfficialProfileScreen() {
     ]);
   }, [official]);
 
-  const handleSetEngagementDate = useCallback(async (date: Date) => {
+  const handleAddEngagement = useCallback(async (date: Date) => {
     if (!official?.source || !official?.districtNumber) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const entry = await addEngagement(
-      official.source, 
-      official.districtNumber, 
-      date.toISOString(), 
-      engagementNote.trim() || undefined
-    );
-    setEngagementLog([entry]);
-    addRecentEngaged(official.source, official.districtNumber);
-    setShowEngagementPicker(false);
-  }, [official, engagementNote]);
-
-  const handleSaveEngagementNote = useCallback(async () => {
-    if (!official?.source || !official?.districtNumber) return;
-    if (engagementLog.length === 0) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const currentEntry = engagementLog[0];
-    const updatedEntry = await addEngagement(
       official.source,
       official.districtNumber,
-      currentEntry.engagedAt,
+      date.toISOString(),
       engagementNote.trim() || undefined
     );
-    setEngagementLog([updatedEntry]);
-  }, [official, engagementLog, engagementNote]);
+    setEngagementLog(prev => [entry, ...prev]);
+    addRecentEngaged(official.source, official.districtNumber);
+    setShowEngagementPicker(false);
+    setEngagementNote("");
+  }, [official, engagementNote]);
 
-  const handleClearEngagement = useCallback(async () => {
+  const handleDeleteEngagement = useCallback(async (entryId: string) => {
     if (!official?.source || !official?.districtNumber) return;
-    Alert.alert("Clear Engagement", "Are you sure you want to clear the last engaged date?", [
+    Alert.alert("Delete Engagement", "Remove this engagement from your log?", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Clear",
+        text: "Delete",
         style: "destructive",
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          if (engagementLog.length > 0) {
-            await deleteEngagement(official.source!, official.districtNumber!, engagementLog[0].id);
-          }
-          setEngagementLog([]);
-          setEngagementNote("");
+          await deleteEngagement(official.source!, official.districtNumber!, entryId);
+          setEngagementLog(prev => prev.filter(e => e.id !== entryId));
         },
       },
     ]);
-  }, [official, engagementLog]);
+  }, [official]);
 
   if (isLoading) {
     return (
@@ -1309,6 +1349,86 @@ export default function OfficialProfileScreen() {
                     </View>
                     <ThemedText type="body">Follow-up needed</ThemedText>
                   </Pressable>
+
+                  {newNoteFollowUp ? (
+                    <View style={{ marginTop: Spacing.sm }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.xs }}>
+                        <ThemedText type="caption" style={{ color: theme.secondaryText, flex: 1 }}>
+                          Due date (optional)
+                        </ThemedText>
+                        {newNoteDueDate ? (
+                          <Pressable onPress={() => setNewNoteDueDate(undefined)}>
+                            <Feather name="x" size={14} color={theme.secondaryText} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                      <Pressable
+                        onPress={() => { setDueDatePickerDate(newNoteDueDate ? new Date(newNoteDueDate + "T12:00:00") : new Date()); setShowDueDatePicker(true); }}
+                        style={[styles.datePickerButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+                      >
+                        <Feather name="calendar" size={14} color={theme.secondaryText} />
+                        <ThemedText type="body" style={{ marginLeft: Spacing.xs, color: newNoteDueDate ? theme.text : theme.secondaryText }}>
+                          {newNoteDueDate ? new Date(newNoteDueDate + "T12:00:00").toLocaleDateString() : "Select date..."}
+                        </ThemedText>
+                      </Pressable>
+                      {showDueDatePicker ? (
+                        Platform.OS === "web" ? (
+                          <input
+                            type="date"
+                            value={newNoteDueDate || ""}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                              setNewNoteDueDate(e.target.value || undefined);
+                              setShowDueDatePicker(false);
+                            }}
+                            style={{ padding: 8, fontSize: 16, borderRadius: 8, border: `1px solid ${theme.border}`, backgroundColor: theme.inputBackground, color: theme.text, width: "100%", marginTop: 8 }}
+                          />
+                        ) : (
+                          <DateTimePicker
+                            value={dueDatePickerDate}
+                            mode="date"
+                            display="spinner"
+                            minimumDate={new Date()}
+                            onChange={(event, date) => {
+                              if (event.type === "dismissed") { setShowDueDatePicker(false); return; }
+                              if (date) {
+                                setDueDatePickerDate(date);
+                                setNewNoteDueDate(toISODateString(date));
+                                if (Platform.OS === "android") setShowDueDatePicker(false);
+                              }
+                            }}
+                          />
+                        )
+                      ) : null}
+
+                      <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: Spacing.sm, marginBottom: Spacing.xs }}>
+                        Priority (optional)
+                      </ThemedText>
+                      <View style={{ flexDirection: "row", gap: Spacing.sm }}>
+                        {(["low", "medium", "high"] as const).map((p) => {
+                          const isSelected = newNotePriority === p;
+                          const color = p === "high" ? theme.error ?? "#DC3545" : p === "medium" ? theme.warning : theme.success;
+                          return (
+                            <Pressable
+                              key={p}
+                              onPress={() => setNewNotePriority(isSelected ? undefined : p)}
+                              style={[
+                                styles.priorityPill,
+                                {
+                                  backgroundColor: isSelected ? color + "30" : theme.backgroundSecondary,
+                                  borderColor: isSelected ? color : theme.border,
+                                },
+                              ]}
+                            >
+                              <ThemedText type="caption" style={{ color: isSelected ? color : theme.secondaryText, fontWeight: isSelected ? "700" : "400", textTransform: "capitalize" }}>
+                                {p}
+                              </ThemedText>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+
                   <Button onPress={handleAddNotePrayer} disabled={!newNoteText.trim()}>
                     Save Note
                   </Button>
@@ -1317,16 +1437,24 @@ export default function OfficialProfileScreen() {
 
               {notesPrayer.length > 0 ? (
                 <View style={styles.entriesList}>
-                  {notesPrayer.map((entry) => (
-                    <View key={entry.id} style={[styles.entryCard, { backgroundColor: theme.cardBackground }]}>
+                  {notesPrayer.map((entry) => {
+                    const isOverdue = entry.dueDate && new Date(entry.dueDate + "T23:59:59") < new Date() && entry.followUpNeeded && !entry.followUpArchivedAt;
+                    const priorityColor = entry.priority === "high" ? (theme as any).error ?? "#DC3545" : entry.priority === "medium" ? theme.warning : theme.success;
+                    return (
+                    <View key={entry.id} style={[styles.entryCard, { backgroundColor: theme.cardBackground }, isOverdue ? { borderLeftWidth: 3, borderLeftColor: (theme as any).error ?? "#DC3545" } : {}]}>
                       <View style={styles.entryHeader}>
                         <ThemedText type="small" style={{ color: theme.secondaryText }}>
                           {new Date(entry.createdAt).toLocaleDateString()}
                         </ThemedText>
                         <View style={styles.entryActions}>
+                          {entry.priority ? (
+                            <View style={[styles.followUpBadge, { backgroundColor: priorityColor + "25" }]}>
+                              <ThemedText type="small" style={{ color: priorityColor, textTransform: "capitalize" }}>{entry.priority}</ThemedText>
+                            </View>
+                          ) : null}
                           {entry.followUpNeeded ? (
-                            <View style={[styles.followUpBadge, { backgroundColor: theme.primary }]}>
-                              <ThemedText type="small" style={{ color: "#FFFFFF" }}>Follow-up</ThemedText>
+                            <View style={[styles.followUpBadge, { backgroundColor: isOverdue ? ((theme as any).error ?? "#DC3545") : theme.primary }]}>
+                              <ThemedText type="small" style={{ color: "#FFFFFF" }}>{isOverdue ? "Overdue" : "Follow-up"}</ThemedText>
                             </View>
                           ) : null}
                           <Pressable onPress={() => handleDeleteNotePrayer(entry.id)}>
@@ -1335,8 +1463,14 @@ export default function OfficialProfileScreen() {
                         </View>
                       </View>
                       <ThemedText type="body">{entry.text}</ThemedText>
+                      {entry.dueDate && entry.followUpNeeded ? (
+                        <ThemedText type="small" style={{ color: isOverdue ? ((theme as any).error ?? "#DC3545") : theme.secondaryText, marginTop: 4 }}>
+                          Due: {new Date(entry.dueDate + "T12:00:00").toLocaleDateString()}
+                        </ThemedText>
+                      ) : null}
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               ) : (
                 <ThemedText type="body" style={{ color: theme.secondaryText, fontStyle: "italic" }}>
@@ -1346,61 +1480,36 @@ export default function OfficialProfileScreen() {
             </View>
 
             <View style={[styles.section, { marginTop: Spacing.xl }]}>
-              <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>Last Engaged</ThemedText>
-              
-              <View style={styles.engagementDateRow}>
-                <View style={styles.engagementDateInfo}>
-                  <Feather name="calendar" size={18} color={theme.secondaryText} />
-                  <ThemedText type="body" style={{ marginLeft: Spacing.sm }}>
-                    {engagementLog.length > 0 
-                      ? new Date(engagementLog[0].engagedAt).toLocaleDateString()
-                      : "Not set"}
-                  </ThemedText>
-                </View>
-                <View style={styles.engagementDateActions}>
-                  <Pressable
-                    onPress={() => {
-                      if (engagementLog.length > 0) {
-                        setEngagementPickerDate(new Date(engagementLog[0].engagedAt));
-                      } else {
-                        setEngagementPickerDate(new Date());
-                      }
-                      setShowEngagementPicker(true);
-                    }}
-                    style={({ pressed }) => [
-                      styles.dateButton,
-                      { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
-                    ]}
-                  >
-                    <ThemedText type="caption" style={{ color: "#FFFFFF" }}>
-                      {engagementLog.length > 0 ? "Change" : "Set Date"}
-                    </ThemedText>
-                  </Pressable>
-                  {engagementLog.length > 0 ? (
-                    <Pressable
-                      onPress={handleClearEngagement}
-                      style={({ pressed }) => [
-                        styles.dateButton,
-                        { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.xs },
-                      ]}
-                    >
-                      <Feather name="x" size={14} color={theme.secondaryText} />
-                    </Pressable>
-                  ) : null}
-                </View>
+              <View style={[styles.sectionHeader, { marginBottom: Spacing.sm }]}>
+                <ThemedText type="h3">Engagement Log</ThemedText>
+                <Pressable
+                  onPress={() => {
+                    setEngagementPickerDate(new Date());
+                    setEngagementNote("");
+                    setShowEngagementPicker(true);
+                  }}
+                  style={({ pressed }) => [
+                    styles.addEngagementBtn,
+                    { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Feather name="plus" size={14} color="#FFFFFF" />
+                  <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: 4 }}>Add</ThemedText>
+                </Pressable>
               </View>
 
               {showEngagementPicker ? (
                 <View style={[styles.webDatePickerContainer, { backgroundColor: theme.cardBackground }]}>
+                  <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+                    Date of engagement
+                  </ThemedText>
                   {Platform.OS === "web" ? (
                     <input
                       type="date"
-                      value={engagementLog.length > 0 
-                        ? new Date(engagementLog[0].engagedAt).toISOString().split('T')[0]
-                        : new Date().toISOString().split('T')[0]}
+                      value={engagementPickerDate.toISOString().split('T')[0]}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const date = new Date(e.target.value + "T12:00:00");
-                        handleSetEngagementDate(date);
+                        setEngagementPickerDate(date);
                       }}
                       style={{
                         padding: 12,
@@ -1413,85 +1522,75 @@ export default function OfficialProfileScreen() {
                       }}
                     />
                   ) : (
-                    <View>
-                      <DateTimePicker
-                        value={engagementPickerDate}
-                        mode="date"
-                        display="spinner"
-                        onChange={(event, date) => {
-                          if (event.type === "dismissed") {
-                            setShowEngagementPicker(false);
-                            return;
-                          }
-                          if (date) {
-                            setEngagementPickerDate(date);
-                            if (Platform.OS === "android") {
-                              handleSetEngagementDate(date);
-                            }
-                          }
-                        }}
-                        maximumDate={new Date()}
-                      />
-                      <View style={styles.iosPickerButtons}>
-                        <Pressable
-                          onPress={() => handleSetEngagementDate(new Date())}
-                          style={({ pressed }) => [
-                            styles.setTodayButton,
-                            { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1 },
-                          ]}
-                        >
-                          <Feather name="calendar" size={16} color={theme.text} />
-                          <ThemedText type="caption" style={{ color: theme.text, marginLeft: Spacing.xs }}>
-                            Today
-                          </ThemedText>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => handleSetEngagementDate(engagementPickerDate)}
-                          style={({ pressed }) => [
-                            styles.setTodayButton,
-                            { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.sm },
-                          ]}
-                        >
-                          <Feather name="check" size={16} color="#FFFFFF" />
-                          <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: Spacing.xs }}>
-                            Confirm
-                          </ThemedText>
-                        </Pressable>
-                      </View>
-                    </View>
+                    <DateTimePicker
+                      value={engagementPickerDate}
+                      mode="date"
+                      display="spinner"
+                      onChange={(event, date) => {
+                        if (event.type === "dismissed") { setShowEngagementPicker(false); return; }
+                        if (date) {
+                          setEngagementPickerDate(date);
+                          if (Platform.OS === "android") { handleAddEngagement(date); }
+                        }
+                      }}
+                      maximumDate={new Date()}
+                    />
                   )}
-                  <Pressable 
-                    onPress={() => setShowEngagementPicker(false)}
-                    style={{ marginTop: Spacing.sm, alignItems: "center" }}
-                  >
-                    <ThemedText type="caption" style={{ color: theme.secondaryText }}>Cancel</ThemedText>
-                  </Pressable>
+                  <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: Spacing.sm, marginBottom: Spacing.xs }}>
+                    Note (optional)
+                  </ThemedText>
+                  <TextInput
+                    style={[styles.noteInput, { backgroundColor: theme.inputBackground, color: theme.text }]}
+                    value={engagementNote}
+                    onChangeText={setEngagementNote}
+                    placeholder="e.g., 'Met at Capitol'"
+                    placeholderTextColor={theme.secondaryText}
+                    multiline
+                  />
+                  <View style={styles.iosPickerButtons}>
+                    <Pressable
+                      onPress={() => { setShowEngagementPicker(false); setEngagementNote(""); }}
+                      style={({ pressed }) => [styles.setTodayButton, { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <ThemedText type="caption" style={{ color: theme.text }}>Cancel</ThemedText>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleAddEngagement(Platform.OS === "web" ? engagementPickerDate : engagementPickerDate)}
+                      style={({ pressed }) => [styles.setTodayButton, { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.sm }]}
+                    >
+                      <Feather name="check" size={16} color="#FFFFFF" />
+                      <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: Spacing.xs }}>Save</ThemedText>
+                    </Pressable>
+                  </View>
                 </View>
               ) : null}
 
-              <View style={{ marginTop: Spacing.md }}>
-                <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
-                  Note (optional)
+              {engagementLog.length > 0 ? (
+                <View style={{ marginTop: Spacing.sm }}>
+                  {engagementLog.map((entry) => (
+                    <View key={entry.id} style={[styles.entryCard, { backgroundColor: theme.cardBackground }]}>
+                      <View style={styles.entryHeader}>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <Feather name="calendar" size={14} color={theme.primary} style={{ marginRight: 6 }} />
+                          <ThemedText type="small" style={{ color: theme.secondaryText }}>
+                            {new Date(entry.engagedAt).toLocaleDateString()}
+                          </ThemedText>
+                        </View>
+                        <Pressable onPress={() => handleDeleteEngagement(entry.id)}>
+                          <Feather name="trash-2" size={16} color={theme.secondaryText} />
+                        </Pressable>
+                      </View>
+                      {entry.summary ? (
+                        <ThemedText type="body" style={{ marginTop: 4 }}>{entry.summary}</ThemedText>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <ThemedText type="body" style={{ color: theme.secondaryText, fontStyle: "italic" }}>
+                  No engagements logged yet. Tap + Add to record one.
                 </ThemedText>
-                <TextInput
-                  style={[
-                    styles.noteInput,
-                    { backgroundColor: theme.inputBackground, color: theme.text },
-                  ]}
-                  value={engagementNote}
-                  onChangeText={setEngagementNote}
-                  onBlur={handleSaveEngagementNote}
-                  placeholder="e.g., 'Met at Capitol'"
-                  placeholderTextColor={theme.secondaryText}
-                  multiline
-                  editable={engagementLog.length > 0}
-                />
-                {engagementLog.length === 0 ? (
-                  <ThemedText type="caption" style={{ color: theme.secondaryText, fontStyle: "italic", marginTop: Spacing.xs }}>
-                    Set a date first to add a note
-                  </ThemedText>
-                ) : null}
-              </View>
+              )}
             </View>
           </Animated.View>
         )}
@@ -1740,20 +1839,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xs,
     borderRadius: BorderRadius.xs,
   },
-  engagementDateRow: {
+  datePickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    gap: Spacing.xs,
+  },
+  priorityPill: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+  },
+  sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  engagementDateInfo: {
+  addEngagementBtn: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  engagementDateActions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  dateButton: {
     paddingVertical: Spacing.xs,
     paddingHorizontal: Spacing.sm,
     borderRadius: BorderRadius.sm,

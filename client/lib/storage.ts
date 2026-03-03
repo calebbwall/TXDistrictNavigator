@@ -212,6 +212,8 @@ export interface NotePrayerEntry {
   text: string;
   followUpNeeded: boolean;
   followUpArchivedAt?: string;
+  dueDate?: string; // ISO date string (YYYY-MM-DD)
+  priority?: "low" | "medium" | "high";
 }
 
 export interface EngagementEntry {
@@ -247,13 +249,22 @@ export async function saveNotesPrayer(source: string, districtNumber: number, en
   }
 }
 
-export async function addNotePrayer(source: string, districtNumber: number, text: string, followUpNeeded: boolean): Promise<NotePrayerEntry> {
+export async function addNotePrayer(
+  source: string,
+  districtNumber: number,
+  text: string,
+  followUpNeeded: boolean,
+  dueDate?: string,
+  priority?: "low" | "medium" | "high"
+): Promise<NotePrayerEntry> {
   const entries = await getNotesPrayer(source, districtNumber);
   const newEntry: NotePrayerEntry = {
     id: `np_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     createdAt: new Date().toISOString(),
     text,
     followUpNeeded,
+    dueDate,
+    priority,
   };
   entries.unshift(newEntry);
   await saveNotesPrayer(source, districtNumber, entries);

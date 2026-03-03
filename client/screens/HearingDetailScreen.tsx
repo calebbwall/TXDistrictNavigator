@@ -125,17 +125,24 @@ function CollapsibleNotice({ text }: { text: string }) {
   );
 }
 
+const TLO_BILL_URL = (billNumber: string) =>
+  `https://capitol.texas.gov/BillLookup/History.aspx?LegSess=89R&Bill=${encodeURIComponent(billNumber)}`;
+
 // ── Agenda Item Row ──
 function AgendaRow({ item }: { item: HearingResponse["agenda"][0] }) {
   const { theme } = useTheme();
   return (
     <View style={[styles.agendaRow, { backgroundColor: theme.cardBackground, borderRadius: BorderRadius.sm }]}>
       {item.billNumber ? (
-        <View style={[styles.billBadge, { backgroundColor: theme.primary + "18" }]}>
+        <Pressable
+          onPress={() => Linking.openURL(TLO_BILL_URL(item.billNumber!))}
+          style={[styles.billBadge, { backgroundColor: theme.primary + "18" }]}
+        >
           <ThemedText type="small" style={{ color: theme.primary, fontWeight: "700" }}>
             {item.billNumber}
           </ThemedText>
-        </View>
+          <Feather name="external-link" size={10} color={theme.primary} style={{ marginTop: 1 }} />
+        </Pressable>
       ) : (
         <View style={[styles.billBadge, { backgroundColor: theme.backgroundSecondary }]}>
           <Feather name="file" size={12} color={theme.secondaryText} />
@@ -392,6 +399,8 @@ const styles = StyleSheet.create({
     minWidth: 48,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 3,
   },
   witnessList: { gap: Spacing.xs },
   witnessRow: {
