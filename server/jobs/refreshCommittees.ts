@@ -636,17 +636,16 @@ export async function maybeRunCommitteeRefresh(): Promise<void> {
 }
 
 export async function wasCommitteesCheckedThisWeek(): Promise<boolean> {
-  const sources: CommitteeSource[] = ["TX_HOUSE_COMMITTEES", "TX_SENATE_COMMITTEES"];
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  
-  for (const source of sources) {
-    const state = await getRefreshState(source);
-    if (!state?.lastCheckedAt || state.lastCheckedAt < oneWeekAgo) {
-      return false;
-    }
-  }
-  
-  return true;
+  // Return true (= "skip startup seed") if committees AND memberships already exist.
+  // The self-healing check in maybeRunCommitteeRefresh still catches the case where
+  // committees exist but memberships are empty (partial failure scenario).
+  const [{ committeeCount }] = await db
+    .select({ committeeCount: sql<number>`count(*)::int` })
+    .from(committees);
+  const [{ memberCount }] = await db
+    .select({ memberCount: sql<number>`count(*)::int` })
+    .from(committeeMemberships);
+  return committeeCount > 0 && memberCount > 0;
 }
 
 export async function getAllCommitteeRefreshStates(): Promise<Array<{
