@@ -4,6 +4,7 @@ import {
   View,
   TextInput,
   FlatList,
+  SectionList,
   Pressable,
   RefreshControl,
   Image,
@@ -42,6 +43,13 @@ import {
   isNameSearch,
   type SearchableOfficial,
 } from "@/lib/officialSearch";
+import {
+  normalizeAndGroupOfficials,
+  getSubgroupLabel,
+  type NormalizedOfficial,
+  type OfficialSection,
+} from "@/utils/otherTxOfficialsNormalizer";
+import type { MergedOfficial } from "@shared/schema";
 
 type NavigationProp = NativeStackNavigationProp<BrowseStackParamList>;
 
@@ -306,6 +314,11 @@ export default function BrowseOfficialsScreen() {
     return allOfficials;
   }, [allOfficials, searchIndex, debouncedSearch, placeInfo]);
 
+  const statewideSections: OfficialSection[] = useMemo(() => {
+    if (selectedSource !== "OTHER_TX") return [];
+    return normalizeAndGroupOfficials(officials as unknown as MergedOfficial[]);
+  }, [selectedSource, officials]);
+
   const handleSourceChange = useCallback((source: SourceType) => {
     setSelectedSource(source);
     setSearchText("");
@@ -325,6 +338,57 @@ export default function BrowseOfficialsScreen() {
       navigation.navigate("OfficialProfile", { officialId: official.id });
     },
     [navigation]
+  );
+
+  const renderStatewideItem = useCallback(
+    ({ item, index, section }: { item: NormalizedOfficial; index: number; section: OfficialSection }) => {
+      let showSubgroupHeader = false;
+      let subgroupLabel: string | null = null;
+
+      if (section.key === "judiciary") {
+        if (index === 0) {
+          showSubgroupHeader = true;
+          subgroupLabel = getSubgroupLabel(item);
+        } else {
+          const prevItem = section.data[index - 1];
+          if (prevItem.subgroup !== item.subgroup) {
+            showSubgroupHeader = true;
+            subgroupLabel = getSubgroupLabel(item);
+          }
+        }
+      }
+
+      return (
+        <View>
+          {showSubgroupHeader && subgroupLabel ? (
+            <View style={[styles.subgroupHeader, { backgroundColor: theme.backgroundRoot }]}>
+              <ThemedText type="caption" style={[styles.subgroupTitle, { color: theme.secondaryText }]}>
+                {subgroupLabel}
+              </ThemedText>
+            </View>
+          ) : null}
+          <View style={styles.listItem}>
+            <OfficialCard
+              official={item as unknown as Official}
+              onPress={() => handleOfficialPress(item as unknown as Official)}
+            />
+          </View>
+        </View>
+      );
+    },
+    [theme, handleOfficialPress]
+  );
+
+  const renderStatewideHeader = useCallback(
+    ({ section }: { section: OfficialSection }) => (
+      <View style={[styles.statewideSectionHeader, { backgroundColor: theme.backgroundRoot }]}>
+        <ThemedText type="h3" style={{ fontWeight: "700" }}>{section.title}</ThemedText>
+        <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: 2 }}>
+          {section.description}
+        </ThemedText>
+      </View>
+    ),
+    [theme]
   );
 
   const renderItem = useCallback(
@@ -511,34 +575,63 @@ export default function BrowseOfficialsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      <FlatList
-        data={officials}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        ListHeaderComponent={ListHeaderComponent}
-        contentContainerStyle={[
-          styles.listContent,
-          { 
-            paddingTop: headerHeight + Spacing.sm,
-            paddingBottom: tabBarHeight + Spacing.xl,
-          },
-        ]}
-        ListEmptyComponent={ListEmptyComponent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isFetching && !isLoading}
-            onRefresh={refetch}
-            tintColor={theme.primary}
-          />
-        }
-        showsVerticalScrollIndicator={true}
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={11}
-        removeClippedSubviews={false}
-        stickyHeaderIndices={[0]}
-      />
-      
+      {selectedSource === "OTHER_TX" ? (
+        <SectionList
+          sections={statewideSections}
+          renderItem={renderStatewideItem}
+          renderSectionHeader={renderStatewideHeader}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={ListHeaderComponent}
+          ListEmptyComponent={ListEmptyComponent}
+          stickySectionHeadersEnabled
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              paddingTop: headerHeight + Spacing.sm,
+              paddingBottom: tabBarHeight + Spacing.xl,
+            },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={isFetching && !isLoading}
+              onRefresh={refetch}
+              tintColor={theme.primary}
+            />
+          }
+          showsVerticalScrollIndicator
+          removeClippedSubviews={false}
+          SectionSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
+        />
+      ) : (
+        <FlatList
+          data={officials}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          ListHeaderComponent={ListHeaderComponent}
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              paddingTop: headerHeight + Spacing.sm,
+              paddingBottom: tabBarHeight + Spacing.xl,
+            },
+          ]}
+          ListEmptyComponent={ListEmptyComponent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isFetching && !isLoading}
+              onRefresh={refetch}
+              tintColor={theme.primary}
+            />
+          }
+          showsVerticalScrollIndicator
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+          removeClippedSubviews={false}
+          stickyHeaderIndices={[0]}
+        />
+      )}
+
       <PlaceSearchModal
         visible={showPlaceSearch}
         onClose={() => setShowPlaceSearch(false)}
@@ -645,5 +738,21 @@ const styles = StyleSheet.create({
     height: 120,
     marginBottom: Spacing.md,
     opacity: 0.7,
+  },
+  statewideSectionHeader: {
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+  },
+  subgroupHeader: {
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
+    paddingHorizontal: Spacing.xs,
+  },
+  subgroupTitle: {
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    fontWeight: "600",
   },
 });
