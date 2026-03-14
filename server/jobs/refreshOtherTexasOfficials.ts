@@ -16,7 +16,7 @@
 
 import { db } from '../db';
 import { officialPublic, refreshState } from '../../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { 
   fetchAllOtherTexasOfficials, 
   getAllStaticOfficials,
@@ -292,22 +292,28 @@ export async function refreshOtherTexasOfficials(
 }
 
 /**
- * Check if Other TX Officials were checked this week.
+ * Check if Other TX Officials exist in the DB.
+ * Returns true (skip seeding) only when active officials are already present.
  */
 export async function wasOtherTxCheckedThisWeek(): Promise<boolean> {
-  const result = await db
-    .select()
-    .from(refreshState)
-    .where(eq(refreshState.source, SOURCE_VALUE))
-    .limit(1);
-  
-  if (!result[0]?.lastCheckedAt) return false;
-  
-  const lastChecked = new Date(result[0].lastCheckedAt);
-  const now = new Date();
-  const daysSinceCheck = (now.getTime() - lastChecked.getTime()) / (1000 * 60 * 60 * 24);
-  
-  return daysSinceCheck < 7;
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(officialPublic)
+    .where(and(eq(officialPublic.source, 'OTHER_TX'), eq(officialPublic.active, true)));
+  return count > 0;
+}
+
+/**
+ * Seed Other TX Officials on startup if none exist in the DB.
+ */
+export async function maybeRunOtherTxRefresh(): Promise<void> {
+  const alreadySeeded = await wasOtherTxCheckedThisWeek();
+  if (alreadySeeded) {
+    console.log('[RefreshOtherTX] Officials already in DB, skipping startup seed');
+    return;
+  }
+  console.log('[RefreshOtherTX] No OTHER_TX officials found — running startup seed');
+  await refreshOtherTexasOfficials({ force: true });
 }
 
 /**

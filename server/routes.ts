@@ -1236,6 +1236,7 @@ import {
   getIsRefreshingCommittees,
   maybeRunCommitteeRefresh,
 } from "./jobs/refreshCommittees";
+import { maybeRunOtherTxRefresh } from "./jobs/refreshOtherTexasOfficials";
 import { lookupPlace, lookupPlaceCandidates, getCacheStats, type PlaceResult } from "./geonames";
 import { committees, committeeMemberships } from "@shared/schema";
 
@@ -1275,6 +1276,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   maybeRunCommitteeRefresh().catch(err => {
     console.error("[Startup] Failed to check committee refresh:", err);
+  });
+
+  maybeRunOtherTxRefresh().catch(err => {
+    console.error("[Startup] Failed to check Other TX officials seed:", err);
   });
 
   setTimeout(async () => {
