@@ -900,11 +900,13 @@ export async function getLastRefreshTime(): Promise<Date | null> {
 }
 
 export async function shouldRunRefresh(): Promise<boolean> {
-  const lastRefresh = await getLastRefreshTime();
-  if (!lastRefresh) return true;
-  
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  return lastRefresh < sevenDaysAgo;
+  // Only seed on startup if the DB has no officials — the Monday scheduler
+  // handles change detection via fingerprinting once data is populated.
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(officialPublic)
+    .where(eq(officialPublic.active, true));
+  return count === 0;
 }
 
 let isRefreshing = false;
