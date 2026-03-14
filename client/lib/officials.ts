@@ -93,6 +93,7 @@ export function normalizeOfficial(raw: Record<string, unknown>): Official {
     source,
     districtNumber,
     fullName,
+    roleTitle: raw.roleTitle ? String(raw.roleTitle) : (raw.role_title ? String(raw.role_title) : null),
     party: raw.party ? String(raw.party) : null,
     photoUrl: raw.photoUrl ? String(raw.photoUrl) : (raw.photo_url ? String(raw.photo_url) : null),
     capitolPhone: raw.capitolPhone ? String(raw.capitolPhone) : (raw.capitol_phone ? String(raw.capitol_phone) : null),
