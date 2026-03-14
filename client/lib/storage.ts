@@ -594,3 +594,60 @@ export async function getAllPrivateNotesWithAddresses(): Promise<Array<{
     return [];
   }
 }
+
+// ─── Mileage Tracker ──────────────────────────────────────────────────────────
+
+const MILEAGE_ENTRIES_KEY = "@texas_districts:mileage_entries";
+
+export interface MileageEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  description: string;
+  startMileage: number;
+  endMileage: number;
+  totalMiles: number;
+  startPhotoUri?: string;
+  endPhotoUri?: string;
+  createdAt: string;
+}
+
+export async function getMileageEntries(): Promise<MileageEntry[]> {
+  try {
+    const data = await AsyncStorage.getItem(MILEAGE_ENTRIES_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveMileageEntry(entry: MileageEntry): Promise<void> {
+  try {
+    const entries = await getMileageEntries();
+    entries.push(entry);
+    await AsyncStorage.setItem(MILEAGE_ENTRIES_KEY, JSON.stringify(entries));
+  } catch (error) {
+    console.error("[Storage] Error saving mileage entry:", error);
+  }
+}
+
+export async function updateMileageEntry(entry: MileageEntry): Promise<void> {
+  try {
+    const entries = await getMileageEntries();
+    const idx = entries.findIndex((e) => e.id === entry.id);
+    if (idx !== -1) entries[idx] = entry;
+    else entries.push(entry);
+    await AsyncStorage.setItem(MILEAGE_ENTRIES_KEY, JSON.stringify(entries));
+  } catch (error) {
+    console.error("[Storage] Error updating mileage entry:", error);
+  }
+}
+
+export async function deleteMileageEntry(id: string): Promise<void> {
+  try {
+    const entries = await getMileageEntries();
+    const filtered = entries.filter((e) => e.id !== id);
+    await AsyncStorage.setItem(MILEAGE_ENTRIES_KEY, JSON.stringify(filtered));
+  } catch (error) {
+    console.error("[Storage] Error deleting mileage entry:", error);
+  }
+}
