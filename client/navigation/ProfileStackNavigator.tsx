@@ -8,6 +8,8 @@ import SavedOfficialsScreen from "@/screens/SavedOfficialsScreen";
 import CommitteesScreen from "@/screens/CommitteesScreen";
 import CommitteeListScreen from "@/screens/CommitteeListScreen";
 import CommitteeDetailScreen from "@/screens/CommitteeDetailScreen";
+import MileageTrackerScreen from "@/screens/MileageTrackerScreen";
+import MileageEntryScreen from "@/screens/MileageEntryScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type ProfileStackParamList = {
@@ -19,6 +21,8 @@ export type ProfileStackParamList = {
   Committees: undefined;
   CommitteeList: { chamber: "TX_HOUSE" | "TX_SENATE" };
   CommitteeDetail: { committeeId: string; committeeName: string };
+  MileageTracker: undefined;
+  MileageEntry: { entryId?: string };
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -82,6 +86,18 @@ export default function ProfileStackNavigator() {
         component={CommitteeDetailScreen}
         options={({ route }) => ({
           headerTitle: route.params.committeeName,
+        })}
+      />
+      <Stack.Screen
+        name="MileageTracker"
+        component={MileageTrackerScreen}
+        options={{ headerTitle: "Mileage Tracker" }}
+      />
+      <Stack.Screen
+        name="MileageEntry"
+        component={MileageEntryScreen}
+        options={({ route }) => ({
+          headerTitle: route.params.entryId ? "Edit Entry" : "New Entry",
         })}
       />
     </Stack.Navigator>

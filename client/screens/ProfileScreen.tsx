@@ -160,6 +160,8 @@ export default function ProfileScreen() {
             <SettingRow icon="bookmark" label="Saved Officials" onPress={() => navigation.navigate("SavedOfficials")} />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <SettingRow icon="flag" label="Follow-up Dashboard" onPress={() => navigation.navigate("FollowUpDashboard")} />
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <SettingRow icon="navigation" label="Mileage" onPress={() => navigation.navigate("MileageTracker")} />
           </View>
         </View>
 
