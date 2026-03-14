@@ -16,6 +16,7 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
@@ -76,13 +77,18 @@ async function exportMileageToCsv(
 
   try {
     const file = new File(Paths.cache, `mileage_${fromDate}_to_${toDate}.csv`);
-    file.write(csv);
+    await file.write(csv);
 
-    await Share.share({
-      url: file.uri,
-      message: csv,
-      title: "Mileage Export",
-    });
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (isAvailable) {
+      await Sharing.shareAsync(file.uri, {
+        mimeType: "text/csv",
+        dialogTitle: "Export Mileage CSV",
+        UTI: "public.comma-separated-values-text",
+      });
+    } else {
+      await Share.share({ message: csv, title: "Mileage Export" });
+    }
   } catch (error) {
     Alert.alert("Export Failed", "Could not export mileage data. Please try again.");
     console.error("[Mileage] Export error:", error);
