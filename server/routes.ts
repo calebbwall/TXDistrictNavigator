@@ -4,6 +4,7 @@ import { txHouseGeoJSON, txSenateGeoJSON, usCongressGeoJSON, txHouseGeoJSONFull,
 import { db } from "./db";
 import { registerPrayerRoutes } from "./routes/prayerRoutes";
 import { registerLegislativeRoutes } from "./routes/legislativeRoutes";
+import { registerAiRoutes } from "./routes/aiRoutes";
 import { 
   officialPublic, 
   officialPrivate, 
@@ -1297,6 +1298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   registerPrayerRoutes(app);
   registerLegislativeRoutes(app);
+  registerAiRoutes(app);
 
   app.get("/api/geojson/tx_house", (_req, res) => {
     res.json(txHouseGeoJSON);

@@ -16,7 +16,7 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
@@ -39,14 +39,24 @@ function getToday(): string {
 
 async function copyToAppStorage(uri: string): Promise<string> {
   const filename = `mileage_${Date.now()}.jpg`;
-  const dest = (FileSystem.documentDirectory ?? "") + filename;
-  await FileSystem.copyAsync({ from: uri, to: dest });
-  return dest;
+  const src = new File(uri);
+  const dest = new File(Paths.document, filename);
+  src.copy(dest);
+  return dest.uri;
 }
 
 async function promptPhotoSource(
   setUri: (uri: string) => void
 ): Promise<void> {
+  const persistUri = async (rawUri: string): Promise<string> => {
+    try {
+      return await copyToAppStorage(rawUri);
+    } catch {
+      // Fall back to using the raw URI (works in Expo Go)
+      return rawUri;
+    }
+  };
+
   const handleChoice = async (index: number) => {
     if (index === 0) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -59,16 +69,24 @@ async function promptPhotoSource(
       }
       const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
       if (!result.canceled) {
-        const persisted = await copyToAppStorage(result.assets[0].uri);
+        const persisted = await persistUri(result.assets[0].uri);
         setUri(persisted);
       }
     } else if (index === 1) {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Photo library access is needed to select a photo."
+        );
+        return;
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         quality: 0.7,
       });
       if (!result.canceled) {
-        const persisted = await copyToAppStorage(result.assets[0].uri);
+        const persisted = await persistUri(result.assets[0].uri);
         setUri(persisted);
       }
     }

@@ -15,7 +15,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { OfficialCard } from "@/components/OfficialCard";
 import { ThemedText } from "@/components/ThemedText";
@@ -54,6 +54,20 @@ import type { MergedOfficial } from "@shared/schema";
 type NavigationProp = NativeStackNavigationProp<BrowseStackParamList>;
 
 type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX" | "ALL";
+
+interface NLSearchFilters {
+  party?: string;
+  chamber?: string;
+  committeeKeyword?: string;
+  nameKeyword?: string;
+  districtNumber?: number;
+}
+
+const AI_CHAMBER_TO_SOURCE: Record<string, SourceType> = {
+  "TX Senate": "TX_SENATE",
+  "TX House": "TX_HOUSE",
+  "US House": "US_HOUSE",
+};
 
 interface PlaceResult {
   name: string;
@@ -99,6 +113,12 @@ export default function BrowseOfficialsScreen() {
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const [showPlaceSearch, setShowPlaceSearch] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // AI natural-language search
+  const [aiModeActive, setAiModeActive] = useState(false);
+  const [aiSearchInput, setAiSearchInput] = useState("");
+  const [aiFilters, setAiFilters] = useState<NLSearchFilters | null>(null);
+  const [aiSearchLoading, setAiSearchLoading] = useState(false);
 
   useEffect(() => {
     getCachedOfficials("ALL").then(setCachedData);
@@ -296,23 +316,43 @@ export default function BrowseOfficialsScreen() {
   }, [officialsWithPrivate]);
 
   const officials: Official[] = useMemo(() => {
+    // AI mode: apply filters client-side on full list
+    if (aiModeActive && aiFilters) {
+      let list = allOfficials;
+      if (aiFilters.party) {
+        const p = aiFilters.party.toLowerCase();
+        const code = p.startsWith("r") ? "R" : p.startsWith("d") ? "D" : null;
+        if (code) {
+          list = list.filter((o) => (o.party ?? "").toUpperCase() === code);
+        }
+      }
+      if (aiFilters.districtNumber) {
+        list = list.filter((o) => o.districtNumber === aiFilters.districtNumber);
+      }
+      if (aiFilters.nameKeyword) {
+        const kw = aiFilters.nameKeyword.toLowerCase();
+        list = list.filter((o) => o.fullName?.toLowerCase().includes(kw));
+      }
+      return list;
+    }
+
     if (!debouncedSearch.trim()) {
       return allOfficials;
     }
-    
+
     if (placeInfo) {
       return allOfficials;
     }
-    
+
     if (isNameSearch(debouncedSearch)) {
       const results = searchOfficials(searchIndex, debouncedSearch, 50);
       if (results.length > 0) {
         return results.map(r => r.official);
       }
     }
-    
+
     return allOfficials;
-  }, [allOfficials, searchIndex, debouncedSearch, placeInfo]);
+  }, [allOfficials, searchIndex, debouncedSearch, placeInfo, aiModeActive, aiFilters]);
 
   const statewideSections: OfficialSection[] = useMemo(() => {
     if (selectedSource !== "OTHER_TX") return [];
@@ -323,6 +363,7 @@ export default function BrowseOfficialsScreen() {
     setSelectedSource(source);
     setSearchText("");
     setDebouncedSearch("");
+    setAiFilters(null);
   }, []);
 
   const handlePlaceSelect = useCallback(async (place: PlaceCandidate) => {
@@ -330,6 +371,49 @@ export default function BrowseOfficialsScreen() {
     setSearchText(place.name);
     setDebouncedSearch(place.name);
     setPlaceInfo(null);
+  }, []);
+
+  const handleToggleAiMode = useCallback(() => {
+    setAiModeActive((prev) => {
+      if (prev) {
+        // turning off: reset everything
+        setAiSearchInput("");
+        setAiFilters(null);
+      }
+      return !prev;
+    });
+  }, []);
+
+  const handleAiSearch = useCallback(async () => {
+    if (!aiSearchInput.trim()) return;
+    setAiSearchLoading(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/ai/parse-search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: aiSearchInput }),
+      });
+      if (res.ok) {
+        const filters: NLSearchFilters = await res.json();
+        setAiFilters(Object.keys(filters).length > 0 ? filters : null);
+        if (filters.chamber && AI_CHAMBER_TO_SOURCE[filters.chamber]) {
+          setSelectedSource(AI_CHAMBER_TO_SOURCE[filters.chamber]);
+        }
+      }
+    } catch {
+      // silently fall back
+    } finally {
+      setAiSearchLoading(false);
+    }
+  }, [aiSearchInput]);
+
+  const dismissAiFilter = useCallback((key: keyof NLSearchFilters) => {
+    setAiFilters((prev) => {
+      if (!prev) return null;
+      const next = { ...prev };
+      delete next[key];
+      return Object.keys(next).length > 0 ? next : null;
+    });
   }, []);
 
   const handleOfficialPress = useCallback(
@@ -527,25 +611,68 @@ export default function BrowseOfficialsScreen() {
         <View
           style={[
             styles.searchInputContainer,
-            { backgroundColor: theme.inputBackground, borderColor: theme.border },
+            {
+              backgroundColor: theme.inputBackground,
+              borderColor: aiModeActive ? theme.primary : theme.border,
+              borderWidth: aiModeActive ? 1.5 : 1,
+            },
           ]}
         >
-          <Feather name="search" size={18} color={theme.secondaryText} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
-            placeholderTextColor={theme.secondaryText}
-            value={searchText}
-            onChangeText={setSearchText}
-            returnKeyType="search"
-          />
-          {searchText.length > 0 ? (
-            <Pressable onPress={() => setSearchText("")}>
+          {aiModeActive ? (
+            <Ionicons name="sparkles" size={18} color={theme.primary} />
+          ) : (
+            <Feather name="search" size={18} color={theme.secondaryText} />
+          )}
+          {aiModeActive ? (
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder="Describe who you're looking for..."
+              placeholderTextColor={theme.secondaryText}
+              value={aiSearchInput}
+              onChangeText={setAiSearchInput}
+              returnKeyType="search"
+              onSubmitEditing={handleAiSearch}
+              autoFocus
+            />
+          ) : (
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
+              placeholderTextColor={theme.secondaryText}
+              value={searchText}
+              onChangeText={setSearchText}
+              returnKeyType="search"
+            />
+          )}
+          {(aiModeActive ? aiSearchInput.length > 0 : searchText.length > 0) ? (
+            <Pressable onPress={() => aiModeActive ? setAiSearchInput("") : setSearchText("")}>
               <Feather name="x" size={18} color={theme.secondaryText} />
             </Pressable>
           ) : null}
+          {aiSearchLoading ? (
+            <ActivityIndicator size="small" color={theme.primary} />
+          ) : null}
         </View>
-        {selectedSource !== "OTHER_TX" ? (
+        {/* AI mode toggle */}
+        <Pressable
+          onPress={handleToggleAiMode}
+          style={({ pressed }) => [
+            styles.placeSearchButton,
+            {
+              backgroundColor: aiModeActive ? theme.primary : theme.inputBackground,
+              borderColor: aiModeActive ? theme.primary : theme.border,
+              borderWidth: 1,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Ionicons
+            name="sparkles"
+            size={20}
+            color={aiModeActive ? "#FFFFFF" : theme.secondaryText}
+          />
+        </Pressable>
+        {!aiModeActive && selectedSource !== "OTHER_TX" ? (
           <Pressable
             onPress={() => setShowPlaceSearch(true)}
             style={({ pressed }) => [
@@ -558,7 +685,66 @@ export default function BrowseOfficialsScreen() {
         ) : null}
       </View>
 
-      {/* 4. Place label (if searching by location) */}
+      {/* 4a. AI filter chips */}
+      {aiFilters && Object.keys(aiFilters).length > 0 ? (
+        <View style={styles.aiChipsRow}>
+          {aiFilters.party ? (
+            <Pressable
+              style={[styles.aiChip, { backgroundColor: theme.primary + "22", borderColor: theme.primary }]}
+              onPress={() => dismissAiFilter("party")}
+            >
+              <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                {aiFilters.party}
+              </ThemedText>
+              <Feather name="x" size={12} color={theme.primary} style={{ marginLeft: 4 }} />
+            </Pressable>
+          ) : null}
+          {aiFilters.chamber ? (
+            <Pressable
+              style={[styles.aiChip, { backgroundColor: theme.primary + "22", borderColor: theme.primary }]}
+              onPress={() => dismissAiFilter("chamber")}
+            >
+              <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                {aiFilters.chamber}
+              </ThemedText>
+              <Feather name="x" size={12} color={theme.primary} style={{ marginLeft: 4 }} />
+            </Pressable>
+          ) : null}
+          {aiFilters.districtNumber ? (
+            <Pressable
+              style={[styles.aiChip, { backgroundColor: theme.primary + "22", borderColor: theme.primary }]}
+              onPress={() => dismissAiFilter("districtNumber")}
+            >
+              <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                District {aiFilters.districtNumber}
+              </ThemedText>
+              <Feather name="x" size={12} color={theme.primary} style={{ marginLeft: 4 }} />
+            </Pressable>
+          ) : null}
+          {aiFilters.nameKeyword ? (
+            <Pressable
+              style={[styles.aiChip, { backgroundColor: theme.primary + "22", borderColor: theme.primary }]}
+              onPress={() => dismissAiFilter("nameKeyword")}
+            >
+              <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                "{aiFilters.nameKeyword}"
+              </ThemedText>
+              <Feather name="x" size={12} color={theme.primary} style={{ marginLeft: 4 }} />
+            </Pressable>
+          ) : null}
+          {aiFilters.committeeKeyword ? (
+            <View
+              style={[styles.aiChip, { backgroundColor: theme.secondaryText + "22", borderColor: theme.secondaryText }]}
+            >
+              <ThemedText type="caption" style={{ color: theme.secondaryText, fontWeight: "600" }}>
+                Committee: {aiFilters.committeeKeyword}
+              </ThemedText>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* 4b. Place label (if searching by location) */}
       {placeLabel ? (
         <View style={styles.placeLabelContainer}>
           <Feather name="map-pin" size={14} color={theme.primary} />
@@ -571,7 +757,7 @@ export default function BrowseOfficialsScreen() {
         </View>
       ) : null}
     </View>
-  ), [isOffline, showOfflineBanner, selectedSource, theme, placeLabel, countLabel, searchText, debouncedSearch, handleSourceChange]);
+  ), [isOffline, showOfflineBanner, selectedSource, theme, placeLabel, countLabel, searchText, debouncedSearch, handleSourceChange, aiModeActive, aiSearchInput, aiFilters, aiSearchLoading, handleToggleAiMode, handleAiSearch, dismissAiFilter]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -694,6 +880,20 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     marginBottom: Spacing.xs,
     flexWrap: "wrap",
+  },
+  aiChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  aiChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   searchRow: {
     flexDirection: "row",
