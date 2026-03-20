@@ -604,10 +604,11 @@ export interface MileageEntry {
   date: string; // YYYY-MM-DD
   description: string;
   startMileage: number;
-  endMileage: number;
-  totalMiles: number;
+  endMileage?: number; // optional until trip is completed
+  totalMiles?: number; // optional until trip is completed
   startPhotoUri?: string;
   endPhotoUri?: string;
+  status: "in_progress" | "completed";
   createdAt: string;
 }
 

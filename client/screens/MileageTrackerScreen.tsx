@@ -56,11 +56,11 @@ async function exportMileageToCsv(
   toDate: string
 ): Promise<void> {
   const filtered = entries
-    .filter((e) => e.date >= fromDate && e.date <= toDate)
+    .filter((e) => e.date >= fromDate && e.date <= toDate && e.status === "completed")
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (filtered.length === 0) {
-    Alert.alert("No Entries", "No mileage entries found for the selected date range.");
+    Alert.alert("No Entries", "No completed mileage entries found for the selected date range.");
     return;
   }
 
@@ -68,10 +68,10 @@ async function exportMileageToCsv(
   const rows = filtered
     .map(
       (e) =>
-        `"${e.date}","${e.description.replace(/"/g, '""')}",${e.startMileage},${e.endMileage},${e.totalMiles}`
+        `"${e.date}","${e.description.replace(/"/g, '""')}",${e.startMileage},${e.endMileage ?? ""},${e.totalMiles ?? ""}`
     )
     .join("\n");
-  const totalMiles = filtered.reduce((sum, e) => sum + e.totalMiles, 0);
+  const totalMiles = filtered.reduce((sum, e) => sum + (e.totalMiles ?? 0), 0);
   const summary = `\n"TOTAL","",,,${totalMiles}`;
   const csv = header + rows + summary;
 
@@ -151,7 +151,11 @@ export default function MileageTrackerScreen() {
     await exportMileageToCsv(entries, exportFrom, exportTo);
   }, [entries, exportFrom, exportTo]);
 
-  const totalMilesAll = entries.reduce((sum, e) => sum + e.totalMiles, 0);
+  const totalMilesAll = entries.reduce(
+    (sum, e) => sum + (e.status === "completed" ? (e.totalMiles ?? 0) : 0),
+    0
+  );
+  const inProgressCount = entries.filter((e) => e.status === "in_progress").length;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -172,6 +176,11 @@ export default function MileageTrackerScreen() {
             <ThemedText type="h2" style={{ color: theme.primary }}>
               {totalMilesAll.toFixed(1)}
             </ThemedText>
+            {inProgressCount > 0 && (
+              <ThemedText type="caption" style={{ color: "#F59E0B", marginTop: 2 }}>
+                {inProgressCount} trip{inProgressCount > 1 ? "s" : ""} in progress
+              </ThemedText>
+            )}
           </View>
           <View style={styles.actionButtons}>
             <Pressable
@@ -236,15 +245,20 @@ export default function MileageTrackerScreen() {
                 <ThemedText type="caption" style={{ color: theme.secondaryText }}>
                   {formatDate(entry.date)}
                 </ThemedText>
-                <View
-                  style={[styles.milesBadge, { backgroundColor: theme.primary + "20" }]}
-                >
-                  <ThemedText
-                    type="caption"
-                    style={{ color: theme.primary, fontWeight: "600" }}
-                  >
-                    {entry.totalMiles.toFixed(1)} mi
-                  </ThemedText>
+                <View style={styles.badgeRow}>
+                  {entry.status === "in_progress" ? (
+                    <View style={[styles.inProgressBadge, { backgroundColor: "#F59E0B20" }]}>
+                      <ThemedText type="caption" style={{ color: "#F59E0B", fontWeight: "600" }}>
+                        In Progress
+                      </ThemedText>
+                    </View>
+                  ) : (
+                    <View style={[styles.milesBadge, { backgroundColor: theme.primary + "20" }]}>
+                      <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                        {(entry.totalMiles ?? 0).toFixed(1)} mi
+                      </ThemedText>
+                    </View>
+                  )}
                 </View>
               </View>
               <ThemedText
@@ -258,7 +272,9 @@ export default function MileageTrackerScreen() {
                 type="caption"
                 style={{ color: theme.secondaryText, marginTop: 2 }}
               >
-                {entry.startMileage} → {entry.endMileage} mi
+                {entry.status === "in_progress"
+                  ? `${entry.startMileage} mi → ?`
+                  : `${entry.startMileage} → ${entry.endMileage} mi`}
               </ThemedText>
 
               {(entry.startPhotoUri || entry.endPhotoUri) && (
@@ -281,6 +297,11 @@ export default function MileageTrackerScreen() {
               )}
 
               <View style={styles.entryFooter}>
+                {entry.status === "in_progress" && (
+                  <ThemedText type="caption" style={{ color: "#F59E0B", marginRight: Spacing.xs }}>
+                    Tap to complete
+                  </ThemedText>
+                )}
                 <Feather name="chevron-right" size={16} color={theme.secondaryText} />
               </View>
             </Pressable>
@@ -422,7 +443,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  badgeRow: {
+    flexDirection: "row",
+    gap: Spacing.xs,
+  },
   milesBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  inProgressBadge: {
     paddingHorizontal: Spacing.sm,
     paddingVertical: 2,
     borderRadius: BorderRadius.full,
