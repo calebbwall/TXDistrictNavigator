@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useLayoutEffect } from "react";
 import {
   View,
   ScrollView,
@@ -16,6 +16,7 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
@@ -36,6 +37,13 @@ function getToday(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+async function copyToAppStorage(uri: string): Promise<string> {
+  const filename = `mileage_${Date.now()}.jpg`;
+  const dest = (FileSystem.documentDirectory ?? "") + filename;
+  await FileSystem.copyAsync({ from: uri, to: dest });
+  return dest;
+}
+
 async function promptPhotoSource(
   setUri: (uri: string) => void
 ): Promise<void> {
@@ -50,13 +58,19 @@ async function promptPhotoSource(
         return;
       }
       const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-      if (!result.canceled) setUri(result.assets[0].uri);
+      if (!result.canceled) {
+        const persisted = await copyToAppStorage(result.assets[0].uri);
+        setUri(persisted);
+      }
     } else if (index === 1) {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         quality: 0.7,
       });
-      if (!result.canceled) setUri(result.assets[0].uri);
+      if (!result.canceled) {
+        const persisted = await copyToAppStorage(result.assets[0].uri);
+        setUri(persisted);
+      }
     }
   };
 
@@ -86,6 +100,7 @@ export default function MileageEntryScreen() {
 
   const entryId = route.params?.entryId;
 
+  const [existing, setExisting] = useState<MileageEntry | undefined>();
   const [date, setDate] = useState(getToday());
   const [description, setDescription] = useState("");
   const [startMileage, setStartMileage] = useState("");
@@ -97,20 +112,36 @@ export default function MileageEntryScreen() {
   const loadExisting = useCallback(async () => {
     if (!entryId) return;
     const entries = await getMileageEntries();
-    const existing = entries.find((e) => e.id === entryId);
-    if (existing) {
-      setDate(existing.date);
-      setDescription(existing.description);
-      setStartMileage(String(existing.startMileage));
-      setEndMileage(String(existing.endMileage));
-      setStartPhotoUri(existing.startPhotoUri);
-      setEndPhotoUri(existing.endPhotoUri);
+    const found = entries.find((e) => e.id === entryId);
+    if (found) {
+      setExisting(found);
+      setDate(found.date);
+      setDescription(found.description);
+      setStartMileage(String(found.startMileage));
+      if (found.endMileage !== undefined) setEndMileage(String(found.endMileage));
+      setStartPhotoUri(found.startPhotoUri);
+      setEndPhotoUri(found.endPhotoUri);
     }
   }, [entryId]);
 
   useEffect(() => {
     loadExisting();
   }, [loadExisting]);
+
+  // Derive mode from state
+  const isNew = !entryId;
+  const isInProgress = existing?.status === "in_progress";
+  const isCompleted = existing?.status === "completed";
+
+  useLayoutEffect(() => {
+    if (isNew) {
+      navigation.setOptions({ headerTitle: "Start Trip" });
+    } else if (isInProgress) {
+      navigation.setOptions({ headerTitle: "Complete Trip" });
+    } else if (isCompleted) {
+      navigation.setOptions({ headerTitle: "Edit Entry" });
+    }
+  }, [navigation, isNew, isInProgress, isCompleted]);
 
   const startNum = parseFloat(startMileage);
   const endNum = parseFloat(endMileage);
@@ -119,39 +150,67 @@ export default function MileageEntryScreen() {
       ? endNum - startNum
       : null;
 
-  const isValid =
+  // Validation depends on mode
+  const isStartValid =
+    description.trim().length > 0 && !isNaN(startNum);
+  const isCompleteValid =
+    !isNaN(endNum) && !isNaN(startNum) && endNum >= startNum;
+  const isEditValid =
     description.trim().length > 0 &&
     !isNaN(startNum) &&
     !isNaN(endNum) &&
     endNum >= startNum;
 
   const handleSave = useCallback(async () => {
-    if (!isValid) return;
     setSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      const entry: MileageEntry = {
-        id: entryId ?? String(Date.now()) + String(Math.random()).slice(2, 8),
-        date,
-        description: description.trim(),
-        startMileage: startNum,
-        endMileage: endNum,
-        totalMiles: endNum - startNum,
-        startPhotoUri,
-        endPhotoUri,
-        createdAt: new Date().toISOString(),
-      };
-      if (entryId) {
-        await updateMileageEntry(entry);
-      } else {
+      if (isNew) {
+        // Start Trip: save as in_progress
+        const entry: MileageEntry = {
+          id: String(Date.now()) + String(Math.random()).slice(2, 8),
+          date,
+          description: description.trim(),
+          startMileage: startNum,
+          startPhotoUri,
+          status: "in_progress",
+          createdAt: new Date().toISOString(),
+        };
         await saveMileageEntry(entry);
+      } else if (isInProgress) {
+        // Complete Trip: update with end data
+        const updated: MileageEntry = {
+          ...existing!,
+          endMileage: endNum,
+          totalMiles: endNum - existing!.startMileage,
+          endPhotoUri,
+          status: "completed",
+        };
+        await updateMileageEntry(updated);
+      } else {
+        // Edit completed entry: save all fields
+        const entry: MileageEntry = {
+          id: entryId!,
+          date,
+          description: description.trim(),
+          startMileage: startNum,
+          endMileage: endNum,
+          totalMiles: endNum - startNum,
+          startPhotoUri,
+          endPhotoUri,
+          status: "completed",
+          createdAt: existing?.createdAt ?? new Date().toISOString(),
+        };
+        await updateMileageEntry(entry);
       }
       navigation.goBack();
     } finally {
       setSaving(false);
     }
   }, [
-    isValid,
+    isNew,
+    isInProgress,
+    existing,
     entryId,
     date,
     description,
@@ -161,6 +220,20 @@ export default function MileageEntryScreen() {
     endPhotoUri,
     navigation,
   ]);
+
+  const saveDisabled =
+    saving ||
+    (isNew && !isStartValid) ||
+    (isInProgress && !isCompleteValid) ||
+    (isCompleted && !isEditValid);
+
+  const buttonLabel = saving
+    ? "Saving…"
+    : isNew
+    ? "Start Trip"
+    : isInProgress
+    ? "Complete Trip"
+    : "Save Changes";
 
   return (
     <KeyboardAvoidingView
@@ -175,56 +248,80 @@ export default function MileageEntryScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Date */}
-        <View style={styles.fieldGroup}>
-          <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
-            Date
-          </ThemedText>
-          <TextInput
-            value={date}
-            onChangeText={setDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={theme.secondaryText}
-            style={[
-              styles.input,
-              {
-                backgroundColor: theme.cardBackground,
-                color: theme.text,
-                borderColor: theme.border,
-              },
-            ]}
-            keyboardType="numbers-and-punctuation"
-          />
-        </View>
+        {/* ── Mode B: Complete Trip — show read-only start summary at top ── */}
+        {isInProgress && existing && (
+          <>
+            <View style={[styles.summaryCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+              <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+                Trip Started
+              </ThemedText>
+              <ThemedText type="body" style={{ fontWeight: "600" }} numberOfLines={2}>
+                {existing.description}
+              </ThemedText>
+              <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: 2 }}>
+                {existing.date} · {existing.startMileage} mi start
+              </ThemedText>
+              {existing.startPhotoUri && (
+                <Image
+                  source={{ uri: existing.startPhotoUri }}
+                  style={styles.summaryPhoto}
+                  contentFit="cover"
+                />
+              )}
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <ThemedText type="caption" style={[styles.sectionLabel, { color: theme.secondaryText }]}>
+              Now add your ending details
+            </ThemedText>
+          </>
+        )}
 
-        {/* Description */}
-        <View style={styles.fieldGroup}>
-          <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
-            Where are you going and what is this for?
-          </ThemedText>
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="e.g. Drive to food pantry to drop off donations"
-            placeholderTextColor={theme.secondaryText}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-            style={[
-              styles.input,
-              styles.textArea,
-              {
-                backgroundColor: theme.cardBackground,
-                color: theme.text,
-                borderColor: theme.border,
-              },
-            ]}
-          />
-        </View>
+        {/* ── Mode A & C: Date ── */}
+        {(isNew || isCompleted) && (
+          <View style={styles.fieldGroup}>
+            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+              Date
+            </ThemedText>
+            <TextInput
+              value={date}
+              onChangeText={setDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={theme.secondaryText}
+              style={[
+                styles.input,
+                { backgroundColor: theme.cardBackground, color: theme.text, borderColor: theme.border },
+              ]}
+              keyboardType="numbers-and-punctuation"
+            />
+          </View>
+        )}
 
-        {/* Mileage Inputs */}
-        <View style={styles.mileageRow}>
-          <View style={[styles.fieldGroup, { flex: 1 }]}>
+        {/* ── Mode A & C: Description ── */}
+        {(isNew || isCompleted) && (
+          <View style={styles.fieldGroup}>
+            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+              Where are you going and what is this for?
+            </ThemedText>
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder="e.g. Drive to food pantry to drop off donations"
+              placeholderTextColor={theme.secondaryText}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              style={[
+                styles.input,
+                styles.textArea,
+                { backgroundColor: theme.cardBackground, color: theme.text, borderColor: theme.border },
+              ]}
+            />
+          </View>
+        )}
+
+        {/* ── Starting Mileage (Mode A & C) ── */}
+        {(isNew || isCompleted) && (
+          <View style={styles.fieldGroup}>
             <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
               Starting Mileage
             </ThemedText>
@@ -238,11 +335,7 @@ export default function MileageEntryScreen() {
                 style={[
                   styles.input,
                   styles.mileageInput,
-                  {
-                    backgroundColor: theme.cardBackground,
-                    color: theme.text,
-                    borderColor: theme.border,
-                  },
+                  { backgroundColor: theme.cardBackground, color: theme.text, borderColor: theme.border },
                 ]}
               />
               <ThemedText type="caption" style={[styles.miLabel, { color: theme.secondaryText }]}>
@@ -250,8 +343,44 @@ export default function MileageEntryScreen() {
               </ThemedText>
             </View>
           </View>
+        )}
 
-          <View style={[styles.fieldGroup, { flex: 1 }]}>
+        {/* ── Start Odometer Photo (Mode A & C) ── */}
+        {(isNew || isCompleted) && (
+          <View style={styles.fieldGroup}>
+            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+              Starting Odometer Photo
+            </ThemedText>
+            {startPhotoUri ? (
+              <View style={styles.photoPreview}>
+                <Image source={{ uri: startPhotoUri }} style={styles.photoFull} contentFit="cover" />
+                <Pressable
+                  onPress={() => setStartPhotoUri(undefined)}
+                  style={[styles.removePhotoBtn, { backgroundColor: theme.cardBackground }]}
+                >
+                  <Feather name="x" size={16} color={theme.secondaryText} />
+                  <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: 4 }}>
+                    Remove
+                  </ThemedText>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => promptPhotoSource(setStartPhotoUri)}
+                style={[styles.photoButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+              >
+                <Feather name="camera" size={22} color={theme.primary} />
+                <ThemedText type="body" style={{ color: theme.primary, marginTop: Spacing.xs }}>
+                  Add Start Photo
+                </ThemedText>
+              </Pressable>
+            )}
+          </View>
+        )}
+
+        {/* ── Ending Mileage (Mode B & C) ── */}
+        {(isInProgress || isCompleted) && (
+          <View style={styles.fieldGroup}>
             <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
               Ending Mileage
             </ThemedText>
@@ -268,9 +397,10 @@ export default function MileageEntryScreen() {
                   {
                     backgroundColor: theme.cardBackground,
                     color: theme.text,
-                    borderColor: endMileage && !isNaN(endNum) && endNum < startNum
-                      ? "#FF3B30"
-                      : theme.border,
+                    borderColor:
+                      endMileage && !isNaN(endNum) && endNum < startNum
+                        ? "#FF3B30"
+                        : theme.border,
                   },
                 ]}
               />
@@ -279,137 +409,98 @@ export default function MileageEntryScreen() {
               </ThemedText>
             </View>
           </View>
-        </View>
-
-        {/* Total Miles Display */}
-        <View
-          style={[
-            styles.totalCard,
-            { backgroundColor: totalMiles !== null ? theme.primary + "15" : theme.cardBackground },
-          ]}
-        >
-          <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-            Total Miles
-          </ThemedText>
-          <ThemedText
-            type="h2"
-            style={{ color: totalMiles !== null ? theme.primary : theme.secondaryText }}
-          >
-            {totalMiles !== null ? `${totalMiles.toFixed(1)} mi` : "—"}
-          </ThemedText>
-        </View>
-
-        {endMileage && !isNaN(endNum) && endNum < startNum && (
-          <ThemedText
-            type="caption"
-            style={{ color: "#FF3B30", marginBottom: Spacing.md, textAlign: "center" }}
-          >
-            Ending mileage must be greater than starting mileage.
-          </ThemedText>
         )}
 
-        {/* Start Odometer Photo */}
-        <View style={styles.fieldGroup}>
-          <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
-            Starting Odometer Photo
-          </ThemedText>
-          {startPhotoUri ? (
-            <View style={styles.photoPreview}>
-              <Image
-                source={{ uri: startPhotoUri }}
-                style={styles.photoFull}
-                contentFit="cover"
-              />
-              <Pressable
-                onPress={() => setStartPhotoUri(undefined)}
-                style={[styles.removePhotoBtn, { backgroundColor: theme.cardBackground }]}
-              >
-                <Feather name="x" size={16} color={theme.secondaryText} />
-                <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: 4 }}>
-                  Remove
-                </ThemedText>
-              </Pressable>
-            </View>
-          ) : (
-            <Pressable
-              onPress={() => promptPhotoSource(setStartPhotoUri)}
+        {/* ── Total Miles Display (Mode B & C) ── */}
+        {(isInProgress || isCompleted) && (
+          <>
+            <View
               style={[
-                styles.photoButton,
-                { backgroundColor: theme.cardBackground, borderColor: theme.border },
+                styles.totalCard,
+                { backgroundColor: totalMiles !== null ? theme.primary + "15" : theme.cardBackground },
               ]}
             >
-              <Feather name="camera" size={22} color={theme.primary} />
-              <ThemedText type="body" style={{ color: theme.primary, marginTop: Spacing.xs }}>
-                Add Start Photo
+              <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+                Total Miles
               </ThemedText>
-            </Pressable>
-          )}
-        </View>
-
-        {/* End Odometer Photo */}
-        <View style={styles.fieldGroup}>
-          <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
-            Ending Odometer Photo
-          </ThemedText>
-          {endPhotoUri ? (
-            <View style={styles.photoPreview}>
-              <Image
-                source={{ uri: endPhotoUri }}
-                style={styles.photoFull}
-                contentFit="cover"
-              />
-              <Pressable
-                onPress={() => setEndPhotoUri(undefined)}
-                style={[styles.removePhotoBtn, { backgroundColor: theme.cardBackground }]}
+              <ThemedText
+                type="h2"
+                style={{ color: totalMiles !== null ? theme.primary : theme.secondaryText }}
               >
-                <Feather name="x" size={16} color={theme.secondaryText} />
-                <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: 4 }}>
-                  Remove
+                {totalMiles !== null ? `${totalMiles.toFixed(1)} mi` : "—"}
+              </ThemedText>
+            </View>
+
+            {endMileage && !isNaN(endNum) && endNum < (existing?.startMileage ?? startNum) && (
+              <ThemedText
+                type="caption"
+                style={{ color: "#FF3B30", marginBottom: Spacing.md, textAlign: "center" }}
+              >
+                Ending mileage must be greater than starting mileage.
+              </ThemedText>
+            )}
+          </>
+        )}
+
+        {/* ── End Odometer Photo (Mode B & C) ── */}
+        {(isInProgress || isCompleted) && (
+          <View style={styles.fieldGroup}>
+            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+              Ending Odometer Photo
+            </ThemedText>
+            {endPhotoUri ? (
+              <View style={styles.photoPreview}>
+                <Image source={{ uri: endPhotoUri }} style={styles.photoFull} contentFit="cover" />
+                <Pressable
+                  onPress={() => setEndPhotoUri(undefined)}
+                  style={[styles.removePhotoBtn, { backgroundColor: theme.cardBackground }]}
+                >
+                  <Feather name="x" size={16} color={theme.secondaryText} />
+                  <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: 4 }}>
+                    Remove
+                  </ThemedText>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => promptPhotoSource(setEndPhotoUri)}
+                style={[styles.photoButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+              >
+                <Feather name="camera" size={22} color={theme.primary} />
+                <ThemedText type="body" style={{ color: theme.primary, marginTop: Spacing.xs }}>
+                  Add End Photo
                 </ThemedText>
               </Pressable>
-            </View>
-          ) : (
-            <Pressable
-              onPress={() => promptPhotoSource(setEndPhotoUri)}
-              style={[
-                styles.photoButton,
-                { backgroundColor: theme.cardBackground, borderColor: theme.border },
-              ]}
-            >
-              <Feather name="camera" size={22} color={theme.primary} />
-              <ThemedText type="body" style={{ color: theme.primary, marginTop: Spacing.xs }}>
-                Add End Photo
-              </ThemedText>
-            </Pressable>
-          )}
-        </View>
+            )}
+          </View>
+        )}
 
-        {/* Save Button */}
+        {/* ── Save Button ── */}
         <Pressable
           onPress={handleSave}
-          disabled={!isValid || saving}
+          disabled={saveDisabled}
           style={({ pressed }) => [
             styles.saveButton,
             {
-              backgroundColor: isValid ? theme.primary : theme.backgroundSecondary,
+              backgroundColor: !saveDisabled ? theme.primary : theme.backgroundSecondary,
               opacity: pressed ? 0.85 : 1,
             },
           ]}
         >
           <Feather
-            name={saving ? "loader" : "check"}
+            name={saving ? "loader" : isNew ? "play" : isInProgress ? "check-circle" : "check"}
             size={18}
-            color={isValid ? "#fff" : theme.secondaryText}
+            color={!saveDisabled ? "#fff" : theme.secondaryText}
           />
           <ThemedText
             type="body"
             style={{
-              color: isValid ? "#fff" : theme.secondaryText,
+              color: !saveDisabled ? "#fff" : theme.secondaryText,
               marginLeft: Spacing.sm,
               fontWeight: "600",
             }}
           >
-            {saving ? "Saving…" : entryId ? "Save Changes" : "Save Entry"}
+            {buttonLabel}
           </ThemedText>
         </Pressable>
       </ScrollView>
@@ -423,6 +514,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: Spacing.lg },
   fieldGroup: { marginBottom: Spacing.lg },
   label: { marginBottom: Spacing.xs },
+  sectionLabel: { marginBottom: Spacing.lg, textTransform: "uppercase", letterSpacing: 0.5 },
   input: {
     borderWidth: 1,
     borderRadius: BorderRadius.md,
@@ -433,11 +525,6 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     paddingTop: Spacing.sm,
-  },
-  mileageRow: {
-    flexDirection: "row",
-    gap: Spacing.md,
-    marginBottom: Spacing.lg,
   },
   mileageInputWrap: {
     flexDirection: "row",
@@ -450,6 +537,22 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     alignItems: "center",
     marginBottom: Spacing.md,
+  },
+  summaryCard: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  summaryPhoto: {
+    width: "100%",
+    height: 120,
+    borderRadius: BorderRadius.sm,
+    marginTop: Spacing.sm,
+  },
+  divider: {
+    height: 1,
+    marginBottom: Spacing.lg,
   },
   photoButton: {
     borderWidth: 1,

@@ -49,7 +49,14 @@
         }
       ],
       "expo-web-browser",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow TXDistrictNavigator to access your photos for mileage odometer images.",
+          "cameraPermission": "Allow TXDistrictNavigator to use the camera to capture odometer photos."
+        }
+      ]
     ],
     "experiments": {
       "reactCompiler": true
