@@ -235,44 +235,80 @@ async function fetchCommitteeMembers(committee: ParsedCommittee): Promise<Parsed
     
     const members: ParsedMember[] = [];
     let sortOrder = 0;
-    
-    $('table tr').each((_, row) => {
-      const cells = $(row).find('td');
-      if (cells.length < 2) return;
-      
-      const positionCell = $(cells[0]).text().trim();
-      const memberCell = $(cells[1]);
-      const memberLink = memberCell.find('a');
-      const memberName = memberLink.text().trim() || memberCell.text().trim();
-      const memberHref = memberLink.attr("href") || "";
-      
-      if (!memberName || memberName === "Member") return;
-      if (positionCell === "Position") return;
-      
-      if (!isValidPersonName(memberName)) {
-        return;
+
+    // TLO now renders memberships in a CSS-grid div, not a <table>.
+    // Structure: div.grid-template-two-column_membershipcmte > div (pairs of position|member)
+    const gridDiv = $("div.grid-template-two-column_membershipcmte");
+    if (gridDiv.length > 0) {
+      const cells = gridDiv.children("div").toArray();
+      // First two cells are header ("Position" / "Member") — skip them
+      let currentRole = "Member";
+      for (let i = 2; i < cells.length - 1; i += 2) {
+        const positionText = $(cells[i]).text().trim();
+        const memberCell = $(cells[i + 1]);
+        const memberLink = memberCell.find("a");
+        const memberName = memberLink.text().trim() || memberCell.text().trim();
+        const memberHref = memberLink.attr("href") || "";
+
+        // Update the running role when a position label is present
+        if (positionText) {
+          if (/^chair$/i.test(positionText)) {
+            currentRole = "Chair";
+          } else if (/^vice\s*chair$/i.test(positionText)) {
+            currentRole = "Vice Chair";
+          } else if (/^members?$/i.test(positionText)) {
+            currentRole = "Member";
+          }
+        }
+
+        if (!memberName) continue;
+        if (!isValidPersonName(memberName)) continue;
+
+        const legCodeMatch = memberHref.match(/LegCode=([A-Z0-9]+)/i);
+        const legCode = legCodeMatch ? legCodeMatch[1] : "";
+
+        members.push({
+          memberName: memberName.replace(/^(Rep\.|Sen\.)\s*/i, "").trim(),
+          roleTitle: currentRole,
+          legCode,
+          sortOrder: sortOrder++,
+        });
       }
-      
-      const legCodeMatch = memberHref.match(/LegCode=([A-Z0-9]+)/i);
-      const legCode = legCodeMatch ? legCodeMatch[1] : "";
-      
-      let roleTitle = "Member";
-      if (positionCell.includes("Chair:") && !positionCell.includes("Vice")) {
-        roleTitle = "Chair";
-      } else if (positionCell.includes("Vice Chair:")) {
-        roleTitle = "Vice Chair";
-      } else if (positionCell.includes("Members:") || positionCell === "") {
-        roleTitle = "Member";
-      }
-      
-      members.push({
-        memberName: memberName.replace(/^(Rep\.|Sen\.)\s*/, "").trim(),
-        roleTitle,
-        legCode,
-        sortOrder: sortOrder++,
+    } else {
+      // Fallback: legacy <table> layout (kept for safety)
+      $("table tr").each((_, row) => {
+        const cells = $(row).find("td");
+        if (cells.length < 2) return;
+
+        const positionCell = $(cells[0]).text().trim();
+        const memberCell = $(cells[1]);
+        const memberLink = memberCell.find("a");
+        const memberName = memberLink.text().trim() || memberCell.text().trim();
+        const memberHref = memberLink.attr("href") || "";
+
+        if (!memberName || memberName === "Member") return;
+        if (positionCell === "Position") return;
+        if (!isValidPersonName(memberName)) return;
+
+        const legCodeMatch = memberHref.match(/LegCode=([A-Z0-9]+)/i);
+        const legCode = legCodeMatch ? legCodeMatch[1] : "";
+
+        let roleTitle = "Member";
+        if (positionCell.includes("Chair:") && !positionCell.includes("Vice")) {
+          roleTitle = "Chair";
+        } else if (positionCell.includes("Vice Chair:")) {
+          roleTitle = "Vice Chair";
+        }
+
+        members.push({
+          memberName: memberName.replace(/^(Rep\.|Sen\.)\s*/i, "").trim(),
+          roleTitle,
+          legCode,
+          sortOrder: sortOrder++,
+        });
       });
-    });
-    
+    }
+
     return members;
   } catch (err) {
     console.error(`[RefreshCommittees] Failed to fetch members for ${committee.name}:`, err);
