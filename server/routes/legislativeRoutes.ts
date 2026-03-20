@@ -27,7 +27,7 @@ import {
   type InsertUserSubscription,
 } from "@shared/schema";
 import { eq, and, isNull, desc, asc, gte, lte, sql } from "drizzle-orm";
-import { triggerRssPoll, triggerDailyRefresh } from "../jobs/scheduler";
+import { triggerRssPoll, triggerDailyRefresh, triggerFullLegislativeBootstrap } from "../jobs/scheduler";
 
 function requireAdminSecret(req: Request, res: Response): boolean {
   const secret = process.env.ADMIN_CRON_SECRET;
@@ -407,6 +407,21 @@ export function registerLegislativeRoutes(app: Express): void {
     if (!requireAdminSecret(req, res)) return;
     try {
       const result = await triggerDailyRefresh();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  /**
+   * POST /api/admin/bootstrap-legislative
+   * Full legislative data bootstrap: committees → RSS feeds → events.
+   * Use this to force-seed data on a fresh DB or after a reset.
+   */
+  app.post("/api/admin/bootstrap-legislative", async (req: Request, res: Response) => {
+    if (!requireAdminSecret(req, res)) return;
+    try {
+      const result = await triggerFullLegislativeBootstrap();
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: String(err) });
