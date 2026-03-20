@@ -64,6 +64,8 @@ export default function AddPrayerScreen() {
   );
   const [showOfficialPicker, setShowOfficialPicker] = useState(false);
   const [officialSearch, setOfficialSearch] = useState("");
+  const [customPeopleNames, setCustomPeopleNames] = useState<string[]>([]);
+  const [customPersonInput, setCustomPersonInput] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
   const [eventDate, setEventDate] = useState<Date | null>(null);
@@ -120,6 +122,7 @@ export default function AddPrayerScreen() {
         priority,
         categoryId: categoryId || null,
         officialIds: selectedOfficialIds,
+        customPeopleNames,
         eventDate: eventDate ? eventDate.toISOString() : null,
         autoAfterEventAction,
         autoAfterEventDaysOffset,
@@ -135,7 +138,7 @@ export default function AddPrayerScreen() {
     },
   });
 
-  const canSave = title.trim().length > 0 && body.trim().length > 0 && selectedOfficialIds.length > 0;
+  const canSave = title.trim().length > 0 && body.trim().length > 0;
 
   const currentCategoryName = categories.find((c) => c.id === categoryId)?.name ?? "None";
 
@@ -257,7 +260,7 @@ export default function AddPrayerScreen() {
       {params?.officialId ? null : (
         <View style={{ marginTop: Spacing.md }}>
           <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
-            Officials {selectedOfficialIds.length > 0 ? `(${selectedOfficialIds.length})` : "(required)"}
+            Officials {selectedOfficialIds.length > 0 ? `(${selectedOfficialIds.length})` : "(optional)"}
           </ThemedText>
           <Pressable
             style={[styles.dropdownButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
@@ -270,6 +273,58 @@ export default function AddPrayerScreen() {
           </Pressable>
         </View>
       )}
+
+      <View style={{ marginTop: Spacing.md }}>
+        <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText, marginTop: 0 }]}>Custom People (optional)</ThemedText>
+        <View style={[styles.dropdownButton, { backgroundColor: theme.inputBackground, borderColor: theme.border, gap: Spacing.sm }]}>
+          <TextInput
+            style={[{ flex: 1, color: theme.text, fontSize: 15, padding: 0 }]}
+            placeholder="Add a person's name..."
+            placeholderTextColor={theme.secondaryText}
+            value={customPersonInput}
+            onChangeText={setCustomPersonInput}
+            onSubmitEditing={() => {
+              const name = customPersonInput.trim();
+              if (name.length > 0 && !customPeopleNames.includes(name)) {
+                setCustomPeopleNames((prev) => [...prev, name]);
+              }
+              setCustomPersonInput("");
+            }}
+            returnKeyType="done"
+          />
+          <Pressable
+            onPress={() => {
+              const name = customPersonInput.trim();
+              if (name.length > 0 && !customPeopleNames.includes(name)) {
+                setCustomPeopleNames((prev) => [...prev, name]);
+              }
+              setCustomPersonInput("");
+            }}
+            hitSlop={8}
+          >
+            <Feather name="plus-circle" size={20} color={customPersonInput.trim().length > 0 ? theme.primary : theme.border} />
+          </Pressable>
+        </View>
+        {customPeopleNames.length > 0 ? (
+          <View style={[styles.officialBadgesRow, { marginTop: Spacing.sm }]}>
+            {customPeopleNames.map((name, idx) => (
+              <View key={idx} style={[styles.officialBadge, { backgroundColor: theme.backgroundSecondary || theme.primary + "10" }]}>
+                <Feather name="user" size={14} color={theme.text} />
+                <ThemedText type="caption" style={{ color: theme.text, marginLeft: Spacing.xs }}>
+                  {name}
+                </ThemedText>
+                <Pressable
+                  onPress={() => setCustomPeopleNames((prev) => prev.filter((_, i) => i !== idx))}
+                  hitSlop={8}
+                  style={{ marginLeft: Spacing.xs }}
+                >
+                  <Feather name="x" size={14} color={theme.secondaryText} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </View>
 
       <View style={{ marginTop: Spacing.md }}>
         <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText, marginTop: 0 }]}>Event Date</ThemedText>
@@ -413,12 +468,6 @@ export default function AddPrayerScreen() {
       >
         {createMutation.isPending ? "Saving..." : "Add Prayer"}
       </Button>
-
-      {!canSave && title.trim().length > 0 && body.trim().length > 0 && selectedOfficialIds.length === 0 ? (
-        <ThemedText type="caption" style={{ color: theme.warning, textAlign: "center", marginTop: Spacing.sm }}>
-          Please select at least one official
-        </ThemedText>
-      ) : null}
 
       <Modal visible={showNewCategoryModal} transparent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={() => setShowNewCategoryModal(false)}>
