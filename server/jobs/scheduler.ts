@@ -282,16 +282,47 @@ async function runRssPoll(): Promise<void> {
 }
 
 async function maybeRunStartupLegislativeRefresh(): Promise<void> {
+  // Poll for committees to be populated before seeding events.
+  // Committee scraping takes 5-15 minutes (70+ pages × 200ms delay + HTTP RTT),
+  // so we cannot rely on a fixed timer — we poll until committees appear.
+  const MAX_WAIT_MS = 30 * 60 * 1000; // wait up to 30 minutes
+  const POLL_INTERVAL_MS = 30 * 1000; // re-check every 30 seconds
+  const started = Date.now();
+
   try {
-    const [{ committeeCount }] = await db
-      .select({ committeeCount: sql<number>`count(*)::int` })
-      .from(committees);
-    if (committeeCount === 0) return; // committees not seeded yet; skip
+    while (true) {
+      const [{ committeeCount }] = await db
+        .select({ committeeCount: sql<number>`count(*)::int` })
+        .from(committees);
+
+      if (committeeCount > 0) break; // committees are in DB — proceed
+
+      if (Date.now() - started >= MAX_WAIT_MS) {
+        console.log("[Scheduler/legislative] Timed out waiting for committees — skipping startup event seed");
+        return;
+      }
+
+      console.log("[Scheduler/legislative] Committees not yet seeded, waiting 30s...");
+      await sleep(POLL_INTERVAL_MS);
+    }
+
+    // Re-seed feeds now that committees exist (idempotent — safe to call again)
+    try {
+      const { inserted } = await seedLegislativeFeeds();
+      if (inserted > 0) {
+        console.log(`[Scheduler/legislative] Seeded ${inserted} RSS feed(s) after committee refresh`);
+      }
+    } catch (err) {
+      console.error("[Scheduler/legislative] Feed re-seed failed:", err);
+    }
 
     const [{ eventCount }] = await db
       .select({ eventCount: sql<number>`count(*)::int` })
       .from(legislativeEvents);
-    if (eventCount > 0) return; // already have events; skip
+    if (eventCount > 0) {
+      console.log(`[Scheduler/legislative] ${eventCount} events already in DB — skipping startup daily refresh`);
+      return;
+    }
 
     console.log("[Scheduler/legislative] No events in DB — running startup daily refresh");
     await runDailyRefresh();
@@ -314,12 +345,14 @@ function startLegislativeSchedulers(): void {
       }, 30_000);
     });
 
-  // Bootstrap events on fresh DB — run once after committees are likely seeded (2 min delay)
+  // Bootstrap events on fresh DB — starts after a short delay then polls until
+  // committees are available (replaces the old fixed 2-minute wait which raced
+  // against the committee scraper that can take 5-15 minutes).
   setTimeout(() => {
     maybeRunStartupLegislativeRefresh().catch((err) =>
       console.error("[Scheduler/legislative] Startup refresh error:", err)
     );
-  }, 2 * 60 * 1000);
+  }, 10 * 1000); // 10-second head-start, then polling handles the rest
 
   // Schedule DST-safe daily refresh
   scheduleNextDailyRefresh();
@@ -352,6 +385,46 @@ export async function triggerDailyRefresh(): Promise<{ success: boolean; error?:
     const result = await runDailyRefresh();
     return { success: true, result };
   } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+/**
+ * Full legislative bootstrap: committees → RSS feeds → events.
+ * Exposed as POST /api/admin/bootstrap-legislative.
+ * Use this to force-seed a fresh DB without waiting for the Monday scheduler window.
+ */
+export async function triggerFullLegislativeBootstrap(): Promise<{
+  success: boolean;
+  error?: string;
+  committees?: unknown;
+  feedsInserted?: number;
+  events?: unknown;
+}> {
+  try {
+    // Step 1: Force-refresh committees (both chambers)
+    console.log("[Bootstrap] Step 1/3: Refreshing committees...");
+    const { checkAndRefreshCommitteesIfChanged } = await import("./refreshCommittees");
+    const committeeResult = await checkAndRefreshCommitteesIfChanged(true);
+
+    // Step 2: Seed RSS feeds (idempotent)
+    console.log("[Bootstrap] Step 2/3: Seeding RSS feeds...");
+    const { inserted: feedsInserted } = await seedLegislativeFeeds();
+    console.log(`[Bootstrap] ${feedsInserted} RSS feed(s) inserted`);
+
+    // Step 3: Seed legislative events via daily refresh
+    console.log("[Bootstrap] Step 3/3: Running daily refresh for events...");
+    const eventResult = await runDailyRefresh();
+
+    console.log("[Bootstrap] Complete");
+    return {
+      success: true,
+      committees: committeeResult,
+      feedsInserted,
+      events: eventResult,
+    };
+  } catch (err) {
+    console.error("[Bootstrap] Failed:", err);
     return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
