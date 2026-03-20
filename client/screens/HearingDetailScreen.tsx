@@ -8,7 +8,7 @@ import {
   Linking,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
@@ -129,28 +129,72 @@ const TLO_BILL_URL = (billNumber: string) =>
   `https://capitol.texas.gov/BillLookup/History.aspx?LegSess=89R&Bill=${encodeURIComponent(billNumber)}`;
 
 // ── Agenda Item Row ──
-function AgendaRow({ item }: { item: HearingResponse["agenda"][0] }) {
+function AgendaRow({
+  item,
+  summary,
+  summaryLoading,
+  onExplain,
+}: {
+  item: HearingResponse["agenda"][0];
+  summary?: string;
+  summaryLoading?: boolean;
+  onExplain?: () => void;
+}) {
   const { theme } = useTheme();
   return (
     <View style={[styles.agendaRow, { backgroundColor: theme.cardBackground, borderRadius: BorderRadius.sm }]}>
-      {item.billNumber ? (
-        <Pressable
-          onPress={() => Linking.openURL(TLO_BILL_URL(item.billNumber!))}
-          style={[styles.billBadge, { backgroundColor: theme.primary + "18" }]}
-        >
-          <ThemedText type="small" style={{ color: theme.primary, fontWeight: "700" }}>
-            {item.billNumber}
+      <View style={styles.agendaRowInner}>
+        {item.billNumber ? (
+          <Pressable
+            onPress={() => Linking.openURL(TLO_BILL_URL(item.billNumber!))}
+            style={[styles.billBadge, { backgroundColor: theme.primary + "18" }]}
+          >
+            <ThemedText type="small" style={{ color: theme.primary, fontWeight: "700" }}>
+              {item.billNumber}
+            </ThemedText>
+            <Feather name="external-link" size={10} color={theme.primary} style={{ marginTop: 1 }} />
+          </Pressable>
+        ) : (
+          <View style={[styles.billBadge, { backgroundColor: theme.backgroundSecondary }]}>
+            <Feather name="file" size={12} color={theme.secondaryText} />
+          </View>
+        )}
+        <ThemedText type="small" style={{ flex: 1, color: theme.secondaryText, lineHeight: 18 }} numberOfLines={3}>
+          {item.itemText}
+        </ThemedText>
+        {item.billNumber && onExplain ? (
+          <Pressable
+            onPress={summaryLoading || summary ? undefined : onExplain}
+            style={[
+              styles.explainButton,
+              { backgroundColor: summary ? theme.backgroundSecondary : theme.primary + "18" },
+            ]}
+          >
+            {summaryLoading ? (
+              <ActivityIndicator size="small" color={theme.primary} />
+            ) : (
+              <Ionicons
+                name="sparkles"
+                size={14}
+                color={summary ? theme.secondaryText : theme.primary}
+              />
+            )}
+          </Pressable>
+        ) : null}
+      </View>
+      {summary ? (
+        <View style={[styles.summaryBox, { borderTopColor: theme.border }]}>
+          <View style={styles.summaryHeader}>
+            <Ionicons name="sparkles" size={12} color={theme.primary} />
+            <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "700", marginLeft: 4 }}>
+              AI Summary
+            </ThemedText>
+          </View>
+          <ThemedText type="small" style={{ color: theme.text, lineHeight: 18 }}>
+            {summary}
           </ThemedText>
-          <Feather name="external-link" size={10} color={theme.primary} style={{ marginTop: 1 }} />
-        </Pressable>
-      ) : (
-        <View style={[styles.billBadge, { backgroundColor: theme.backgroundSecondary }]}>
-          <Feather name="file" size={12} color={theme.secondaryText} />
         </View>
-      )}
-      <ThemedText type="small" style={{ flex: 1, color: theme.secondaryText, lineHeight: 18 }} numberOfLines={3}>
-        {item.itemText}
-      </ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -191,6 +235,38 @@ export default function HearingDetailScreen() {
 
   const { eventId } = route.params;
   const [showWitnesses, setShowWitnesses] = useState(false);
+  const [billSummaries, setBillSummaries] = useState<Record<string, string>>({});
+  const [loadingSummaries, setLoadingSummaries] = useState<Set<string>>(new Set());
+
+  const handleExplainBill = async (item: HearingResponse["agenda"][0]) => {
+    if (!item.billNumber) return;
+    const key = item.billNumber;
+    if (billSummaries[key] || loadingSummaries.has(key)) return;
+    setLoadingSummaries((prev) => new Set(prev).add(key));
+    try {
+      const res = await fetch(`${getApiUrl()}/api/ai/summarize-bill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          billNumber: item.billNumber,
+          session: "89R",
+          agendaItemText: item.itemText,
+        }),
+      });
+      if (res.ok) {
+        const { summary } = await res.json();
+        setBillSummaries((prev) => ({ ...prev, [key]: summary }));
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingSummaries((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
 
   const { data, isLoading, error } = useQuery<HearingResponse>({
     queryKey: ["/api/hearings", eventId],
@@ -314,7 +390,13 @@ export default function HearingDetailScreen() {
         <Section title={`Agenda (${agenda.length} item${agenda.length !== 1 ? "s" : ""})`}>
           <View style={styles.agendaList}>
             {agenda.map((item) => (
-              <AgendaRow key={item.id} item={item} />
+              <AgendaRow
+                key={item.id}
+                item={item}
+                summary={item.billNumber ? billSummaries[item.billNumber] : undefined}
+                summaryLoading={item.billNumber ? loadingSummaries.has(item.billNumber) : false}
+                onExplain={() => handleExplainBill(item)}
+              />
             ))}
           </View>
         </Section>
@@ -387,10 +469,31 @@ const styles = StyleSheet.create({
   sectionTitle: { fontWeight: "700", letterSpacing: 0.8, marginBottom: Spacing.sm },
   agendaList: { gap: Spacing.xs },
   agendaRow: {
+    overflow: "hidden",
+  },
+  agendaRowInner: {
     flexDirection: "row",
     alignItems: "flex-start",
     padding: Spacing.sm,
     gap: Spacing.sm,
+  },
+  explainButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  summaryBox: {
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.sm,
+    paddingTop: Spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  summaryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.xs,
   },
   billBadge: {
     paddingHorizontal: Spacing.sm,

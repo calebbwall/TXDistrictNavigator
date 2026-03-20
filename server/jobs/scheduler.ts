@@ -20,6 +20,9 @@ import { pollAllFeeds, getIsPollingRss } from "./pollRssFeeds";
 import { runDailyRefresh, getIsDailyRefreshing, msUntilNext5amChicago } from "./refreshDailyLegislative";
 import { processEventDateActions } from "../routes/prayerRoutes";
 import { seedLegislativeFeeds } from "./seedLegislativeFeeds";
+import { db } from "../db";
+import { committees, legislativeEvents } from "@shared/schema";
+import { sql } from "drizzle-orm";
 
 let schedulerInterval: NodeJS.Timeout | null = null;
 let lastCheckWindowRun: Date | null = null;
@@ -278,6 +281,25 @@ async function runRssPoll(): Promise<void> {
   }
 }
 
+async function maybeRunStartupLegislativeRefresh(): Promise<void> {
+  try {
+    const [{ committeeCount }] = await db
+      .select({ committeeCount: sql<number>`count(*)::int` })
+      .from(committees);
+    if (committeeCount === 0) return; // committees not seeded yet; skip
+
+    const [{ eventCount }] = await db
+      .select({ eventCount: sql<number>`count(*)::int` })
+      .from(legislativeEvents);
+    if (eventCount > 0) return; // already have events; skip
+
+    console.log("[Scheduler/legislative] No events in DB — running startup daily refresh");
+    await runDailyRefresh();
+  } catch (err) {
+    console.error("[Scheduler/legislative] Startup event seed failed:", err);
+  }
+}
+
 function startLegislativeSchedulers(): void {
   console.log("[Scheduler/legislative] Starting RSS poller (every 60 min) + daily refresh (5 AM Chicago)");
 
@@ -291,6 +313,13 @@ function startLegislativeSchedulers(): void {
         rssInterval = setInterval(runRssPoll, RSS_POLL_INTERVAL_MS);
       }, 30_000);
     });
+
+  // Bootstrap events on fresh DB — run once after committees are likely seeded (2 min delay)
+  setTimeout(() => {
+    maybeRunStartupLegislativeRefresh().catch((err) =>
+      console.error("[Scheduler/legislative] Startup refresh error:", err)
+    );
+  }, 2 * 60 * 1000);
 
   // Schedule DST-safe daily refresh
   scheduleNextDailyRefresh();
