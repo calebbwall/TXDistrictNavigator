@@ -288,6 +288,7 @@ export const prayers = pgTable("prayers", {
   categoryId: varchar("category_id", { length: 255 })
     .references(() => prayerCategories.id, { onDelete: "set null" }),
   officialIds: json("official_ids").$type<string[]>().default([]),
+  customPeopleNames: json("custom_people_names").$type<string[]>().default([]),
   pinnedDaily: boolean("pinned_daily").default(false).notNull(),
   priority: integer("priority").default(0).notNull(),
   lastShownAt: timestamp("last_shown_at"),
@@ -335,6 +336,7 @@ export const insertPrayerSchema = z.object({
   body: z.string().min(1),
   categoryId: z.string().nullable().optional(),
   officialIds: z.array(z.string()).optional(),
+  customPeopleNames: z.array(z.string()).optional(),
   pinnedDaily: z.boolean().optional(),
   priority: z.number().int().min(0).max(1).optional(),
   eventDate: z.string().nullable().optional(),
@@ -347,6 +349,7 @@ export const updatePrayerSchema = z.object({
   body: z.string().min(1).optional(),
   categoryId: z.string().nullable().optional(),
   officialIds: z.array(z.string()).optional(),
+  customPeopleNames: z.array(z.string()).optional(),
   pinnedDaily: z.boolean().optional(),
   priority: z.number().int().min(0).max(1).optional(),
   lastPrayedAt: z.string().nullable().optional(),

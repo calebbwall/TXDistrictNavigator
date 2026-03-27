@@ -36,6 +36,7 @@ type Prayer = {
   answerNote: string | null;
   categoryId: string | null;
   officialIds: string[];
+  customPeopleNames: string[];
   pinnedDaily: boolean;
   priority: number;
   lastShownAt: string | null;
@@ -80,6 +81,8 @@ export default function PrayerDetailScreen() {
   const [autoAfterEventAction, setAutoAfterEventAction] = useState<"none" | "markAnswered" | "archive">("none");
   const [autoAfterEventDaysOffset, setAutoAfterEventDaysOffset] = useState(0);
   const [showAutoActionPicker, setShowAutoActionPicker] = useState(false);
+  const [customPeopleNames, setCustomPeopleNames] = useState<string[]>([]);
+  const [customPersonInput, setCustomPersonInput] = useState("");
 
   const { data: prayer, isLoading } = useQuery<Prayer>({
     queryKey: ["/api/prayers", prayerId],
@@ -104,6 +107,7 @@ export default function PrayerDetailScreen() {
       setEventDate(prayer.eventDate ? new Date(prayer.eventDate) : null);
       setAutoAfterEventAction((prayer.autoAfterEventAction as "none" | "markAnswered" | "archive") || "none");
       setAutoAfterEventDaysOffset(prayer.autoAfterEventDaysOffset || 0);
+      setCustomPeopleNames(prayer.customPeopleNames ?? []);
       setHasChanges(false);
     }
   }, [prayer]);
@@ -117,6 +121,7 @@ export default function PrayerDetailScreen() {
         body,
         categoryId,
         officialIds: prayer?.officialIds ?? [],
+        customPeopleNames,
         pinnedDaily,
         priority,
         eventDate: eventDate ? eventDate.toISOString() : null,
@@ -444,6 +449,62 @@ export default function PrayerDetailScreen() {
             </ThemedText>
           )}
         </View>
+      </View>
+
+      <View style={{ marginTop: Spacing.md }}>
+        <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+          Custom People
+        </ThemedText>
+        <View style={[styles.dropdownButton, { backgroundColor: theme.inputBackground, borderColor: theme.border, gap: Spacing.sm }]}>
+          <TextInput
+            style={[{ flex: 1, color: theme.text, fontSize: 15, padding: 0 }]}
+            placeholder="Add a person's name..."
+            placeholderTextColor={theme.secondaryText}
+            value={customPersonInput}
+            onChangeText={setCustomPersonInput}
+            onSubmitEditing={() => {
+              const name = customPersonInput.trim();
+              if (name.length > 0 && !customPeopleNames.includes(name)) {
+                setCustomPeopleNames((prev) => [...prev, name]);
+                markChanged();
+              }
+              setCustomPersonInput("");
+            }}
+            returnKeyType="done"
+          />
+          <Pressable
+            onPress={() => {
+              const name = customPersonInput.trim();
+              if (name.length > 0 && !customPeopleNames.includes(name)) {
+                setCustomPeopleNames((prev) => [...prev, name]);
+                markChanged();
+              }
+              setCustomPersonInput("");
+            }}
+            hitSlop={8}
+          >
+            <Feather name="plus-circle" size={20} color={customPersonInput.trim().length > 0 ? theme.primary : theme.border} />
+          </Pressable>
+        </View>
+        {customPeopleNames.length > 0 ? (
+          <View style={[styles.chipsContainer, { marginTop: Spacing.sm }]}>
+            {customPeopleNames.map((name, idx) => (
+              <View key={idx} style={[styles.chip, { backgroundColor: theme.backgroundSecondary || theme.primary + "10", flexDirection: "row", alignItems: "center" }]}>
+                <Feather name="user" size={12} color={theme.text} style={{ marginRight: 4 }} />
+                <ThemedText type="small" style={{ color: theme.text, fontWeight: "500" }}>
+                  {name}
+                </ThemedText>
+                <Pressable
+                  onPress={() => { setCustomPeopleNames((prev) => prev.filter((_, i) => i !== idx)); markChanged(); }}
+                  hitSlop={8}
+                  style={{ marginLeft: 4 }}
+                >
+                  <Feather name="x" size={12} color={theme.secondaryText} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <Card elevation={1} style={{ marginTop: Spacing.lg, padding: Spacing.md }}>

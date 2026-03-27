@@ -31,6 +31,7 @@ type Prayer = {
   answerNote: string | null;
   categoryId: string | null;
   officialIds: string[];
+  customPeopleNames: string[];
   pinnedDaily: boolean;
   priority: number;
   lastPrayedAt: string | null;
@@ -62,6 +63,11 @@ export default function FocusedModeScreen() {
   const { data: categories } = useQuery<PrayerCategory[]>({
     queryKey: ["/api/prayer-categories"],
   });
+
+  const { data: officialsData } = useQuery<{ officials: { id: string; fullName: string }[] }>({
+    queryKey: ["/api/officials"],
+  });
+  const officialsMap = new Map((officialsData?.officials ?? []).map((o) => [o.id, o.fullName]));
 
   const prayerQueries = prayerIds.map((id) => ({
     queryKey: ["/api/prayers", id],
@@ -168,9 +174,15 @@ export default function FocusedModeScreen() {
   }
 
   const categoryName = getCategoryName(currentPrayer.categoryId);
-  const officialsCount = currentPrayer.officialIds
-    ? currentPrayer.officialIds.length
-    : 0;
+  const officialNames = (currentPrayer.officialIds ?? [])
+    .map((id) => officialsMap.get(id))
+    .filter(Boolean) as string[];
+  const allPeopleNames = [...officialNames, ...(currentPrayer.customPeopleNames ?? [])];
+  const peopleLabel = allPeopleNames.length === 0
+    ? null
+    : allPeopleNames.length <= 2
+    ? allPeopleNames.join(", ")
+    : `${allPeopleNames[0]} +${allPeopleNames.length - 1} more`;
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === prayerIds.length - 1;
 
@@ -224,7 +236,7 @@ export default function FocusedModeScreen() {
             {currentPrayer.title}
           </ThemedText>
 
-          {officialsCount > 0 ? (
+          {peopleLabel ? (
             <View
               style={[
                 styles.officialsBadge,
@@ -232,7 +244,7 @@ export default function FocusedModeScreen() {
               ]}
             >
               <Feather
-                name="users"
+                name="user"
                 size={14}
                 color={theme.secondaryText}
               />
@@ -243,8 +255,7 @@ export default function FocusedModeScreen() {
                   marginLeft: Spacing.xs,
                 }}
               >
-                {officialsCount}{" "}
-                {officialsCount === 1 ? "official" : "officials"}
+                {peopleLabel}
               </ThemedText>
             </View>
           ) : null}
