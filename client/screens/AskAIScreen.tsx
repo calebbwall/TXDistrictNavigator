@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
+
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -37,7 +38,6 @@ export default function AskAIScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -173,11 +173,7 @@ export default function AskAIScreen() {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={headerHeight}
-    >
+    <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -201,56 +197,61 @@ export default function AskAIScreen() {
         }}
       />
 
-      {/* Input bar */}
-      <View
-        style={[
-          styles.inputBar,
-          {
-            backgroundColor: theme.backgroundRoot,
-            borderTopColor: theme.border,
-            paddingBottom: insets.bottom + Spacing.sm,
-          },
-        ]}
+      {/* Input bar — KAV wraps only here so it lifts above the keyboard */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={headerHeight}
       >
         <View
           style={[
-            styles.inputContainer,
-            { backgroundColor: theme.inputBackground, borderColor: theme.border },
+            styles.inputBar,
+            {
+              backgroundColor: theme.backgroundRoot,
+              borderTopColor: theme.border,
+              paddingBottom: insets.bottom + Spacing.sm,
+            },
           ]}
         >
-          <TextInput
-            ref={inputRef}
-            style={[styles.textInput, { color: theme.text }]}
-            placeholder="Ask about legislators or legislation..."
-            placeholderTextColor={theme.secondaryText}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
-            blurOnSubmit
-          />
-          <Pressable
-            onPress={handleSend}
-            disabled={!inputText.trim() || isLoading}
-            style={({ pressed }) => [
-              styles.sendButton,
-              {
-                backgroundColor:
-                  inputText.trim() && !isLoading ? theme.primary : theme.border,
-                opacity: pressed ? 0.8 : 1,
-              },
+          <View
+            style={[
+              styles.inputContainer,
+              { backgroundColor: theme.inputBackground, borderColor: theme.border },
             ]}
           >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Feather name="send" size={18} color="#FFFFFF" />
-            )}
-          </Pressable>
+            <TextInput
+              ref={inputRef}
+              style={[styles.textInput, { color: theme.text }]}
+              placeholder="Ask about legislators or legislation..."
+              placeholderTextColor={theme.secondaryText}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              returnKeyType="send"
+              onSubmitEditing={handleSend}
+              blurOnSubmit
+            />
+            <Pressable
+              onPress={handleSend}
+              disabled={!inputText.trim() || isLoading}
+              style={({ pressed }) => [
+                styles.sendButton,
+                {
+                  backgroundColor:
+                    inputText.trim() && !isLoading ? theme.primary : theme.border,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Feather name="send" size={18} color="#FFFFFF" />
+              )}
+            </Pressable>
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
