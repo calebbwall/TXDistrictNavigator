@@ -183,6 +183,7 @@ export default function AskAIScreen() {
         data={messages}
         renderItem={renderMessage}
         keyExtractor={keyExtractor}
+        style={styles.list}
         contentContainerStyle={[
           styles.listContent,
           {
@@ -255,6 +256,9 @@ export default function AskAIScreen() {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  list: {
     flex: 1,
   },
   listContent: {
