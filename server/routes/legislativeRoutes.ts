@@ -221,12 +221,7 @@ export function registerLegislativeRoutes(app: Express): void {
             count: sql<number>`count(*)`,
           })
           .from(hearingAgendaItems)
-          .where(
-            sql`${hearingAgendaItems.eventId} IN (${sql.join(
-              eventIds.map((id) => sql`${id}`),
-              sql`, `,
-            )})`,
-          )
+          .where(inArray(hearingAgendaItems.eventId, eventIds))
           .groupBy(hearingAgendaItems.eventId);
         counts.forEach((c) => (agendaCounts[c.eventId] = Number(c.count)));
       }
@@ -295,12 +290,7 @@ export function registerLegislativeRoutes(app: Express): void {
             count: sql<number>`count(*)`,
           })
           .from(hearingAgendaItems)
-          .where(
-            sql`${hearingAgendaItems.eventId} IN (${sql.join(
-              eventIds.map((eid) => sql`${eid}`),
-              sql`, `,
-            )})`,
-          )
+          .where(inArray(hearingAgendaItems.eventId, eventIds))
           .groupBy(hearingAgendaItems.eventId);
         counts.forEach((c) => (agendaCounts[c.eventId] = Number(c.count)));
       }

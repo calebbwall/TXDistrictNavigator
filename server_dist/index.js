@@ -5652,12 +5652,7 @@ function registerLegislativeRoutes(app2) {
         const counts = await db.select({
           eventId: hearingAgendaItems.eventId,
           count: sql12`count(*)`
-        }).from(hearingAgendaItems).where(
-          sql12`${hearingAgendaItems.eventId} IN (${sql12.join(
-            eventIds.map((id) => sql12`${id}`),
-            sql12`, `
-          )})`
-        ).groupBy(hearingAgendaItems.eventId);
+        }).from(hearingAgendaItems).where(inArray3(hearingAgendaItems.eventId, eventIds)).groupBy(hearingAgendaItems.eventId);
         counts.forEach((c) => agendaCounts[c.eventId] = Number(c.count));
       }
       const enriched = rows.map((r) => ({
@@ -5700,12 +5695,7 @@ function registerLegislativeRoutes(app2) {
         const counts = await db.select({
           eventId: hearingAgendaItems.eventId,
           count: sql12`count(*)`
-        }).from(hearingAgendaItems).where(
-          sql12`${hearingAgendaItems.eventId} IN (${sql12.join(
-            eventIds.map((eid) => sql12`${eid}`),
-            sql12`, `
-          )})`
-        ).groupBy(hearingAgendaItems.eventId);
+        }).from(hearingAgendaItems).where(inArray3(hearingAgendaItems.eventId, eventIds)).groupBy(hearingAgendaItems.eventId);
         counts.forEach((c) => agendaCounts[c.eventId] = Number(c.count));
       }
       const hearings = rows.map((r) => ({ ...r, billCount: agendaCounts[r.id] ?? 0 }));
