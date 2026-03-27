@@ -332,15 +332,22 @@ async function fetchCommitteeMembers(committee: ParsedCommittee): Promise<Parsed
 async function fetchAllCommitteesWithMembers(chamber: ChamberType): Promise<CommitteeWithMembers[]> {
   const chamberCode = chamber === "TX_HOUSE" ? "H" : "S";
   const committeeList = await fetchCommitteeList(chamberCode);
-  
+
   const result: CommitteeWithMembers[] = [];
-  
-  for (const committee of committeeList) {
-    await new Promise(r => setTimeout(r, 200));
-    const members = await fetchCommitteeMembers(committee);
-    result.push({ committee, members });
+  const CONCURRENCY = 5;
+
+  for (let i = 0; i < committeeList.length; i += CONCURRENCY) {
+    const batch = committeeList.slice(i, i + CONCURRENCY);
+    const membersBatch = await Promise.all(batch.map(c => fetchCommitteeMembers(c)));
+    for (let j = 0; j < batch.length; j++) {
+      result.push({ committee: batch[j], members: membersBatch[j] });
+    }
+    // Brief pause between batches to avoid hammering TLO
+    if (i + CONCURRENCY < committeeList.length) {
+      await new Promise(r => setTimeout(r, 300));
+    }
   }
-  
+
   return result;
 }
 
