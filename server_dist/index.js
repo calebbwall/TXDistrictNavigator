@@ -5694,7 +5694,22 @@ function registerLegislativeRoutes(app2) {
       ).orderBy(
         range === "upcoming" ? asc2(legislativeEvents.startsAt) : desc2(legislativeEvents.startsAt)
       ).limit(50);
-      res.json({ hearings: rows, total: rows.length });
+      const eventIds = rows.map((r) => r.id);
+      const agendaCounts = {};
+      if (eventIds.length > 0) {
+        const counts = await db.select({
+          eventId: hearingAgendaItems.eventId,
+          count: sql12`count(*)`
+        }).from(hearingAgendaItems).where(
+          sql12`${hearingAgendaItems.eventId} IN (${sql12.join(
+            eventIds.map((eid) => sql12`${eid}`),
+            sql12`, `
+          )})`
+        ).groupBy(hearingAgendaItems.eventId);
+        counts.forEach((c) => agendaCounts[c.eventId] = Number(c.count));
+      }
+      const hearings = rows.map((r) => ({ ...r, billCount: agendaCounts[r.id] ?? 0 }));
+      res.json({ hearings, total: hearings.length });
     } catch (err) {
       console.error("[api/committees/:id/hearings] Error:", err);
       res.status(500).json({ error: "Failed to fetch hearings" });

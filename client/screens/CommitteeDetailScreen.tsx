@@ -129,6 +129,7 @@ interface CommitteeHearing {
   status: string;
   sourceUrl: string;
   witnessCount: number | null;
+  billCount: number;
 }
 
 function HearingsTab({ committeeId }: { committeeId: string }) {
@@ -174,12 +175,23 @@ function HearingsTab({ committeeId }: { committeeId: string }) {
           <View style={{ flex: 1 }}>
             <ThemedText type="body" style={{ fontWeight: "600" }}>{h.title}</ThemedText>
             <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }}>
-              {h.startsAt ? new Date(h.startsAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" }) : "TBD"}
+              {h.startsAt
+                ? new Date(h.startsAt).toLocaleString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    timeZone: "America/Chicago",
+                  })
+                : "TBD"}
               {h.location ? ` · ${h.location}` : ""}
             </ThemedText>
-            {h.witnessCount != null && h.witnessCount > 0 ? (
+            {h.billCount > 0 || (h.witnessCount != null && h.witnessCount > 0) ? (
               <ThemedText type="small" style={{ color: theme.secondaryText }}>
-                {h.witnessCount} witness{h.witnessCount !== 1 ? "es" : ""}
+                {h.billCount > 0 ? `${h.billCount} bill${h.billCount !== 1 ? "s" : ""}` : ""}
+                {h.billCount > 0 && h.witnessCount != null && h.witnessCount > 0 ? " · " : ""}
+                {h.witnessCount != null && h.witnessCount > 0 ? `${h.witnessCount} witness${h.witnessCount !== 1 ? "es" : ""}` : ""}
               </ThemedText>
             ) : null}
           </View>

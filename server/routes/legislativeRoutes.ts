@@ -285,7 +285,28 @@ export function registerLegislativeRoutes(app: Express): void {
         )
         .limit(50);
 
-      res.json({ hearings: rows, total: rows.length });
+      // Attach per-event bill (agenda item) counts
+      const eventIds = rows.map((r) => r.id);
+      const agendaCounts: Record<string, number> = {};
+      if (eventIds.length > 0) {
+        const counts = await db
+          .select({
+            eventId: hearingAgendaItems.eventId,
+            count: sql<number>`count(*)`,
+          })
+          .from(hearingAgendaItems)
+          .where(
+            sql`${hearingAgendaItems.eventId} IN (${sql.join(
+              eventIds.map((eid) => sql`${eid}`),
+              sql`, `,
+            )})`,
+          )
+          .groupBy(hearingAgendaItems.eventId);
+        counts.forEach((c) => (agendaCounts[c.eventId] = Number(c.count)));
+      }
+
+      const hearings = rows.map((r) => ({ ...r, billCount: agendaCounts[r.id] ?? 0 }));
+      res.json({ hearings, total: hearings.length });
     } catch (err) {
       console.error("[api/committees/:id/hearings] Error:", err);
       res.status(500).json({ error: "Failed to fetch hearings" });
