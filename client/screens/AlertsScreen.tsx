@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -18,6 +18,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl, apiRequest } from "@/lib/query-client";
+import * as Haptics from "expo-haptics";
 
 type NavigationProp = NativeStackNavigationProp<LegislativeStackParamList>;
 
@@ -59,7 +60,7 @@ function alertIcon(alertType: string): keyof typeof Feather.glyphMap {
   }
 }
 
-function alertAccentColor(alertType: string, theme: { primary: string; success: string; warning: string; secondary: string }): string {
+function alertAccentColor(alertType: string, theme: { primary: string; success: string; warning: string }): string {
   switch (alertType) {
     case "HEARING_POSTED": return theme.success;
     case "HEARING_UPDATED": return theme.warning;
@@ -71,12 +72,16 @@ function alertAccentColor(alertType: string, theme: { primary: string; success: 
 
 function AlertRow({
   alert,
-  onRead,
-  onNavigate,
+  isSelecting,
+  isSelected,
+  onPress,
+  onLongPress,
 }: {
   alert: Alert;
-  onRead: (id: string) => void;
-  onNavigate: (alert: Alert) => void;
+  isSelecting: boolean;
+  isSelected: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
 }) {
   const { theme } = useTheme();
   const isUnread = !alert.readAt;
@@ -85,36 +90,72 @@ function AlertRow({
 
   return (
     <Pressable
-      onPress={() => {
-        if (isUnread) onRead(alert.id);
-        onNavigate(alert);
-      }}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       style={({ pressed }) => [
         styles.alertRow,
         {
-          backgroundColor: isUnread ? color + "08" : theme.cardBackground,
-          borderLeftColor: isUnread ? color : "transparent",
-          opacity: pressed ? 0.85 : 1,
+          backgroundColor: isSelected
+            ? theme.primary + "15"
+            : isUnread
+            ? color + "08"
+            : theme.cardBackground,
+          borderLeftColor: isSelecting
+            ? "transparent"
+            : isUnread
+            ? color
+            : "transparent",
+          opacity: pressed ? 0.8 : 1,
         },
       ]}
     >
-      <View style={[styles.iconWrap, { backgroundColor: color + "18" }]}>
-        <Feather name={icon} size={16} color={color} />
-      </View>
+      {isSelecting ? (
+        <View
+          style={[
+            styles.checkbox,
+            {
+              borderColor: isSelected ? theme.primary : theme.border,
+              backgroundColor: isSelected ? theme.primary : "transparent",
+            },
+          ]}
+        >
+          {isSelected ? (
+            <Feather name="check" size={12} color="#fff" />
+          ) : null}
+        </View>
+      ) : (
+        <View style={[styles.iconWrap, { backgroundColor: color + "18" }]}>
+          <Feather name={icon} size={16} color={color} />
+        </View>
+      )}
+
       <View style={styles.alertContent}>
-        <ThemedText type="body" style={{ fontWeight: isUnread ? "700" : "400" }} numberOfLines={1}>
+        <ThemedText
+          type="body"
+          style={{ fontWeight: isUnread ? "700" : "400" }}
+          numberOfLines={1}
+        >
           {alert.title}
         </ThemedText>
-        <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }} numberOfLines={2}>
+        <ThemedText
+          type="small"
+          style={{ color: theme.secondaryText, marginTop: 2 }}
+          numberOfLines={2}
+        >
           {alert.body}
         </ThemedText>
-        <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 4, opacity: 0.7 }}>
+        <ThemedText
+          type="small"
+          style={{ color: theme.secondaryText, marginTop: 4, opacity: 0.7 }}
+        >
           {timeAgo(alert.createdAt)}
         </ThemedText>
       </View>
-      {isUnread && (
+
+      {!isSelecting && isUnread ? (
         <View style={[styles.unreadDot, { backgroundColor: color }]} />
-      )}
+      ) : null}
     </Pressable>
   );
 }
@@ -129,8 +170,10 @@ export default function AlertsScreen() {
 
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const { data, isLoading, error, refetch } = useQuery<AlertsResponse>({
+  const { data, isLoading, refetch } = useQuery<AlertsResponse>({
     queryKey: ["/api/alerts", { unreadOnly }],
     queryFn: async () => {
       const url = new URL(`/api/alerts${unreadOnly ? "?unreadOnly=true" : ""}`, getApiUrl());
@@ -145,10 +188,65 @@ export default function AlertsScreen() {
     mutationFn: async (id: string) => {
       await apiRequest("POST", `/api/alerts/${id}/read`);
     },
+    onSuccess: () => qClient.invalidateQueries({ queryKey: ["/api/alerts"] }),
+  });
+
+  const bulkMarkReadMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await apiRequest("POST", "/api/alerts/mark-read", { ids });
+    },
     onSuccess: () => {
       qClient.invalidateQueries({ queryKey: ["/api/alerts"] });
+      exitSelecting();
     },
   });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await apiRequest("DELETE", "/api/alerts/bulk", { ids });
+    },
+    onSuccess: () => {
+      qClient.invalidateQueries({ queryKey: ["/api/alerts"] });
+      exitSelecting();
+    },
+  });
+
+  const alerts = data?.alerts ?? [];
+
+  const allIds = useMemo(() => alerts.map((a) => a.id), [alerts]);
+  const allSelected = selectedIds.size === allIds.length && allIds.length > 0;
+  const someUnreadSelected = useMemo(
+    () => alerts.filter((a) => selectedIds.has(a.id) && !a.readAt).length > 0,
+    [alerts, selectedIds],
+  );
+
+  const exitSelecting = useCallback(() => {
+    setIsSelecting(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const enterSelecting = useCallback((preSelectId?: string) => {
+    setIsSelecting(true);
+    setSelectedIds(preSelectId ? new Set([preSelectId]) : new Set());
+  }, []);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [allSelected, allIds]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -173,7 +271,41 @@ export default function AlertsScreen() {
     [navigation],
   );
 
-  const alerts = data?.alerts ?? [];
+  const handleRowPress = useCallback(
+    (alert: Alert) => {
+      if (isSelecting) {
+        toggleSelect(alert.id);
+      } else {
+        if (!alert.readAt) markReadMutation.mutate(alert.id);
+        handleNavigate(alert);
+      }
+    },
+    [isSelecting, toggleSelect, markReadMutation, handleNavigate],
+  );
+
+  const handleLongPress = useCallback(
+    (alert: Alert) => {
+      if (!isSelecting) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        enterSelecting(alert.id);
+      }
+    },
+    [isSelecting, enterSelecting],
+  );
+
+  const handleBulkMarkRead = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    bulkMarkReadMutation.mutate(Array.from(selectedIds));
+  }, [selectedIds, bulkMarkReadMutation]);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    bulkDeleteMutation.mutate(Array.from(selectedIds));
+  }, [selectedIds, bulkDeleteMutation]);
+
+  const isBusy = bulkMarkReadMutation.isPending || bulkDeleteMutation.isPending;
 
   if (isLoading) {
     return (
@@ -185,28 +317,77 @@ export default function AlertsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      {/* Filter row */}
-      <View style={[styles.filterRow, { borderBottomColor: theme.border }]}>
-        <Pressable
-          onPress={() => setUnreadOnly(false)}
-          style={[styles.filterTab, !unreadOnly && styles.filterTabActive]}
+      {/* Top control row */}
+      {isSelecting ? (
+        <View
+          style={[
+            styles.selectionHeader,
+            { borderBottomColor: theme.border, paddingTop: headerHeight },
+          ]}
         >
-          <ThemedText type="body" style={{ color: !unreadOnly ? theme.primary : theme.secondaryText, fontWeight: !unreadOnly ? "700" : "400" }}>
-            All
+          <Pressable onPress={exitSelecting} style={styles.selectionHeaderBtn} hitSlop={8}>
+            <ThemedText type="body" style={{ color: theme.primary }}>
+              Cancel
+            </ThemedText>
+          </Pressable>
+          <ThemedText type="body" style={{ fontWeight: "600" }}>
+            {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select items"}
           </ThemedText>
-        </Pressable>
-        <Pressable
-          onPress={() => setUnreadOnly(true)}
-          style={[styles.filterTab, unreadOnly && styles.filterTabActive]}
+          <Pressable onPress={toggleSelectAll} style={styles.selectionHeaderBtn} hitSlop={8}>
+            <ThemedText type="body" style={{ color: theme.primary }}>
+              {allSelected ? "Deselect All" : "Select All"}
+            </ThemedText>
+          </Pressable>
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.filterRow,
+            { borderBottomColor: theme.border, paddingTop: headerHeight },
+          ]}
         >
-          <ThemedText type="body" style={{ color: unreadOnly ? theme.primary : theme.secondaryText, fontWeight: unreadOnly ? "700" : "400" }}>
-            Unread
-            {data && data.unreadCount > 0 ? (
-              <ThemedText type="body" style={{ color: theme.primary }}> ({data.unreadCount})</ThemedText>
-            ) : null}
-          </ThemedText>
-        </Pressable>
-      </View>
+          <View style={styles.filterTabs}>
+            <Pressable
+              onPress={() => setUnreadOnly(false)}
+              style={[styles.filterTab, !unreadOnly && { borderBottomWidth: 2, borderBottomColor: theme.primary }]}
+            >
+              <ThemedText
+                type="body"
+                style={{ color: !unreadOnly ? theme.primary : theme.secondaryText, fontWeight: !unreadOnly ? "700" : "400" }}
+              >
+                All
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={() => setUnreadOnly(true)}
+              style={[styles.filterTab, unreadOnly && { borderBottomWidth: 2, borderBottomColor: theme.primary }]}
+            >
+              <ThemedText
+                type="body"
+                style={{ color: unreadOnly ? theme.primary : theme.secondaryText, fontWeight: unreadOnly ? "700" : "400" }}
+              >
+                {"Unread"}
+                {data && data.unreadCount > 0 ? (
+                  <ThemedText type="body" style={{ color: theme.primary }}>
+                    {` (${data.unreadCount})`}
+                  </ThemedText>
+                ) : null}
+              </ThemedText>
+            </Pressable>
+          </View>
+          {alerts.length > 0 ? (
+            <Pressable
+              onPress={() => enterSelecting()}
+              style={styles.editBtn}
+              hitSlop={8}
+            >
+              <ThemedText type="body" style={{ color: theme.primary }}>
+                Edit
+              </ThemedText>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
 
       <FlatList
         data={alerts}
@@ -214,17 +395,25 @@ export default function AlertsScreen() {
         renderItem={({ item }) => (
           <AlertRow
             alert={item}
-            onRead={(id) => markReadMutation.mutate(id)}
-            onNavigate={handleNavigate}
+            isSelecting={isSelecting}
+            isSelected={selectedIds.has(item.id)}
+            onPress={() => handleRowPress(item)}
+            onLongPress={() => handleLongPress(item)}
           />
         )}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <Feather name="bell-off" size={56} color={theme.secondaryText} />
-            <ThemedText type="h3" style={{ color: theme.secondaryText, marginTop: Spacing.md, textAlign: "center" }}>
+            <ThemedText
+              type="h3"
+              style={{ color: theme.secondaryText, marginTop: Spacing.md, textAlign: "center" }}
+            >
               {unreadOnly ? "No unread alerts" : "No alerts yet"}
             </ThemedText>
-            <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.sm, textAlign: "center" }}>
+            <ThemedText
+              type="body"
+              style={{ color: theme.secondaryText, marginTop: Spacing.sm, textAlign: "center" }}
+            >
               Alerts appear when new hearings are posted or bills are referred
             </ThemedText>
           </View>
@@ -233,14 +422,83 @@ export default function AlertsScreen() {
           <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />
         )}
         contentContainerStyle={{
-          paddingTop: headerHeight,
-          paddingBottom: tabBarHeight + Spacing.xl,
+          paddingBottom: isSelecting
+            ? tabBarHeight + 72 + Spacing.xl
+            : tabBarHeight + Spacing.xl,
           flexGrow: 1,
         }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.primary}
+          />
         }
       />
+
+      {/* Bottom action bar — visible in selection mode */}
+      {isSelecting ? (
+        <View
+          style={[
+            styles.actionBar,
+            {
+              backgroundColor: theme.cardBackground,
+              borderTopColor: theme.border,
+              paddingBottom: tabBarHeight + Spacing.sm,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={handleBulkMarkRead}
+            disabled={!someUnreadSelected || isBusy}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              {
+                backgroundColor: theme.primary + "15",
+                opacity: !someUnreadSelected || isBusy ? 0.4 : pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            {isBusy && bulkMarkReadMutation.isPending ? (
+              <ActivityIndicator size="small" color={theme.primary} />
+            ) : (
+              <Feather name="check-circle" size={18} color={theme.primary} />
+            )}
+            <ThemedText
+              type="body"
+              style={{ color: theme.primary, fontWeight: "600", marginLeft: Spacing.xs }}
+            >
+              Mark Read
+            </ThemedText>
+          </Pressable>
+
+          <View style={[styles.actionDivider, { backgroundColor: theme.border }]} />
+
+          <Pressable
+            onPress={handleBulkDelete}
+            disabled={selectedIds.size === 0 || isBusy}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              {
+                backgroundColor: "#DC354515",
+                opacity: selectedIds.size === 0 || isBusy ? 0.4 : pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            {isBusy && bulkDeleteMutation.isPending ? (
+              <ActivityIndicator size="small" color="#DC3545" />
+            ) : (
+              <Feather name="trash-2" size={18} color="#DC3545" />
+            )}
+            <ThemedText
+              type="body"
+              style={{ color: "#DC3545", fontWeight: "600", marginLeft: Spacing.xs }}
+            >
+              Delete
+            </ThemedText>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -248,25 +506,58 @@ export default function AlertsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+
   filterRow: {
     flexDirection: "row",
+    alignItems: "center",
     borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.xs,
+  },
+  filterTabs: {
+    flex: 1,
+    flexDirection: "row",
   },
   filterTab: {
-    flex: 1,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     alignItems: "center",
-  },
-  filterTabActive: {
     borderBottomWidth: 2,
-    borderBottomColor: "transparent", // overridden by parent's primary color usage
+    borderBottomColor: "transparent",
   },
+  editBtn: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+
+  selectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  selectionHeaderBtn: {
+    paddingVertical: Spacing.xs,
+    minWidth: 70,
+  },
+
   alertRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     padding: Spacing.md,
     borderLeftWidth: 3,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.sm,
+    marginTop: 2,
+    flexShrink: 0,
   },
   iconWrap: {
     width: 36,
@@ -286,11 +577,39 @@ const styles = StyleSheet.create({
     marginTop: 6,
     flexShrink: 0,
   },
+
   emptyContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: Spacing.xl,
     paddingVertical: Spacing.xxl,
+  },
+
+  actionBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+  },
+  actionDivider: {
+    width: 1,
+    height: 36,
   },
 });

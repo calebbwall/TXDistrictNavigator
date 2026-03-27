@@ -28,7 +28,7 @@ import {
   type InsertUserSubscription,
   type InsertPushToken,
 } from "@shared/schema";
-import { eq, and, isNull, desc, asc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, isNull, desc, asc, gte, lte, sql, inArray } from "drizzle-orm";
 import { triggerRssPoll, triggerDailyRefresh, triggerFullLegislativeBootstrap } from "../jobs/scheduler";
 
 function requireAdminSecret(req: Request, res: Response): boolean {
@@ -97,6 +97,74 @@ export function registerLegislativeRoutes(app: Express): void {
     } catch (err) {
       console.error("[api/alerts/:id/read] Error:", err);
       res.status(500).json({ error: "Failed to mark alert as read" });
+    }
+  });
+
+  /**
+   * POST /api/alerts/mark-read
+   * Marks multiple alerts as read.
+   * Body: { ids: string[] }  — pass [] to mark all as read.
+   */
+  app.post("/api/alerts/mark-read", async (req: Request, res: Response) => {
+    try {
+      const { ids } = req.body as { ids: string[] };
+      const now = new Date();
+      if (Array.isArray(ids) && ids.length > 0) {
+        await db
+          .update(alerts)
+          .set({ readAt: now })
+          .where(and(eq(alerts.userId, "default"), isNull(alerts.readAt), inArray(alerts.id, ids)));
+      } else {
+        await db
+          .update(alerts)
+          .set({ readAt: now })
+          .where(and(eq(alerts.userId, "default"), isNull(alerts.readAt)));
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[api/alerts/mark-read] Error:", err);
+      res.status(500).json({ error: "Failed to mark alerts as read" });
+    }
+  });
+
+  /**
+   * DELETE /api/alerts/bulk
+   * Deletes multiple alerts.
+   * Body: { ids: string[] }  — pass [] to delete all.
+   */
+  app.delete("/api/alerts/bulk", async (req: Request, res: Response) => {
+    try {
+      const { ids } = req.body as { ids: string[] };
+      if (Array.isArray(ids) && ids.length > 0) {
+        await db
+          .delete(alerts)
+          .where(and(eq(alerts.userId, "default"), inArray(alerts.id, ids)));
+      } else {
+        await db
+          .delete(alerts)
+          .where(eq(alerts.userId, "default"));
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[api/alerts/bulk] Error:", err);
+      res.status(500).json({ error: "Failed to delete alerts" });
+    }
+  });
+
+  /**
+   * DELETE /api/alerts/:id
+   * Deletes a single alert.
+   */
+  app.delete("/api/alerts/:id", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await db
+        .delete(alerts)
+        .where(and(eq(alerts.id, id), eq(alerts.userId, "default")));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[api/alerts/:id] Error:", err);
+      res.status(500).json({ error: "Failed to delete alert" });
     }
   });
 
