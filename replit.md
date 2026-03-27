@@ -36,6 +36,16 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Legislative Refresh System**: Hourly RSS/HTML polling and daily data refresh for TLO committee hearings, bill referral history, and in-app alerts, managed by scheduled jobs. TLO scraper uses `MeetingsUpcoming.aspx?chamber=H|S` to discover hearings, parses committee codes from notice-page filenames (e.g. `C5102026040110001.HTM` → `C510`), and preserves committee names from the meetings list (TLO notice pages now contain accessibility boilerplate rather than the committee name).
 - **Committee Members Cache Fix**: CommitteeDetailScreen uses `staleTime: 0` + `refetchOnMount: "always"` + `useFocusEffect(refetch)` to guarantee fresh member roster data on every navigation — preventing stale data from showing partial member lists.
 - **Admin Functionalities**: Endpoints for triggering manual data refreshes and managing person identity overrides.
+- **Legislative Database Schema**: 10 dedicated tables: `bills`, `bill_actions`, `rss_feeds`, `rss_items`, `user_subscriptions`, `alerts`, `legislative_events`, `hearing_details`, `hearing_agenda_items`, `witnesses`. All use varchar UUID PKs with `gen_random_uuid()`.
+- **RSS/HTML Polling**: `server/jobs/pollRssFeeds.ts` polls all 71 committee notice feeds (one per committee) every 60 minutes using conditional HTTP headers (ETag/If-Modified-Since). Parses HTML pages from TLO committee notice listings. New items generate in-app alert rows.
+- **Daily Legislative Refresh**: `server/jobs/refreshDailyLegislative.ts` runs at 5:00 AM America/Chicago daily. Discovers upcoming hearings from `MeetingsUpcoming.aspx?chamber=H` and `?chamber=S`, upserts events into `legislative_events`, fetches individual hearing notice pages for agenda items via `targetedRefresh.ts`.
+- **Targeted Refresh Utilities**: `server/jobs/targetedRefresh.ts` contains `refreshUpcomingHearings(chamber)`, `refreshHearingDetail(eventId, sourceUrl)`, and `refreshBillHistory(billNumber)`. Uses cheerio for HTML parsing, SHA256 fingerprints for change detection, 3-concurrent fetch rate limiting.
+- **In-App Alerts**: Alerts generated for new hearings, hearing updates, bill actions, and RSS items. Stored in `alerts` table with `readAt` timestamp. AlertsScreen supports bulk select, bulk mark-read, and bulk delete. Bell icon in Legislative tab header shows unread count dot.
+- **Bootstrap Admin Endpoint**: `POST /api/admin/bootstrap-legislative` seeds committees → RSS feeds → events in sequence; safe to call repeatedly (idempotent). Also: `POST /api/admin/run-rss-poll` and `POST /api/admin/run-daily-refresh`.
+- **Legislative Navigation**: `LegislativeStackNavigator` (LegislativeHome → LegislativeDashboard → CommitteeBrowser → CommitteeDetail → HearingDetail → Alerts) registered as "Legislative" bottom tab with calendar icon.
+- **CommitteeDetailScreen Tabs**: Members tab (with pull-to-refresh + stale guard), Hearings tab (upcoming from `/api/committees/:id/hearings?range=upcoming`), Bills tab (past hearings). HearingDetail deep-link from Hearings tab uses `(navigation as any).navigate` cast to bridge LegislativeStackNavigator context.
+- **LegislativeDashboardScreen**: Upcoming events with Today/This Week sections, chamber filter chips (All/House/Senate), event cards showing title, datetime (America/Chicago), location, status, bill count, witness count.
+- **HearingDetailScreen**: Shows event metadata, agenda items with bill numbers, witness count, notice text, and link to full TLO notice page via WebBrowser.
 
 ### Feature Specifications
 - **Map Screen**: Interactive district map with location services and draw-to-search.
@@ -44,8 +54,9 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Workflow Tools**: Includes "Saved Officials," "Recent Tracking," and a "Follow-up Dashboard."
 - **Committees Feature**: Allows browsing Texas House and Senate committees and their members.
 - **Other Texas Officials**: Displays statewide officials grouped by category.
-- **Alerts**: In-app notifications for legislative events.
+- **Alerts**: In-app notifications for legislative events with unread count badge.
 - **Subscriptions**: User subscriptions to committees, bills, and chambers.
+- **Legislative Tab**: Dedicated bottom tab with LegislativeHome hub, dashboard, committee browser, committee detail (with Members/Hearings/Bills tabs), hearing detail, and alerts.
 
 ## External Dependencies
 - **PostgreSQL**: Main database for persistent data.
@@ -63,3 +74,4 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **NetInfo**: React Native API for network connectivity detection.
 - **Expo Location**: Provides access to device location services.
 - **AsyncStorage**: Persistent key-value storage for React Native.
+- **cheerio**: Server-side HTML parsing for TLO scraping (no native deps, already installed).
