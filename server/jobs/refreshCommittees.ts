@@ -86,9 +86,14 @@ function createSlug(name: string): string {
     .trim();
 }
 
+// Titles that appear in committee rosters but are not elected officials in our DB.
+// Members whose normalized name (after prefix stripping) still contains one of these
+// will be silently skipped rather than generating a match-failure warning.
+const NON_OFFICIAL_PREFIXES = ["lt. gov.", "lieutenant governor", "speaker"];
+
 function normalizeName(name: string): string {
   return name
-    .replace(/^(Rep\.|Sen\.|Representative|Senator)\s*/i, "")
+    .replace(/^(Rep\.|Sen\.|Lt\.?\s*Gov\.?|Representative|Senator|Lieutenant\s+Governor)\s*/i, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -391,7 +396,12 @@ async function matchMemberToOfficial(
     }
   }
   
-  console.log(`[RefreshCommittees] Could not match member "${memberName}" to any ${chamber} official`);
+  // Silently skip known non-official roles (Lt. Governor, Speaker, etc.)
+  const rawLower = memberName.toLowerCase().replace(/\s+/g, " ").trim();
+  const isNonOfficial = NON_OFFICIAL_PREFIXES.some(p => rawLower.startsWith(p) || rawLower.includes(p));
+  if (!isNonOfficial) {
+    console.log(`[RefreshCommittees] Could not match member "${memberName}" to any ${chamber} official`);
+  }
   return null;
 }
 

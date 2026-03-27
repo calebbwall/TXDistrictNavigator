@@ -287,21 +287,42 @@ async function fetchMemberDetails(memberUrl: string, chamber: "house" | "senate"
     
     if (!sourceMemberId) return null;
     
-    const titleText = $("title").text();
-    
-    if (titleText.includes("Lt. Gov.") || titleText.includes("Lieutenant Governor")) {
+    // TLO WCAG 2.1 redesign (2026): member name moved from <title> to <h1>.
+    // Old title: "Information for Rep. Alma Allen"
+    // New title: "Member Information | Texas Legislature Online" (generic)
+    // New h1:    "Information for Rep. Alma Allen"
+    const h1Text = $("h1").first().text().trim();
+    const NAME_RE = /Information for (Rep\.|Sen\.)\s*(.+)$/;
+    let fullName = "";
+
+    const h1Match = h1Text.match(NAME_RE);
+    if (h1Match) {
+      fullName = h1Match[2].trim();
+    }
+
+    // Lt. Gov. pages won't match NAME_RE (no Rep./Sen. prefix) — they return null naturally.
+    // Keep an explicit guard for safety.
+    if (h1Text.includes("Lt. Gov.") || h1Text.includes("Lieutenant Governor")) {
       return null;
     }
-    
-    const nameMatch = titleText.match(/Information for (Rep\.|Sen\.)\s*(.+)$/);
-    let fullName = nameMatch ? nameMatch[2].trim() : "";
-    
+
+    // Fallback: legacy <title> format (in case TLO reverts or for old cached pages)
+    if (!fullName) {
+      const titleText = $("title").text();
+      if (titleText.includes("Lt. Gov.") || titleText.includes("Lieutenant Governor")) {
+        return null;
+      }
+      const titleMatch = titleText.match(NAME_RE);
+      fullName = titleMatch ? titleMatch[2].trim() : "";
+    }
+
+    // Final fallback: header page-title span
     if (!fullName) {
       const pageTitle = $("#usrHeader_lblPageTitle").text();
-      const altMatch = pageTitle.match(/Information for (Rep\.|Sen\.)\s*(.+)$/);
+      const altMatch = pageTitle.match(NAME_RE);
       fullName = altMatch ? altMatch[2].trim() : "";
     }
-    
+
     if (!fullName) return null;
     
     let district = $("#lblDistrict").text().trim();
@@ -489,6 +510,17 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
     
     result.parsedCount = records.length;
     console.log(`[RefreshOfficials] Parsed ${records.length} ${source} members`);
+
+    // Safety guard: if the list page returned plenty of links but we parsed zero
+    // records, something is wrong with the scraper (e.g. TLO changed their HTML).
+    // Return early WITHOUT running the deactivation step so we don't wipe existing officials.
+    // (expectedMin already declared above when checking link count from the list page)
+    if (memberLinks.length >= expectedMin && records.length === 0) {
+      const msg = `SAFETY ABORT: found ${memberLinks.length} member links but parsed 0 records — TLO page structure may have changed. Skipping upsert and deactivation to protect existing data.`;
+      console.error(`[RefreshOfficials] ${msg}`);
+      result.errors.push(msg);
+      return result;
+    }
     
     const processedMemberIds: string[] = [];
     
