@@ -61,6 +61,10 @@ export async function runDailyRefresh(): Promise<{
   let alertsCreated = 0;
 
   try {
+    // Capture timestamp before any chamber refresh so we can query newly-created
+    // events exactly once after BOTH chambers finish (prevents duplicate alerts
+    // if two chamber runs complete within the 2-minute query window).
+    const alertsSince = new Date();
     const refreshStart = Date.now();
 
     // Refresh both chambers at once (new TLO URL returns all upcoming meetings per chamber)
@@ -70,49 +74,48 @@ export async function runDailyRefresh(): Promise<{
         totalNew += newEvents;
         totalUpdated += updatedEvents;
         committeesRefreshed++;
-
-        // Create HEARING_POSTED alerts for genuinely new events (created in last 2 min)
-        if (newEvents > 0) {
-          const recentEvents = await db
-            .select({
-              id: legislativeEvents.id,
-              title: legislativeEvents.title,
-              startsAt: legislativeEvents.startsAt,
-            })
-            .from(legislativeEvents)
-            .where(
-              gte(legislativeEvents.createdAt, new Date(Date.now() - 2 * 60 * 1000)),
-            );
-
-          for (const event of recentEvents) {
-            const dateLabel = event.startsAt
-              ? event.startsAt.toLocaleDateString("en-US", {
-                  timeZone: "America/Chicago",
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })
-              : "TBD";
-
-            const alertTitle = `New Hearing: ${event.title}`;
-            const alertBody = `Scheduled for ${dateLabel}`;
-            await db.insert(alerts).values({
-              userId: "default",
-              alertType: "HEARING_POSTED",
-              entityType: "event",
-              entityId: event.id,
-              title: alertTitle,
-              body: alertBody,
-            } satisfies InsertAlert);
-            alertsCreated++;
-            sendPushToAll(alertTitle, alertBody, {
-              alertType: "HEARING_POSTED",
-              entityId: event.id,
-            }).catch((err) => console.error("[dailyRefresh] Push failed:", err));
-          }
-        }
       } catch (err) {
         console.error(`[dailyRefresh] Error refreshing chamber ${chamber}:`, err);
+      }
+    }
+
+    // Generate HEARING_POSTED alerts once — after both chambers are done —
+    // using the pre-loop timestamp to avoid double-alerting the same events.
+    if (totalNew > 0) {
+      const recentEvents = await db
+        .select({
+          id: legislativeEvents.id,
+          title: legislativeEvents.title,
+          startsAt: legislativeEvents.startsAt,
+        })
+        .from(legislativeEvents)
+        .where(gte(legislativeEvents.createdAt, alertsSince));
+
+      for (const event of recentEvents) {
+        const dateLabel = event.startsAt
+          ? event.startsAt.toLocaleDateString("en-US", {
+              timeZone: "America/Chicago",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })
+          : "TBD";
+
+        const alertTitle = `New Hearing: ${event.title}`;
+        const alertBody = `Scheduled for ${dateLabel}`;
+        await db.insert(alerts).values({
+          userId: "default",
+          alertType: "HEARING_POSTED",
+          entityType: "event",
+          entityId: event.id,
+          title: alertTitle,
+          body: alertBody,
+        } satisfies InsertAlert);
+        alertsCreated++;
+        sendPushToAll(alertTitle, alertBody, {
+          alertType: "HEARING_POSTED",
+          entityId: event.id,
+        }).catch((err) => console.error("[dailyRefresh] Push failed:", err));
       }
     }
 
