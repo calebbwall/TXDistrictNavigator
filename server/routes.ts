@@ -1247,6 +1247,7 @@ import {
   checkAndRefreshCommitteesIfChanged,
   getAllCommitteeRefreshStates,
   getIsRefreshingCommittees,
+  forceResetIsRefreshingCommittees,
   maybeRunCommitteeRefresh,
 } from "./jobs/refreshCommittees";
 import { maybeRunOtherTxRefresh } from "./jobs/refreshOtherTexasOfficials";
@@ -2430,6 +2431,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("[Admin] Committees refresh error:", err);
       res.status(500).json({ error: "Committees refresh failed" });
     }
+  });
+
+  app.post("/admin/refresh/committees/reset", (req, res) => {
+    const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+    const providedToken = req.headers["x-admin-token"];
+    if (!adminToken || providedToken !== adminToken) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    forceResetIsRefreshingCommittees();
+    console.log("[Admin] isRefreshingCommittees flag force-reset");
+    res.json({ success: true, message: "isRefreshing flag reset. You can now trigger a fresh refresh." });
   });
 
   // Other Texas Officials endpoints

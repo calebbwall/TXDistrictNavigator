@@ -39,14 +39,22 @@ export function getIsRefreshingCommittees(): boolean {
   return isRefreshing;
 }
 
-async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+export function forceResetIsRefreshingCommittees(): void {
+  isRefreshing = false;
+}
+
+async function fetchWithRetry(url: string, retries = 3, timeoutMs = 20000): Promise<Response> {
   for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, {
+        signal: controller.signal,
         headers: {
           "User-Agent": "TexasDistrictsApp/1.0 (Committee Data Sync)",
         },
       });
+      clearTimeout(timer);
       if (response.ok) return response;
       if (response.status === 429) {
         await new Promise(r => setTimeout(r, 2000 * (i + 1)));
@@ -54,6 +62,7 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     } catch (err) {
+      clearTimeout(timer);
       if (i === retries - 1) throw err;
       await new Promise(r => setTimeout(r, 1000 * (i + 1)));
     }
