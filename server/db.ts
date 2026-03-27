@@ -16,5 +16,11 @@ const pool = new Pool({
   max: 10,
 });
 
+// Prevent unhandled 'error' events (e.g. DB connection terminated by admin)
+// from crashing the Node.js process. pg emits these on idle clients.
+pool.on("error", (err) => {
+  console.error("[DB Pool] Idle client error (connection will be replaced):", err.message);
+});
+
 export const db = drizzle(pool, { schema });
 export { pool };

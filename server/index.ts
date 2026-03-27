@@ -106,6 +106,18 @@ function getAppName(): string {
   }
 }
 
+function rebaseUrl(url: string, baseUrl: string): string {
+  // Works for both absolute URLs and relative paths (e.g. "./bundles/ios-xxx.js")
+  try {
+    const parsed = new URL(url, baseUrl);
+    return `${baseUrl}${parsed.pathname}`;
+  } catch {
+    // If URL is already a bare path, prepend base
+    const pathname = url.startsWith("/") ? url : `/${url}`;
+    return `${baseUrl}${pathname}`;
+  }
+}
+
 function serveExpoManifest(platform: string, req: Request, res: Response) {
   const manifestPath = path.resolve(
     process.cwd(),
@@ -134,15 +146,13 @@ function serveExpoManifest(platform: string, req: Request, res: Response) {
   const hostWithoutProtocol = host;
 
   if (manifest.launchAsset?.url) {
-    const originalUrl = new URL(manifest.launchAsset.url);
-    manifest.launchAsset.url = `${requestBaseUrl}${originalUrl.pathname}`;
+    manifest.launchAsset.url = rebaseUrl(manifest.launchAsset.url, requestBaseUrl);
   }
 
   if (manifest.assets) {
     manifest.assets.forEach((asset: { url?: string }) => {
       if (asset.url) {
-        const originalUrl = new URL(asset.url);
-        asset.url = `${requestBaseUrl}${originalUrl.pathname}`;
+        asset.url = rebaseUrl(asset.url, requestBaseUrl);
       }
     });
   }
@@ -155,16 +165,14 @@ function serveExpoManifest(platform: string, req: Request, res: Response) {
   }
 
   if (manifest.extra?.expoClient?.iconUrl) {
-    const originalUrl = new URL(manifest.extra.expoClient.iconUrl);
-    manifest.extra.expoClient.iconUrl = `${requestBaseUrl}${originalUrl.pathname}`;
+    manifest.extra.expoClient.iconUrl = rebaseUrl(manifest.extra.expoClient.iconUrl, requestBaseUrl);
   }
 
   if (manifest.extra?.expoClient?.android?.adaptiveIcon) {
     const icon = manifest.extra.expoClient.android.adaptiveIcon;
     for (const key of ["foregroundImageUrl", "monochromeImageUrl", "backgroundImageUrl"]) {
       if (icon[key]) {
-        const originalUrl = new URL(icon[key]);
-        icon[key] = `${requestBaseUrl}${originalUrl.pathname}`;
+        icon[key] = rebaseUrl(icon[key], requestBaseUrl);
       }
     }
   }
@@ -226,7 +234,12 @@ function configureExpoAndLanding(app: express.Application) {
 
     const platform = req.header("expo-platform");
     if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, req, res);
+      try {
+        return serveExpoManifest(platform, req, res);
+      } catch (manifestErr) {
+        log("[Manifest] Error serving manifest:", manifestErr);
+        return res.status(500).json({ error: "Failed to serve manifest" });
+      }
     }
 
     if (req.path === "/") {
