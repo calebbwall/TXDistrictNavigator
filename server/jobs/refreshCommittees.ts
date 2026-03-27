@@ -1,9 +1,12 @@
 import * as cheerio from "cheerio";
 import * as crypto from "crypto";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { committees, committeeMemberships, committeeRefreshState, officialPublic, alerts, type InsertCommittee, type InsertCommitteeMembership, type InsertAlert } from "@shared/schema";
 import { sendPushToAll } from "../lib/expoPush";
 import { eq, and, sql, ilike } from "drizzle-orm";
+
+// Unique advisory lock ID for committee refresh — prevents concurrent refreshes across instances
+const COMMITTEE_REFRESH_LOCK_ID = 624242;
 
 const TLO_BASE_URL = "https://capitol.texas.gov";
 const CURRENT_LEG_SESSION = "89R";
@@ -628,28 +631,51 @@ export async function checkAndRefreshCommitteesIfChanged(
 ): Promise<FullCommitteeRefreshResult> {
   const startTime = Date.now();
   const results: CommitteeRefreshResult[] = [];
-  
+
   if (isRefreshing) {
-    console.log("[RefreshCommittees] Already refreshing, skipping");
+    console.log("[RefreshCommittees] Already refreshing (local flag), skipping");
     return { results, durationMs: 0 };
   }
-  
-  isRefreshing = true;
-  
+
+  // Acquire a DB-level advisory lock so concurrent instances don't fight each other.
+  // pg_try_advisory_lock is non-blocking: returns false immediately if another session holds it.
+  const lockClient = await pool.connect();
+  let lockAcquired = false;
   try {
-    const houseResult = await checkAndRefreshChamber("TX_HOUSE_COMMITTEES", "TX_HOUSE", force);
-    results.push(houseResult);
-    
-    const senateResult = await checkAndRefreshChamber("TX_SENATE_COMMITTEES", "TX_SENATE", force);
-    results.push(senateResult);
-    
+    const lockResult = await lockClient.query(
+      "SELECT pg_try_advisory_lock($1) AS acquired",
+      [COMMITTEE_REFRESH_LOCK_ID]
+    );
+    lockAcquired = lockResult.rows[0].acquired as boolean;
+
+    if (!lockAcquired) {
+      console.log("[RefreshCommittees] Another instance holds the DB lock — skipping duplicate refresh");
+      return { results, durationMs: 0 };
+    }
+
+    console.log("[RefreshCommittees] DB advisory lock acquired");
+    isRefreshing = true;
+
+    try {
+      const houseResult = await checkAndRefreshChamber("TX_HOUSE_COMMITTEES", "TX_HOUSE", force);
+      results.push(houseResult);
+
+      const senateResult = await checkAndRefreshChamber("TX_SENATE_COMMITTEES", "TX_SENATE", force);
+      results.push(senateResult);
+    } finally {
+      isRefreshing = false;
+    }
   } finally {
-    isRefreshing = false;
+    if (lockAcquired) {
+      await lockClient.query("SELECT pg_advisory_unlock($1)", [COMMITTEE_REFRESH_LOCK_ID]);
+      console.log("[RefreshCommittees] DB advisory lock released");
+    }
+    lockClient.release();
   }
-  
+
   const durationMs = Date.now() - startTime;
   console.log(`[RefreshCommittees] Complete in ${durationMs}ms`);
-  
+
   return { results, durationMs };
 }
 
