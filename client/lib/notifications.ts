@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import { getApiUrl } from "@/lib/query-client";
 
 // Keys for stored notification identifiers
 const DAILY_PRAYER_NOTIF_KEY = "notif:dailyPrayer";
@@ -158,4 +159,41 @@ export async function cancelFollowUpReminder(entryId: string): Promise<void> {
       await AsyncStorage.removeItem(key);
     }
   } catch {}
+}
+
+const PUSH_TOKEN_STORAGE_KEY = "pushToken:registered";
+const EXPO_PROJECT_ID = "f1fa6722-e341-4f9f-a57e-2327bffc26eb";
+
+/**
+ * Register device push token with the server for server-driven notifications.
+ * Idempotent — only sends to server if token has changed since last registration.
+ * Skip on web (push not supported).
+ */
+export async function registerAndSyncPushToken(): Promise<void> {
+  if (Platform.OS === "web") return;
+  try {
+    const granted = await requestNotificationPermissions();
+    if (!granted) return;
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: EXPO_PROJECT_ID,
+    });
+    const token = tokenData.data;
+    if (!token) return;
+
+    // Only send to server if token changed
+    const stored = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
+    if (stored === token) return;
+
+    const base = getApiUrl();
+    await fetch(`${base}/api/push-tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, platform: Platform.OS }),
+    });
+
+    await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
+  } catch {
+    // Non-fatal — push notifications are best-effort
+  }
 }

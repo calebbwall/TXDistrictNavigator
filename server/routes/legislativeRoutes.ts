@@ -24,7 +24,9 @@ import {
   witnesses,
   userSubscriptions,
   committees,
+  pushTokens,
   type InsertUserSubscription,
+  type InsertPushToken,
 } from "@shared/schema";
 import { eq, and, isNull, desc, asc, gte, lte, sql } from "drizzle-orm";
 import { triggerRssPoll, triggerDailyRefresh, triggerFullLegislativeBootstrap } from "../jobs/scheduler";
@@ -423,6 +425,54 @@ export function registerLegislativeRoutes(app: Express): void {
     try {
       const result = await triggerFullLegislativeBootstrap();
       res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // ── Push Tokens ──
+
+  /**
+   * POST /api/push-tokens
+   * Body: { token: string, platform?: "android" | "ios" }
+   * Registers or refreshes a device push token (idempotent).
+   */
+  app.post("/api/push-tokens", async (req: Request, res: Response) => {
+    try {
+      const { token, platform } = req.body as { token?: string; platform?: string };
+      if (!token || typeof token !== "string") {
+        res.status(400).json({ error: "token is required" });
+        return;
+      }
+
+      await db
+        .insert(pushTokens)
+        .values({
+          userId: "default",
+          token,
+          platform: platform ?? null,
+          lastSeenAt: new Date(),
+        } satisfies InsertPushToken)
+        .onConflictDoUpdate({
+          target: pushTokens.token,
+          set: { lastSeenAt: new Date(), platform: platform ?? null },
+        });
+
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  /**
+   * DELETE /api/push-tokens/:token
+   * Unregisters a device push token.
+   */
+  app.delete("/api/push-tokens/:token", async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      await db.delete(pushTokens).where(eq(pushTokens.token, token));
+      res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
