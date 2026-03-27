@@ -1,11 +1,11 @@
 {
-  "id": "076b698d-2c13-491b-9e95-b68e971a796e",
-  "createdAt": "2026-02-17T12:33:47.048Z",
+  "id": "480a1b75-21bb-407a-aad5-3af6235f1516",
+  "createdAt": "2026-03-27T02:51:02.758Z",
   "runtimeVersion": "exposdk:54.0.0",
   "launchAsset": {
-    "key": "bundle-1771331627048-17483",
+    "key": "bundle-1774579862758-870",
     "contentType": "application/javascript",
-    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/1771331627048-17483/_expo/static/js/ios/bundle.js"
+    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/1774579862758-870/_expo/static/js/ios/bundle.js"
   },
   "assets": [],
   "metadata": {},
@@ -40,7 +40,10 @@
         "edgeToEdgeEnabled": true,
         "predictiveBackGestureEnabled": false,
         "package": "com.txdistrictnavigator.app",
-        "versionCode": 1
+        "versionCode": 1,
+        "permissions": [
+          "android.permission.RECORD_AUDIO"
+        ]
       },
       "extra": {
         "API_BASE_URL": "https://tx-district-navigator.replit.app",
@@ -65,7 +68,15 @@
             }
           }
         ],
-        "expo-web-browser"
+        "expo-web-browser",
+        "expo-notifications",
+        [
+          "expo-image-picker",
+          {
+            "photosPermission": "Allow TXDistrictNavigator to access your photos for mileage odometer images.",
+            "cameraPermission": "Allow TXDistrictNavigator to use the camera to capture odometer photos."
+          }
+        ]
       ],
       "experiments": {
         "reactCompiler": true
@@ -84,6 +95,14 @@
           "expo-web-browser": {
             "name": "expo-web-browser",
             "version": "15.0.10"
+          },
+          "expo-notifications": {
+            "name": "expo-notifications",
+            "version": "0.31.5"
+          },
+          "expo-image-picker": {
+            "name": "expo-image-picker",
+            "version": "55.0.12"
           }
         }
       },
@@ -110,6 +129,6 @@
       },
       "mainModuleName": "client/index"
     },
-    "scopeKey": "@anonymous/txdistrictnavigator-e56c45b4-7eb7-4b63-a6d4-ed2ff74424c3"
+    "scopeKey": "@anonymous/txdistrictnavigator-27422313-9ddc-450c-92c7-103c14f802ab"
   }
 }
