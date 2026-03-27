@@ -2119,8 +2119,8 @@ export default function MapScreen() {
                 await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
                 geocodedCount++;
                 
-                // Update state every 5 successful geocodes to show progress
-                if (geocodedCount % 5 === 0 && !cancelled) {
+                // Update state after each geocode so dots appear immediately
+                if (!cancelled) {
                   setAddressDots([...newDots]);
                 }
               } else {

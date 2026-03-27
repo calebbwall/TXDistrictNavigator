@@ -3,9 +3,12 @@
  * Called after RSS/polling detects a change, or by the daily refresh job.
  *
  * TLO URL patterns (89th Legislature):
- *   Committee meetings list: https://capitol.texas.gov/Committees/MeetingsByCmte.aspx?LegSess=89R&CmteCode=HCF
+ *   Upcoming meetings (new): https://capitol.texas.gov/Committees/MeetingsUpcoming.aspx?chamber=H|S
  *   Hearing notice (HTML):   https://capitol.texas.gov/tlodocs/89R/schedules/html/<docId>.htm
  *   Bill history:            https://capitol.texas.gov/BillLookup/History.aspx?LegSess=89R&Bill=HB1234
+ *
+ * NOTE: MeetingsByCmte.aspx?LegSess=89R&CmteCode=XXX now redirects to a generic page —
+ * use MeetingsUpcoming.aspx?chamber=H|S instead which lists all upcoming hearings per chamber.
  */
 import * as cheerio from "cheerio";
 import * as crypto from "crypto";
@@ -82,75 +85,123 @@ interface ParsedMeeting {
   noticeDocUrl: string | null;
 }
 
-function parseIsoDateTime(dateStr: string, timeStr: string): Date | null {
-  // TLO date format: "01/15/2025" time: "9:00 AM"
-  try {
-    const [month, day, year] = dateStr.split("/").map(Number);
-    const [timePart, ampm] = timeStr.trim().split(" ");
-    const [rawHour, rawMin] = timePart.split(":").map(Number);
-    let hour = rawHour;
-    if (ampm?.toUpperCase() === "PM" && hour !== 12) hour += 12;
-    if (ampm?.toUpperCase() === "AM" && hour === 12) hour = 0;
-    // Validate parsed numbers before building ISO string
-    if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour)) return null;
-    // Build ISO string in America/Chicago context (store as UTC, display with tz)
-    const dateIso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(rawMin ?? 0).padStart(2, "0")}:00`;
-    const d = new Date(dateIso);
-    return isNaN(d.getTime()) ? null : d;
-  } catch {
-    return null;
-  }
+// ---------- parse upcoming meetings page (new TLO structure) ----------
+interface ParsedMeetingWithCode extends ParsedMeeting {
+  cmteCode: string | null;
+  meetingType: string | null;
 }
 
-function parseMeetingsPage(html: string, committeeCode: string, chamberCode: "H" | "S"): ParsedMeeting[] {
+/**
+ * Parse the new TLO MeetingsUpcoming.aspx page.
+ * Structure: date row (sectionTitle) → time row (Gainsboro) → one or more committee rows.
+ */
+function parseMeetingsUpcomingPage(html: string, chamberCode: "H" | "S"): ParsedMeetingWithCode[] {
   const $ = cheerio.load(html);
-  const meetings: ParsedMeeting[] = [];
+  const meetings: ParsedMeetingWithCode[] = [];
+  let currentDateStr: string | null = null;
+  let currentTimeStr: string | null = null;
 
-  // TLO meetings table: each row is a meeting with Date, Time, Room, Notice columns
   $("table tr").each((_, row) => {
-    const cells = $(row).find("td");
-    if (cells.length < 3) return;
+    const tds = $(row).find("td");
+    if (tds.length === 0) return;
 
-    const dateText = $(cells[0]).text().trim();
-    const timeText = $(cells[1]).text().trim();
-    const roomText = $(cells[2]).text().trim();
+    const firstTd = $(tds[0]);
+    const dataLabel = (firstTd.attr("data-label") ?? "").toLowerCase();
 
-    // Skip header rows
-    if (!dateText.match(/\d{1,2}\/\d{1,2}\/\d{4}/)) return;
+    // Date row: data-label="Committee Meeting Date"
+    if (dataLabel === "committee meeting date") {
+      currentDateStr = firstTd.text().trim();
+      return;
+    }
 
-    const startsAt = parseIsoDateTime(dateText, timeText);
-    const dateKey = dateText.replace(/\//g, "");
+    // Time row: data-label="Committee Meeting Time"
+    if (dataLabel === "committee meeting time") {
+      currentTimeStr = firstTd.text().trim();
+      return;
+    }
 
-    // Look for notice link
+    // Committee meeting row: data-label contains "committee name"
+    if (!dataLabel.includes("committee name")) return;
+    if (!currentDateStr || !currentTimeStr) return;
+
+    // Parse start time
+    const startsAt = parseUpcomingDateTime(currentDateStr, currentTimeStr);
+
+    // Extract committee name (text before the <br> tag)
+    const cellHtml = firstTd.html() ?? "";
+    const brIdx = cellHtml.search(/<br\s*\/?>/i);
+    const namePart = brIdx >= 0 ? cellHtml.slice(0, brIdx) : cellHtml;
+    const committeeName = cheerio.load(namePart).text().trim();
+    if (!committeeName) return;
+
+    // Extract type and location from after the <br>
+    const afterBr = brIdx >= 0 ? firstTd.text().slice(committeeName.length).replace(/\u00a0/g, " ").trim() : "";
+    const typeMatch = afterBr.match(/Type:\s*([^L]+?)(?:\s+Location:|$)/i);
+    const locationMatch = afterBr.match(/Location:\s*(.+)/i);
+    const meetingType = typeMatch ? typeMatch[1].trim() : null;
+    const location = locationMatch ? locationMatch[1].trim() : null;
+
+    // Extract notice URL and committee code from any link in the row
     let noticeDocUrl: string | null = null;
-    let noticeHref: string | null = null;
-    cells.each((_, cell) => {
-      const link = $(cell).find("a[href]").first();
-      if (link.length) {
-        const href = link.attr("href") || "";
-        if (href.includes("tlodocs") || href.includes("schedules") || href.includes("MtgNotice")) {
-          noticeHref = href.startsWith("http") ? href : `${TLO_BASE}${href.startsWith("/") ? "" : "/"}${href}`;
-          noticeDocUrl = noticeHref;
+    let cmteCode: string | null = null;
+    tds.each((_, td) => {
+      $(td).find("a[href]").each((__, a) => {
+        const href = $(a).attr("href") ?? "";
+        if (!href.includes("tlodocs") && !href.includes("schedules")) return;
+        const fullHref = href.startsWith("http")
+          ? href
+          : `${TLO_BASE}${href.startsWith("/") ? "" : "/"}${href}`;
+        if (!noticeDocUrl) noticeDocUrl = fullHref;
+        // Extract committee code from filename: C5102026040110001.HTM → C510
+        if (!cmteCode) {
+          const filename = href.split("/").pop() ?? "";
+          const m = filename.match(/^([A-Z][A-Z0-9]{1,5}?)(?=20\d{2})/i);
+          cmteCode = m ? m[1].toUpperCase() : null;
         }
-      }
+      });
     });
 
-    // Derive stable external ID from committee code + date + time
-    const externalId = `${chamberCode}${committeeCode}-${dateKey}-${timeText.replace(/[^0-9APM]/g, "")}`;
+    // Build stable externalId
+    const dateKey = startsAt
+      ? `${startsAt.getFullYear()}${String(startsAt.getMonth() + 1).padStart(2, "0")}${String(startsAt.getDate()).padStart(2, "0")}`
+      : currentDateStr.replace(/[^0-9]/g, "").slice(0, 8);
+    const timeKey = currentTimeStr.replace(/[^0-9APM]/g, "");
+    const codeKey = cmteCode ?? committeeName.replace(/[^A-Z0-9]/gi, "").slice(0, 8).toUpperCase();
+    const externalId = `${chamberCode}${codeKey}-${dateKey}-${timeKey}`;
+
+    const sourceUrl = noticeDocUrl ?? `${TLO_BASE}/Committees/MeetingsUpcoming.aspx?chamber=${chamberCode}`;
 
     meetings.push({
       externalId,
-      title: `Committee Hearing`, // enriched in detail fetch
+      title: committeeName,
       startsAt,
-      location: roomText || null,
-      sourceUrl:
-        noticeDocUrl ??
-        `${TLO_BASE}/Committees/MeetingsByCmte.aspx?LegSess=${LEG_SESSION}&CmteCode=${committeeCode}`,
+      location,
+      sourceUrl,
       noticeDocUrl,
+      cmteCode,
+      meetingType,
     });
   });
 
   return meetings;
+}
+
+function parseUpcomingDateTime(dateStr: string, timeStr: string): Date | null {
+  // dateStr: "Wednesday, April 1, 2026"  timeStr: "10:00 AM"
+  try {
+    const cleanDate = dateStr.replace(/^[A-Z][a-z]+,\s*/i, "").trim(); // "April 1, 2026"
+    const timeMatch = timeStr.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (!timeMatch) return null;
+    let hour = parseInt(timeMatch[1], 10);
+    const min = parseInt(timeMatch[2], 10);
+    const ampm = timeMatch[3].toUpperCase();
+    if (ampm === "PM" && hour !== 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+    const d = new Date(`${cleanDate} ${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}:00`);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
 }
 
 // ---------- parse hearing notice page (agenda + witnesses) ----------
@@ -227,71 +278,63 @@ function parseHearingNoticePage(html: string): ParsedHearingDetail {
   };
 }
 
-// ---------- PUBLIC: refreshCommitteeHearings ----------
+// ---------- PUBLIC: refreshChamberUpcomingHearings ----------
 /**
- * Fetch committee meetings page for a given committeeId (DB id).
- * Upserts legislative_events for meetings within the next windowDays.
- * Returns count of new/updated events.
+ * Fetch the MeetingsUpcoming.aspx page for a full chamber (H or S) and upsert
+ * all upcoming hearings into legislative_events. This replaces the old per-committee
+ * approach (MeetingsByCmte.aspx) which TLO has deprecated / redirected.
+ *
+ * Also builds a code→committeeId lookup from the DB so each event is associated
+ * with the correct committee row.
  */
-export async function refreshCommitteeHearings(
-  committeeId: string,
-  windowDays = 14,
+export async function refreshChamberUpcomingHearings(
+  chamber: "H" | "S",
+  windowDays = 30,
 ): Promise<{ newEvents: number; updatedEvents: number }> {
-  const tag = "[targetedRefresh.hearings]";
+  const tag = `[targetedRefresh.chamberHearings.${chamber}]`;
 
-  // Look up committee record
-  const [committee] = await db
-    .select()
-    .from(committees)
-    .where(eq(committees.id, committeeId))
-    .limit(1);
-
-  if (!committee) {
-    console.warn(`${tag} Committee ${committeeId} not found`);
-    return { newEvents: 0, updatedEvents: 0 };
+  // Build cmteCode → DB committeeId map
+  const allCommittees = await db
+    .select({ id: committees.id, chamber: committees.chamber, sourceUrl: committees.sourceUrl })
+    .from(committees);
+  const codeToId = new Map<string, string>();
+  for (const c of allCommittees) {
+    const m = (c.sourceUrl ?? "").match(/CmteCode=([A-Z0-9]+)/i);
+    if (m) codeToId.set(m[1].toUpperCase(), c.id);
   }
 
-  // Derive committee code from sourceUrl
-  // e.g. https://capitol.texas.gov/Committees/MembershipCmte.aspx?LegSess=89R&CmteCode=HCF
-  const codeMatch = (committee.sourceUrl ?? "").match(/CmteCode=([A-Z0-9]+)/i);
-  if (!codeMatch) {
-    console.warn(`${tag} Cannot derive CmteCode from ${committee.sourceUrl}`);
-    return { newEvents: 0, updatedEvents: 0 };
-  }
-  const cmteCode = codeMatch[1];
-  const chamberCode = committee.chamber === "TX_SENATE" ? "S" : "H";
-
-  const url = `${TLO_BASE}/Committees/MeetingsByCmte.aspx?LegSess=${LEG_SESSION}&CmteCode=${cmteCode}`;
+  // Fetch the chamber-wide upcoming meetings page
+  const url = `${TLO_BASE}/Committees/MeetingsUpcoming.aspx?chamber=${chamber}`;
   console.log(`${tag} Fetching ${url}`);
 
   let html: string;
   try {
     const res = await fetchWithRetry(url);
     if (!res.ok) {
-      console.warn(`${tag} HTTP ${res.status} for ${url}`);
+      console.warn(`${tag} HTTP ${res.status}`);
       return { newEvents: 0, updatedEvents: 0 };
     }
     html = await res.text();
   } catch (err) {
-    console.error(`${tag} Fetch failed for ${url}:`, err);
+    console.error(`${tag} Fetch failed:`, err);
     return { newEvents: 0, updatedEvents: 0 };
   }
 
-  const meetings = parseMeetingsPage(html, cmteCode, chamberCode);
+  const parsed = parseMeetingsUpcomingPage(html, chamber);
+  const chamberDb = chamber === "S" ? "TX_SENATE" : "TX_HOUSE";
 
-  // Filter to windowDays
+  // Filter to windowDays from now
   const cutoff = new Date(Date.now() + windowDays * 24 * 60 * 60 * 1000);
-  const windowedMeetings = meetings.filter(
-    (m) => !m.startsAt || m.startsAt <= cutoff,
-  );
+  const windowed = parsed.filter((m) => !m.startsAt || m.startsAt <= cutoff);
+
+  console.log(`${tag} Parsed ${parsed.length} meetings, ${windowed.length} within ${windowDays}d window`);
 
   let newEvents = 0;
   let updatedEvents = 0;
 
-  for (const meeting of windowedMeetings) {
-    const fp = fingerprint(
-      JSON.stringify({ externalId: meeting.externalId, sourceUrl: meeting.sourceUrl }),
-    );
+  for (const meeting of windowed) {
+    const committeeId = meeting.cmteCode ? codeToId.get(meeting.cmteCode) : undefined;
+    const fp = fingerprint(JSON.stringify({ externalId: meeting.externalId, sourceUrl: meeting.sourceUrl }));
 
     const existing = await db
       .select({ id: legislativeEvents.id, fingerprint: legislativeEvents.fingerprint })
@@ -304,8 +347,8 @@ export async function refreshCommitteeHearings(
         .insert(legislativeEvents)
         .values({
           eventType: "COMMITTEE_HEARING",
-          chamber: committee.chamber,
-          committeeId,
+          chamber: chamberDb,
+          committeeId: committeeId ?? undefined,
           title: meeting.title,
           startsAt: meeting.startsAt ?? undefined,
           location: meeting.location ?? undefined,
@@ -316,14 +359,12 @@ export async function refreshCommitteeHearings(
         } satisfies InsertLegislativeEvent)
         .returning({ id: legislativeEvents.id });
 
-      // Insert skeleton hearing_details row
       if (inserted) {
         await db
           .insert(hearingDetails)
           .values({ eventId: inserted.id, witnessCount: 0 } satisfies InsertHearingDetail)
           .onConflictDoNothing();
       }
-
       newEvents++;
     } else {
       if (existing[0].fingerprint !== fp) {
@@ -332,12 +373,12 @@ export async function refreshCommitteeHearings(
           .set({ fingerprint: fp, lastSeenAt: new Date(), updatedAt: new Date() })
           .where(eq(legislativeEvents.id, existing[0].id));
 
-        // Alert on actual change to a scheduled hearing
         const [ev] = await db
           .select({ title: legislativeEvents.title, startsAt: legislativeEvents.startsAt })
           .from(legislativeEvents)
           .where(eq(legislativeEvents.id, existing[0].id))
           .limit(1);
+
         if (ev) {
           const dateLabel = ev.startsAt
             ? ev.startsAt.toLocaleDateString("en-US", {
@@ -358,13 +399,11 @@ export async function refreshCommitteeHearings(
             body: alertBody,
           } satisfies InsertAlert);
           sendPushToAll(alertTitle, alertBody, { alertType: "HEARING_UPDATED", entityId: existing[0].id }).catch(
-            (err) => console.error("[targetedRefresh] Push failed:", err),
+            (err) => console.error(`${tag} Push failed:`, err),
           );
         }
-
         updatedEvents++;
       } else {
-        // Touch lastSeenAt so we know it's still live
         await db
           .update(legislativeEvents)
           .set({ lastSeenAt: new Date() })
@@ -373,10 +412,33 @@ export async function refreshCommitteeHearings(
     }
   }
 
-  console.log(
-    `${tag} Committee ${cmteCode}: ${meetings.length} meetings found, +${newEvents} new, ~${updatedEvents} updated`,
-  );
+  console.log(`${tag} Done: +${newEvents} new, ~${updatedEvents} updated`);
   return { newEvents, updatedEvents };
+}
+
+// ---------- PUBLIC: refreshCommitteeHearings ----------
+/**
+ * Refresh hearings for a single committee. Delegates to refreshChamberUpcomingHearings
+ * for the appropriate chamber (the new TLO URL returns all chambers at once).
+ * Kept for backward-compatibility with pollRssFeeds.ts.
+ */
+export async function refreshCommitteeHearings(
+  committeeId: string,
+  _windowDays = 14,
+): Promise<{ newEvents: number; updatedEvents: number }> {
+  const [committee] = await db
+    .select({ chamber: committees.chamber })
+    .from(committees)
+    .where(eq(committees.id, committeeId))
+    .limit(1);
+
+  if (!committee) {
+    console.warn(`[targetedRefresh.hearings] Committee ${committeeId} not found`);
+    return { newEvents: 0, updatedEvents: 0 };
+  }
+
+  const chamberCode = committee.chamber === "TX_SENATE" ? "S" : "H";
+  return refreshChamberUpcomingHearings(chamberCode);
 }
 
 // ---------- PUBLIC: refreshHearingDetail ----------
@@ -435,12 +497,22 @@ export async function refreshHearingDetail(eventId: string): Promise<boolean> {
 
   const parsed = parseHearingNoticePage(html);
 
-  // Update event title/location if enriched
+  // Preserve the committee name title from the meetings list unless the event
+  // only has the generic fallback title.  TLO notice pages sometimes lead with
+  // accessibility/legal boilerplate that would corrupt the stored title.
+  const currentTitle = event.title ?? "";
+  const titleToStore =
+    currentTitle && currentTitle !== "Committee Hearing"
+      ? currentTitle
+      : parsed.title;
+
+  // Prefer the already-stored location (from meetings page, cleaner) over the
+  // notice page location which can include chair/boilerplate context.
   await db
     .update(legislativeEvents)
     .set({
-      title: parsed.title,
-      location: parsed.location ?? event.location ?? undefined,
+      title: titleToStore,
+      location: event.location ?? parsed.location ?? undefined,
       fingerprint: fp,
       updatedAt: new Date(),
     })

@@ -12,18 +12,13 @@
  */
 import { db } from "../db";
 import {
-  committees,
-  committeeMemberships,
-  officialPublic,
-  userSubscriptions,
   legislativeEvents,
-  hearingDetails,
   alerts,
   type InsertAlert,
 } from "@shared/schema";
-import { eq, sql, inArray, and, gte } from "drizzle-orm";
+import { sql, gte } from "drizzle-orm";
 import {
-  refreshCommitteeHearings,
+  refreshChamberUpcomingHearings,
   refreshHearingDetail,
 } from "./targetedRefresh";
 import { sendPushToAll } from "../lib/expoPush";
@@ -32,46 +27,6 @@ let isDailyRefreshing = false;
 
 export function getIsDailyRefreshing(): boolean {
   return isDailyRefreshing;
-}
-
-// ---------- gather scoped committee IDs ----------
-async function getScopedCommitteeIds(): Promise<string[]> {
-  const ids = new Set<string>();
-
-  // 1. Committees linked to officials who have private data (= "saved officials")
-  //    saved officials are those with an officialPrivate record OR tagged in prayers —
-  //    simplest proxy: any official with committee memberships
-  //    For now: all committees that have at least one membership (proxy for active committees)
-  const memberships = await db
-    .select({ committeeId: committeeMemberships.committeeId })
-    .from(committeeMemberships)
-    .groupBy(committeeMemberships.committeeId)
-    .limit(100);
-
-  memberships.forEach((m) => ids.add(m.committeeId));
-
-  // 2. Explicitly subscribed committees
-  const subs = await db
-    .select({ committeeId: userSubscriptions.committeeId })
-    .from(userSubscriptions)
-    .where(
-      and(
-        eq(userSubscriptions.type, "COMMITTEE"),
-        sql`${userSubscriptions.committeeId} IS NOT NULL`,
-      ),
-    );
-  subs.forEach((s) => s.committeeId && ids.add(s.committeeId));
-
-  // 3. Fallback: if still empty, grab up to 20 committees from DB
-  if (ids.size === 0) {
-    const fallback = await db
-      .select({ id: committees.id })
-      .from(committees)
-      .limit(20);
-    fallback.forEach((c) => ids.add(c.id));
-  }
-
-  return [...ids];
 }
 
 // ---------- PUBLIC: runDailyRefresh ----------
@@ -106,22 +61,18 @@ export async function runDailyRefresh(): Promise<{
   let alertsCreated = 0;
 
   try {
-    const committeeIds = await getScopedCommitteeIds();
-    console.log(`[dailyRefresh] Scoped to ${committeeIds.length} committees`);
+    const refreshStart = Date.now();
 
-    for (const committeeId of committeeIds) {
+    // Refresh both chambers at once (new TLO URL returns all upcoming meetings per chamber)
+    for (const chamber of ["H", "S"] as const) {
       try {
-        const { newEvents, updatedEvents } = await refreshCommitteeHearings(
-          committeeId,
-          14,
-        );
+        const { newEvents, updatedEvents } = await refreshChamberUpcomingHearings(chamber, 30);
         totalNew += newEvents;
         totalUpdated += updatedEvents;
         committeesRefreshed++;
 
-        // Create HEARING_POSTED alerts for genuinely new events
+        // Create HEARING_POSTED alerts for genuinely new events (created in last 2 min)
         if (newEvents > 0) {
-          // Find events created in the last 2 minutes for this committee
           const recentEvents = await db
             .select({
               id: legislativeEvents.id,
@@ -130,13 +81,7 @@ export async function runDailyRefresh(): Promise<{
             })
             .from(legislativeEvents)
             .where(
-              and(
-                eq(legislativeEvents.committeeId, committeeId),
-                gte(
-                  legislativeEvents.createdAt,
-                  new Date(Date.now() - 2 * 60 * 1000),
-                ),
-              ),
+              gte(legislativeEvents.createdAt, new Date(Date.now() - 2 * 60 * 1000)),
             );
 
           for (const event of recentEvents) {
@@ -160,36 +105,37 @@ export async function runDailyRefresh(): Promise<{
               body: alertBody,
             } satisfies InsertAlert);
             alertsCreated++;
-            // Fire-and-forget push notification
-            sendPushToAll(alertTitle, alertBody, { alertType: "HEARING_POSTED", entityId: event.id }).catch(
-              (err) => console.error("[dailyRefresh] Push failed:", err),
-            );
+            sendPushToAll(alertTitle, alertBody, {
+              alertType: "HEARING_POSTED",
+              entityId: event.id,
+            }).catch((err) => console.error("[dailyRefresh] Push failed:", err));
           }
         }
-
-        // Fetch detail pages for new/updated hearings that have a notice URL
-        const hearingsNeedingDetails = await db
-          .select({ id: legislativeEvents.id, sourceUrl: legislativeEvents.sourceUrl })
-          .from(legislativeEvents)
-          .where(
-            and(
-              eq(legislativeEvents.committeeId, committeeId),
-              sql`${legislativeEvents.sourceUrl} LIKE '%tlodocs%' OR ${legislativeEvents.sourceUrl} LIKE '%MtgNotice%'`,
-            ),
-          )
-          .limit(10);
-
-        for (const ev of hearingsNeedingDetails) {
-          const changed = await refreshHearingDetail(ev.id);
-          if (changed) detailsFetched++;
-        }
-
-        // Small delay between committees to avoid rate limiting
-        await sleep(500);
       } catch (err) {
-        console.error(`[dailyRefresh] Error refreshing committee ${committeeId}:`, err);
+        console.error(`[dailyRefresh] Error refreshing chamber ${chamber}:`, err);
       }
     }
+
+    // Fetch detail pages for events that have notice URLs (but no detail yet)
+    const hearingsNeedingDetails = await db
+      .select({ id: legislativeEvents.id, sourceUrl: legislativeEvents.sourceUrl })
+      .from(legislativeEvents)
+      .where(
+        sql`${legislativeEvents.sourceUrl} LIKE '%tlodocs%' OR ${legislativeEvents.sourceUrl} LIKE '%MtgNotice%'`,
+      )
+      .limit(20);
+
+    for (const ev of hearingsNeedingDetails) {
+      try {
+        const changed = await refreshHearingDetail(ev.id);
+        if (changed) detailsFetched++;
+        await sleep(300);
+      } catch (err) {
+        console.error("[dailyRefresh] Detail fetch failed:", err);
+      }
+    }
+
+    console.log(`[dailyRefresh] Chamber refresh took ${Date.now() - refreshStart}ms`);
 
     const duration = Date.now() - jobStart;
     console.log("========================================");

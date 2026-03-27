@@ -272,9 +272,8 @@ export default function CommitteeDetailScreen() {
       if (!response.ok) throw new Error("Failed to fetch committee details");
       return response.json();
     },
-    // 5-minute stale time so APK users can pull-to-refresh and see newly
-    // populated memberships without being stuck on an Infinity-stale empty cache.
-    staleTime: 5 * 60_000,
+    // 30-second stale time so members tab refreshes quickly after a data sync.
+    staleTime: 30_000,
   });
 
   const handleRefresh = useCallback(() => { refetch(); }, [refetch]);
