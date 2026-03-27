@@ -58,6 +58,73 @@ export interface BillSummaryContext {
   witnessPositions?: { for: number; against: number; on: number };
 }
 
+export interface IntentClassification {
+  intent: "officials" | "legislation" | "hearings" | "committees" | "general";
+  entities: {
+    names?: string[];
+    billNumbers?: string[];
+    committeeKeywords?: string[];
+    party?: string;
+    chamber?: string;
+    keywords?: string[];
+  };
+}
+
+export async function classifyIntent(question: string): Promise<IntentClassification> {
+  const completion = await getClient().chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages: [
+      {
+        role: "system",
+        content: `Classify questions about Texas and US legislators and legislation.
+Return ONLY valid JSON with:
+- intent: "officials" | "legislation" | "hearings" | "committees" | "general"
+- entities: object with optional keys:
+  - names: string[] (person name fragments mentioned)
+  - billNumbers: string[] (bill numbers like "HB 1234", "SB 5")
+  - committeeKeywords: string[] (committee name fragments)
+  - party: "Republican" | "Democrat" | "Independent" (if mentioned)
+  - chamber: "TX House" | "TX Senate" | "US House" (if mentioned)
+  - keywords: string[] (other relevant search terms)
+Use "officials" for questions about legislators/people, "committees" for committee membership/chairs, "legislation" for bills/laws, "hearings" for upcoming hearings/calendars, "general" for stats or mixed questions.`,
+      },
+      { role: "user", content: question },
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0,
+    max_tokens: 200,
+  });
+  try {
+    const parsed = JSON.parse(completion.choices[0].message.content ?? "{}");
+    return {
+      intent: parsed.intent ?? "general",
+      entities: parsed.entities ?? {},
+    };
+  } catch {
+    return { intent: "general", entities: {} };
+  }
+}
+
+export async function answerQuestion(question: string, dataContext: string): Promise<string> {
+  const completion = await getClient().chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a knowledgeable assistant for TXDistrictNavigator, an app tracking Texas and US legislators and legislation. Answer the user's question using only the provided data context. Be concise and factual. If the data context doesn't contain enough information to answer, say so clearly. Do not make up names, numbers, or facts.",
+      },
+      {
+        role: "user",
+        content: `Data context:\n${dataContext}\n\nQuestion: ${question}`,
+      },
+    ],
+    temperature: 0.3,
+    max_tokens: 400,
+  });
+  return completion.choices[0].message.content?.trim() ?? "I couldn't generate an answer. Please try again.";
+}
+
 export async function summarizeBill(context: BillSummaryContext): Promise<string> {
   const witnessLine = context.witnessPositions
     ? `Registered witnesses: ${context.witnessPositions.for} for, ${context.witnessPositions.against} against, ${context.witnessPositions.on} neutral.`

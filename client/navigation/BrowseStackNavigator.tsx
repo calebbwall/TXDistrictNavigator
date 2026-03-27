@@ -3,12 +3,14 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import BrowseOfficialsScreen from "@/screens/BrowseOfficialsScreen";
 import OfficialProfileScreen from "@/screens/OfficialProfileScreen";
 import CommitteeDetailScreen from "@/screens/CommitteeDetailScreen";
+import AskAIScreen from "@/screens/AskAIScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type BrowseStackParamList = {
   Browse: undefined;
   OfficialProfile: { officialId: string };
   CommitteeDetail: { committeeId: string; committeeName: string };
+  AskAI: undefined;
 };
 
 const Stack = createNativeStackNavigator<BrowseStackParamList>();
@@ -38,6 +40,13 @@ export default function BrowseStackNavigator() {
         options={({ route }) => ({
           headerTitle: route.params.committeeName,
         })}
+      />
+      <Stack.Screen
+        name="AskAI"
+        component={AskAIScreen}
+        options={{
+          headerTitle: "Ask AI",
+        }}
       />
     </Stack.Navigator>
   );
