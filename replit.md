@@ -33,7 +33,8 @@ The application uses Expo and React Native for the frontend, an Express.js backe
 - **Web Platform Map**: Map iframe loads from `/api/map.html` for same-origin API access, with cross-origin postMessage communication.
 - **Hit Schema Compatibility**: `highlightDistricts` function supports both native and web schema.
 - **Platform-Specific Colors**: Differentiates color usage for district overlays between web and native platforms.
-- **Legislative Refresh System**: Hourly RSS/HTML polling and daily data refresh for TLO committee hearings, bill referral history, and in-app alerts, managed by scheduled jobs.
+- **Legislative Refresh System**: Hourly RSS/HTML polling and daily data refresh for TLO committee hearings, bill referral history, and in-app alerts, managed by scheduled jobs. TLO scraper uses `MeetingsUpcoming.aspx?chamber=H|S` to discover hearings, parses committee codes from notice-page filenames (e.g. `C5102026040110001.HTM` → `C510`), and preserves committee names from the meetings list (TLO notice pages now contain accessibility boilerplate rather than the committee name).
+- **Committee Members Cache Fix**: CommitteeDetailScreen uses `staleTime: 0` + `refetchOnMount: "always"` + `useFocusEffect(refetch)` to guarantee fresh member roster data on every navigation — preventing stale data from showing partial member lists.
 - **Admin Functionalities**: Endpoints for triggering manual data refreshes and managing person identity overrides.
 
 ### Feature Specifications

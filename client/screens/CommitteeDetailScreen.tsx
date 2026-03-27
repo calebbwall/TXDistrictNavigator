@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 import { StyleSheet, View, FlatList, Pressable, ActivityIndicator, Image, ScrollView, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
@@ -272,9 +272,16 @@ export default function CommitteeDetailScreen() {
       if (!response.ok) throw new Error("Failed to fetch committee details");
       return response.json();
     },
-    // 30-second stale time so members tab refreshes quickly after a data sync.
-    staleTime: 30_000,
+    // Always fetch fresh data — committee rosters change and must be up-to-date.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
+
+  // Force a fresh fetch whenever the user navigates back to this screen
+  // (useFocusEffect fires on every focus, not just on mount).
+  useFocusEffect(
+    useCallback(() => { refetch(); }, [refetch])
+  );
 
   const handleRefresh = useCallback(() => { refetch(); }, [refetch]);
 

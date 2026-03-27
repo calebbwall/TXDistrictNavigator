@@ -62,7 +62,7 @@ function formatDateCompact(iso: string | null): string {
 
 function dayGroup(iso: string | null): "today-tomorrow" | "week" | "later" {
   if (!iso) return "later";
-  const diff = Math.round((new Date(new Date(iso).setHours(0, 0, 0, 0)) - new Date(new Date().setHours(0, 0, 0, 0))) / 86400000);
+  const diff = Math.round((new Date(iso).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
   if (diff <= 1) return "today-tomorrow";
   if (diff <= 7) return "week";
   return "later";
