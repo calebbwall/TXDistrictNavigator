@@ -61,13 +61,11 @@ export default function PrayerStackNavigator() {
             </Pressable>
           ),
           headerRight: () => (
-            <Pressable
+            <HeaderButton
               onPress={() => navigation.navigate("PrayerSettings")}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              style={{ paddingHorizontal: 8 }}
             >
               <Feather name="settings" size={20} color={theme.text} />
-            </Pressable>
+            </HeaderButton>
           ),
         })}
       />

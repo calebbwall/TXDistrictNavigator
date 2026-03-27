@@ -181,10 +181,27 @@ export function startOfficialsRefreshScheduler(): void {
 
   schedulerInterval = setInterval(schedulerTick, CHECK_INTERVAL_MS);
 
-  setTimeout(() => {
-    schedulerTick().catch(err => {
-      console.error("[Scheduler] Initial tick failed:", err);
-    });
+  // On startup: if the officials table is empty, run a full refresh immediately
+  // instead of waiting for the Monday window. This ensures fresh deploys are
+  // seeded without manual intervention.
+  setTimeout(async () => {
+    try {
+      const { officialPublic } = await import("@shared/schema");
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(officialPublic);
+      if (count === 0) {
+        console.log("[Scheduler] Officials table is empty — running immediate full refresh cycle");
+        await runRefreshCycle();
+      } else {
+        // Normal Monday-window tick
+        schedulerTick().catch(err => {
+          console.error("[Scheduler] Initial tick failed:", err);
+        });
+      }
+    } catch (err) {
+      console.error("[Scheduler] Startup check failed:", err);
+    }
   }, 5000);
 
   // ── Legislative schedulers ──
@@ -324,7 +341,9 @@ async function maybeRunStartupLegislativeRefresh(): Promise<void> {
       return;
     }
 
-    console.log("[Scheduler/legislative] No events in DB — running startup daily refresh");
+    // If committees exist but events are missing (e.g., server restarted after
+    // committees were scraped), run the daily refresh immediately without waiting.
+    console.log("[Scheduler/legislative] No events in DB — running startup daily refresh immediately");
     await runDailyRefresh();
   } catch (err) {
     console.error("[Scheduler/legislative] Startup event seed failed:", err);

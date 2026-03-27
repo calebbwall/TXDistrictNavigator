@@ -26,6 +26,7 @@ import {
   refreshCommitteeHearings,
   refreshHearingDetail,
 } from "./targetedRefresh";
+import { sendPushToAll } from "../lib/expoPush";
 
 let isDailyRefreshing = false;
 
@@ -148,15 +149,21 @@ export async function runDailyRefresh(): Promise<{
                 })
               : "TBD";
 
+            const alertTitle = `New Hearing: ${event.title}`;
+            const alertBody = `Scheduled for ${dateLabel}`;
             await db.insert(alerts).values({
               userId: "default",
               alertType: "HEARING_POSTED",
               entityType: "event",
               entityId: event.id,
-              title: `New Hearing: ${event.title}`,
-              body: `Scheduled for ${dateLabel}`,
+              title: alertTitle,
+              body: alertBody,
             } satisfies InsertAlert);
             alertsCreated++;
+            // Fire-and-forget push notification
+            sendPushToAll(alertTitle, alertBody, { alertType: "HEARING_POSTED", entityId: event.id }).catch(
+              (err) => console.error("[dailyRefresh] Push failed:", err),
+            );
           }
         }
 

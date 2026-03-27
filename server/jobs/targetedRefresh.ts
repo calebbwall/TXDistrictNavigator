@@ -18,14 +18,17 @@ import {
   witnesses,
   bills,
   billActions,
+  alerts,
   type InsertLegislativeEvent,
   type InsertHearingDetail,
   type InsertHearingAgendaItem,
   type InsertWitness,
   type InsertBill,
   type InsertBillAction,
+  type InsertAlert,
 } from "@shared/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
+import { sendPushToAll } from "../lib/expoPush";
 
 const TLO_BASE = "https://capitol.texas.gov";
 const LEG_SESSION = "89R";
@@ -328,6 +331,37 @@ export async function refreshCommitteeHearings(
           .update(legislativeEvents)
           .set({ fingerprint: fp, lastSeenAt: new Date(), updatedAt: new Date() })
           .where(eq(legislativeEvents.id, existing[0].id));
+
+        // Alert on actual change to a scheduled hearing
+        const [ev] = await db
+          .select({ title: legislativeEvents.title, startsAt: legislativeEvents.startsAt })
+          .from(legislativeEvents)
+          .where(eq(legislativeEvents.id, existing[0].id))
+          .limit(1);
+        if (ev) {
+          const dateLabel = ev.startsAt
+            ? ev.startsAt.toLocaleDateString("en-US", {
+                timeZone: "America/Chicago",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "TBD";
+          const alertTitle = `Hearing Updated: ${ev.title}`;
+          const alertBody = `Schedule for ${dateLabel} has changed`;
+          await db.insert(alerts).values({
+            userId: "default",
+            alertType: "HEARING_UPDATED",
+            entityType: "event",
+            entityId: existing[0].id,
+            title: alertTitle,
+            body: alertBody,
+          } satisfies InsertAlert);
+          sendPushToAll(alertTitle, alertBody, { alertType: "HEARING_UPDATED", entityId: existing[0].id }).catch(
+            (err) => console.error("[targetedRefresh] Push failed:", err),
+          );
+        }
+
         updatedEvents++;
       } else {
         // Touch lastSeenAt so we know it's still live
@@ -510,14 +544,33 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
 
   for (const row of rows) {
     try {
-      await db
+      const result = await db
         .insert(billActions)
         .values(row)
-        .onConflictDoNothing();
-      inserted++;
+        .onConflictDoNothing()
+        .returning({ id: billActions.id });
+      if (result.length > 0) inserted++;
     } catch {
       // duplicate, skip
     }
+  }
+
+  // Alert for newly inserted bill actions
+  if (inserted > 0) {
+    const latestAction = rows[rows.length - 1];
+    const alertTitle = `Bill Update: ${billNumber}`;
+    const alertBody = latestAction?.actionText?.slice(0, 120) ?? `${inserted} new action${inserted > 1 ? "s" : ""}`;
+    await db.insert(alerts).values({
+      userId: "default",
+      alertType: "BILL_ACTION",
+      entityType: "bill",
+      entityId: billId,
+      title: alertTitle,
+      body: alertBody,
+    } satisfies InsertAlert);
+    sendPushToAll(alertTitle, alertBody, { alertType: "BILL_ACTION", entityId: billId }).catch(
+      (err) => console.error("[targetedRefresh] Push failed:", err),
+    );
   }
 
   console.log(`${tag} ${billNumber}: ${inserted} actions upserted`);

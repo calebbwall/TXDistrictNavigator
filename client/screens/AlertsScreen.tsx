@@ -233,6 +233,7 @@ export default function AlertsScreen() {
           <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />
         )}
         contentContainerStyle={{
+          paddingTop: headerHeight,
           paddingBottom: tabBarHeight + Spacing.xl,
           flexGrow: 1,
         }}

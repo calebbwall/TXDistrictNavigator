@@ -580,6 +580,21 @@ export const witnesses = pgTable("witnesses", {
   sortOrder: integer("sort_order").notNull(),
 });
 
+// Device push tokens for server-driven notifications
+export const pushTokens = pgTable("push_tokens", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+  token: text("token").notNull().unique(),
+  platform: varchar("platform", { length: 20 }), // "android" | "ios"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+});
+
+export type PushToken = typeof pushTokens.$inferSelect;
+export type InsertPushToken = typeof pushTokens.$inferInsert;
+
 // ── Legislative Types ──
 export type Bill = typeof bills.$inferSelect;
 export type InsertBill = typeof bills.$inferInsert;

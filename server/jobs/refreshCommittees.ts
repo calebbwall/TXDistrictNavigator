@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import * as crypto from "crypto";
 import { db } from "../db";
 import { committees, committeeMemberships, committeeRefreshState, officialPublic, alerts, type InsertCommittee, type InsertCommitteeMembership, type InsertAlert } from "@shared/schema";
+import { sendPushToAll } from "../lib/expoPush";
 import { eq, and, sql, ilike } from "drizzle-orm";
 
 const TLO_BASE_URL = "https://capitol.texas.gov";
@@ -504,14 +505,20 @@ async function refreshChamberCommittees(
         const parts: string[] = [];
         if (added > 0) parts.push(`${added} member${added > 1 ? "s" : ""} added`);
         if (removed > 0) parts.push(`${removed} member${removed > 1 ? "s" : ""} removed`);
+        const alertTitle = `Committee Updated: ${committee.name}`;
+        const alertBody = parts.join(", ");
         await db.insert(alerts).values({
           userId: "default",
           alertType: "COMMITTEE_MEMBER_CHANGE",
           entityType: "committee",
           entityId: committeeId,
-          title: `Committee Updated: ${committee.name}`,
-          body: parts.join(", "),
+          title: alertTitle,
+          body: alertBody,
         } satisfies InsertAlert);
+        // Fire-and-forget push notification
+        sendPushToAll(alertTitle, alertBody, { alertType: "COMMITTEE_MEMBER_CHANGE", entityId: committeeId }).catch(
+          (err) => console.error("[refreshCommittees] Push failed:", err),
+        );
       }
     }
   }

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -26,6 +26,12 @@ import { queryClient } from "@/lib/query-client";
 
 import RootStackNavigator from "@/navigation/RootStackNavigator";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import {
+  configureForegroundNotifications,
+  registerAndSyncPushToken,
+} from "@/lib/notifications";
+
+configureForegroundNotifications();
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -42,6 +48,12 @@ export default function App() {
     ...Foundation.font,
     ...EvilIcons.font,
   });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      registerAndSyncPushToken();
+    }
+  }, [fontsLoaded]);
 
   if (!fontsLoaded) {
     return (
