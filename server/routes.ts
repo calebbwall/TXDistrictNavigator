@@ -1249,6 +1249,7 @@ import {
   getIsRefreshingCommittees,
   forceResetIsRefreshingCommittees,
   maybeRunCommitteeRefresh,
+  backfillMissingCommitteeMembers,
 } from "./jobs/refreshCommittees";
 import { maybeRunOtherTxRefresh } from "./jobs/refreshOtherTexasOfficials";
 import { lookupPlace, lookupPlaceCandidates, getCacheStats, type PlaceResult } from "./geonames";
@@ -2442,6 +2443,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     forceResetIsRefreshingCommittees();
     console.log("[Admin] isRefreshingCommittees flag force-reset");
     res.json({ success: true, message: "isRefreshing flag reset. You can now trigger a fresh refresh." });
+  });
+
+  app.post("/admin/refresh/committees/backfill-missing", async (req, res) => {
+    const token = req.headers["x-admin-token"];
+    if (token !== process.env.ADMIN_REFRESH_TOKEN) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const result = await backfillMissingCommitteeMembers();
+      res.json({ success: true, ...result });
+    } catch (err) {
+      console.error("[Admin] backfill-missing error:", err);
+      res.status(500).json({ error: String(err) });
+    }
   });
 
   // Other Texas Officials endpoints

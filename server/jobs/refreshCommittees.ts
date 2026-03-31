@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { db, pool } from "../db";
 import { committees, committeeMemberships, committeeRefreshState, officialPublic, alerts, type InsertCommittee, type InsertCommitteeMembership, type InsertAlert } from "@shared/schema";
 import { sendPushToAll } from "../lib/expoPush";
-import { eq, and, sql, ilike } from "drizzle-orm";
+import { eq, and, sql, ilike, isNotNull } from "drizzle-orm";
 
 // Unique advisory lock ID for committee refresh — prevents concurrent refreshes across instances
 const COMMITTEE_REFRESH_LOCK_ID = 624242;
@@ -723,6 +723,26 @@ export async function maybeRunCommitteeRefresh(): Promise<void> {
       await checkAndRefreshCommitteesIfChanged(true);
       return;
     }
+
+    // Partial-empty: some committees have members but others have none.
+    // Use a targeted backfill instead of a full re-scrape.
+    const [{ emptyCount }] = await db
+      .select({
+        emptyCount: sql<number>`count(*)::int`,
+      })
+      .from(committees)
+      .where(
+        sql`${committees.id} NOT IN (SELECT DISTINCT committee_id FROM ${committeeMemberships})`,
+      );
+
+    if (emptyCount > 0) {
+      console.log(
+        `[RefreshCommittees] ${emptyCount} committees have 0 members — running targeted backfill`,
+      );
+      await backfillMissingCommitteeMembers();
+      return;
+    }
+
     console.log("[RefreshCommittees] Already checked this week, skipping startup seed");
     return;
   }
@@ -741,6 +761,104 @@ export async function wasCommitteesCheckedThisWeek(): Promise<boolean> {
     .select({ memberCount: sql<number>`count(*)::int` })
     .from(committeeMemberships);
   return committeeCount > 0 && memberCount > 0;
+}
+
+export async function backfillMissingCommitteeMembers(): Promise<{
+  filled: number;
+  skipped: number;
+  errors: number;
+}> {
+  if (isRefreshing) {
+    console.log("[RefreshCommittees] backfill skipped — refresh already in progress");
+    return { filled: 0, skipped: 0, errors: 0 };
+  }
+
+  // Find committees that have no memberships at all and have a URL to scrape.
+  const emptyCommittees = await db
+    .select()
+    .from(committees)
+    .where(
+      and(
+        isNotNull(committees.sourceUrl),
+        sql`${committees.id} NOT IN (
+          SELECT DISTINCT committee_id FROM ${committeeMemberships}
+        )`,
+      ),
+    );
+
+  if (emptyCommittees.length === 0) {
+    console.log("[RefreshCommittees] backfill: no committees with 0 members found");
+    return { filled: 0, skipped: 0, errors: 0 };
+  }
+
+  console.log(
+    `[RefreshCommittees] backfill: ${emptyCommittees.length} committees have 0 members — fetching`,
+  );
+
+  let filled = 0;
+  let skipped = 0;
+  let errors = 0;
+  const CONCURRENCY = 5;
+
+  for (let i = 0; i < emptyCommittees.length; i += CONCURRENCY) {
+    const batch = emptyCommittees.slice(i, i + CONCURRENCY);
+
+    await Promise.all(
+      batch.map(async (row) => {
+        try {
+          const members = await fetchCommitteeMembers({
+            name: row.name,
+            sourceUrl: row.sourceUrl!,
+            slug: row.slug,
+            code: "",
+            isSubcommittee: row.parentCommitteeId !== null,
+            parentCode: null,
+            sortOrder: 0,
+          });
+
+          if (members.length === 0) {
+            skipped++;
+            console.log(`[RefreshCommittees] backfill: ${row.name} — 0 members returned, skipping`);
+            return;
+          }
+
+          const chamber = row.chamber as ChamberType;
+
+          for (const member of members) {
+            const officialId = await matchMemberToOfficial(
+              member.memberName,
+              member.legCode,
+              chamber,
+            );
+            await db.insert(committeeMemberships).values({
+              committeeId: row.id,
+              officialPublicId: officialId,
+              memberName: member.memberName,
+              roleTitle: member.roleTitle,
+              sortOrder: String(member.sortOrder),
+            });
+          }
+
+          filled++;
+          console.log(
+            `[RefreshCommittees] backfill: ${row.name} — inserted ${members.length} members`,
+          );
+        } catch (err) {
+          errors++;
+          console.error(`[RefreshCommittees] backfill error for ${row.name}:`, err);
+        }
+      }),
+    );
+
+    if (i + CONCURRENCY < emptyCommittees.length) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
+  console.log(
+    `[RefreshCommittees] backfill complete — filled=${filled} skipped=${skipped} errors=${errors}`,
+  );
+  return { filled, skipped, errors };
 }
 
 export async function getAllCommitteeRefreshStates(): Promise<Array<{
