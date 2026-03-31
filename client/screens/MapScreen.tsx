@@ -3162,6 +3162,26 @@ export default function MapScreen() {
           } else if (data.type === "mapReady") {
             console.log('[MapScreen] Map is ready (from window)!');
             setMapReady(true);
+          } else if (data.type === "geoJSONLoaded") {
+            // Server HTML loaded a GeoJSON layer itself — mirror the status into
+            // React state so the debug panel and loading overlay stay accurate.
+            const layerKey = data.layerType === 'tx_house'   ? 'house'
+                           : data.layerType === 'tx_senate'  ? 'senate'
+                           : 'congress';
+            setLoadStatus(prev => ({
+              ...prev,
+              [layerKey]: {
+                loaded: data.success === true,
+                features: data.features ?? 0,
+                error: data.error ?? null,
+              },
+            }));
+          } else if (data.type === "allGeoJSONLoaded") {
+            // All three layers finished loading inside the iframe — the map is
+            // fully ready; dismiss the loading overlay without waiting for the
+            // redundant React-side GeoJSON fetch to complete.
+            console.log('[MapScreen] allGeoJSONLoaded received from iframe');
+            setDataLoaded(true);
           } else if (data.type === "DRAW_COMPLETE" && data.geometry) {
             console.log('[MapScreen] Window DRAW_COMPLETE received');
             handleDrawComplete(data.geometry);
@@ -3212,19 +3232,6 @@ export default function MapScreen() {
     };
   }, [handleMapTap, handleDrawComplete]);
 
-  // Create blob URL for the map HTML on web
-  const [mapBlobUrl, setMapBlobUrl] = useState<string | null>(null);
-  
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      const blob = new Blob([MAP_HTML], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      setMapBlobUrl(url);
-      return () => {
-        URL.revokeObjectURL(url);
-      };
-    }
-  }, []);
 
   // Send message to iframe on web (iframeRef declared earlier)
   const sendToIframe = useCallback((message: object) => {

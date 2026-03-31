@@ -232,12 +232,27 @@ export default function OfficialProfileScreen() {
   const [showEngagementPicker, setShowEngagementPicker] = useState(false);
   const [engagementPickerDate, setEngagementPickerDate] = useState<Date>(new Date());
   const [engagementNote, setEngagementNote] = useState("");
-  const [committees, setCommittees] = useState<Array<{
+  const officialUuid = official?.id ?? null;
+
+  const { data: committeesData, isLoading: committeesLoading } = useQuery<Array<{
     committeeId: string;
     committeeName: string;
     roleTitle: string | null;
-  }>>([]);
-  const [committeesLoading, setCommitteesLoading] = useState(false);
+  }>>({
+    queryKey: ["/api/officials", officialUuid, "committees"],
+    queryFn: async () => {
+      const url = new URL(`/api/officials/${officialUuid}/committees`, getApiUrl());
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed to fetch committees");
+      return res.json();
+    },
+    enabled: !!officialUuid,
+    // Committee assignments only change on the Monday scrape — never stale on
+    // the client so we don't re-fetch on every navigation to this profile.
+    staleTime: Infinity,
+  });
+
+  const committees = committeesData ?? [];
 
   const { data: prayerCounts } = useQuery<{ open: number; answered: number; archived: number }>({
     queryKey: [`/api/officials/${officialId}/prayer-counts`],
@@ -352,28 +367,6 @@ export default function OfficialProfileScreen() {
     }
   }, [initialSection, notesSectionY, hasScrolledToNotes, isLoading]);
 
-  useEffect(() => {
-    const fetchCommittees = async () => {
-      // Use official.id (UUID) rather than officialId route param, which may be
-      // in "SOURCE:DISTRICT" format that the committees endpoint doesn't handle.
-      const uuid = official?.id;
-      if (!uuid) return;
-      setCommitteesLoading(true);
-      try {
-        const baseUrl = getApiUrl();
-        const url = new URL(`/api/officials/${uuid}/committees`, baseUrl);
-        const response = await fetch(url.toString());
-        if (response.ok) {
-          const data = await response.json();
-          setCommittees(data);
-        }
-      } catch (error) {
-        console.error("Failed to fetch committees:", error);
-      }
-      setCommitteesLoading(false);
-    };
-    fetchCommittees();
-  }, [official?.id]);
 
   const handleNotesSectionLayout = useCallback((event: LayoutChangeEvent) => {
     const { y } = event.nativeEvent.layout;

@@ -287,7 +287,13 @@ async function cleanupBootstrapAlerts(): Promise<void> {
 
   await cleanupBootstrapAlerts();
 
-  const server = await registerRoutes(app);
+  let server: import("node:http").Server;
+  try {
+    server = await registerRoutes(app);
+  } catch (err) {
+    console.error("[Startup] registerRoutes() failed — server cannot start:", err);
+    process.exit(1);
+  }
 
   setupErrorHandler(app);
 
