@@ -2340,62 +2340,74 @@ export default function MapScreen() {
     
     const currentOverlays = initialOverlaysRef.current;
     
-    // Unified approach: Always fetch in RN and push to WebView
-    // Web uses iframe postMessage, native uses injectJavaScript with base64 encoding
     const loadGeoJSON = async () => {
       const platform = Platform.OS;
-      console.log(`[MapScreen] ${platform}: Fetching all GeoJSON in RN...`);
-      
-      // Set status to pending before fetching
+
+      if (platform === 'web') {
+        // On web the iframe (/api/map.html) fetches GeoJSON itself and reports
+        // progress back via geoJSONLoaded / allGeoJSONLoaded events, which are
+        // already wired up in handleWindowMessage.  We only need to push the
+        // user's saved overlay preferences; skip the duplicate React fetch.
+        console.log('[MapScreen] web: skipping React GeoJSON fetch, sending overlay prefs');
+        const sendIframe = (msg: object) => {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+          }
+        };
+        // Small delay so the iframe has registered its message listener.
+        setTimeout(() => {
+          console.log('[MapScreen] web: applying overlay prefs:', currentOverlays);
+          sendIframe({ type: 'toggleLayer', layer: 'senate',   visible: currentOverlays.senate });
+          sendIframe({ type: 'toggleLayer', layer: 'house',    visible: currentOverlays.house });
+          sendIframe({ type: 'toggleLayer', layer: 'congress', visible: currentOverlays.congress });
+        }, 100);
+        // dataLoaded is set to true when allGeoJSONLoaded arrives from the iframe.
+        return;
+      }
+
+      // ── Native path ──────────────────────────────────────────────────────────
+      // React fetches GeoJSON and pushes it into the WebView via injectJavaScript.
+      console.log('[MapScreen] native: fetching GeoJSON in React...');
+
       setLoadStatus({
         house: { loaded: false, features: 0, error: null },
         senate: { loaded: false, features: 0, error: null },
         congress: { loaded: false, features: 0, error: null },
       });
-      
+
       const [senate, house, congress] = await Promise.all([
         fetchGeoJSON("tx_senate"),
         fetchGeoJSON("tx_house"),
         fetchGeoJSON("us_congress"),
       ]);
-      
-      console.log(`[MapScreen] ${platform}: GeoJSON fetch complete, sending to WebView`);
-      
-      // Platform-specific message sending
-      const sendMsg = platform === 'web' 
-        ? (msg: object) => {
-            if (iframeRef.current?.contentWindow) {
-              iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
-            }
-          }
-        : sendToWebView;
-      
-      // Send GeoJSON data to WebView
+
+      console.log('[MapScreen] native: GeoJSON fetch complete, sending to WebView');
+
       if (senate) {
-        console.log(`[MapScreen] ${platform}: Sending tx_senate (${senate.features?.length} features)`);
-        sendMsg({ type: 'setGeoJSON', layerType: 'tx_senate', geojson: senate });
+        console.log(`[MapScreen] native: sending tx_senate (${senate.features?.length} features)`);
+        sendToWebView({ type: 'setGeoJSON', layerType: 'tx_senate', geojson: senate });
       }
       if (house) {
-        console.log(`[MapScreen] ${platform}: Sending tx_house (${house.features?.length} features)`);
-        sendMsg({ type: 'setGeoJSON', layerType: 'tx_house', geojson: house });
+        console.log(`[MapScreen] native: sending tx_house (${house.features?.length} features)`);
+        sendToWebView({ type: 'setGeoJSON', layerType: 'tx_house', geojson: house });
       }
       if (congress) {
-        console.log(`[MapScreen] ${platform}: Sending us_congress (${congress.features?.length} features)`);
-        sendMsg({ type: 'setGeoJSON', layerType: 'us_congress', geojson: congress });
+        console.log(`[MapScreen] native: sending us_congress (${congress.features?.length} features)`);
+        sendToWebView({ type: 'setGeoJSON', layerType: 'us_congress', geojson: congress });
       }
-      
+
       setDataLoaded(true);
-      console.log(`[MapScreen] ${platform}: DataLoaded set to true`);
-      
-      // Small delay to ensure data is processed before toggling layers
+      console.log('[MapScreen] native: DataLoaded set to true');
+
+      // Small delay to ensure data is processed before toggling layers.
       setTimeout(() => {
-        console.log(`[MapScreen] ${platform}: Applying initial overlays:`, currentOverlays);
-        if (currentOverlays.senate) sendMsg({ type: 'toggleLayer', layer: 'senate', visible: true });
-        if (currentOverlays.house) sendMsg({ type: 'toggleLayer', layer: 'house', visible: true });
-        if (currentOverlays.congress) sendMsg({ type: 'toggleLayer', layer: 'congress', visible: true });
+        console.log('[MapScreen] native: applying initial overlays:', currentOverlays);
+        if (currentOverlays.senate)  sendToWebView({ type: 'toggleLayer', layer: 'senate',   visible: true });
+        if (currentOverlays.house)   sendToWebView({ type: 'toggleLayer', layer: 'house',    visible: true });
+        if (currentOverlays.congress) sendToWebView({ type: 'toggleLayer', layer: 'congress', visible: true });
       }, 100);
     };
-    
+
     loadGeoJSON();
   }, [mapReady, fetchGeoJSON, sendToWebView]);
   

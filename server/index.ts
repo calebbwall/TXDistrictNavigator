@@ -260,7 +260,11 @@ function setupErrorHandler(app: express.Application) {
 
     res.status(status).json({ message });
 
-    throw err;
+    // Log the error for observability without re-throwing.  Re-throwing after
+    // res.json() has already been called causes a double-fault: Express catches
+    // it again, tries to write a second response (which Node silently drops),
+    // and the original error stack is lost in the noise.
+    console.error("[Error]", err);
   });
 }
 
