@@ -6,8 +6,13 @@ channel = "stable-24_05"
 packages = ["jq"]
 
 [deployment]
+<<<<<<< HEAD
 deploymentTarget = "cloudrun"
 build = ["sh", "-c", "npm run db:push && npm run db:seed && npm run expo:static:build && npm run server:build"]
+=======
+deploymentTarget = "autoscale"
+build = ["sh", "-c", "npm run db:push && npm run expo:static:build && npm run server:build"]
+>>>>>>> 1ce9be4 (Saved progress at the end of the loop)
 run = ["npm", "run", "server:prod"]
 
 [[ports]]
