@@ -1,18 +1,12 @@
 entrypoint = "README.md"
-modules = ["nodejs-22", "postgresql-16"]
+modules = ["nodejs-22"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["jq"]
 
 [deployment]
-<<<<<<< HEAD
 deploymentTarget = "cloudrun"
-build = ["sh", "-c", "npm run db:push && npm run db:seed && npm run expo:static:build && npm run server:build"]
-=======
-deploymentTarget = "autoscale"
-build = ["sh", "-c", "npm run db:push && npm run expo:static:build && npm run server:build"]
->>>>>>> 1ce9be4 (Saved progress at the end of the loop)
+build = ["sh", "-c", "npm run expo:static:build && npm run server:build"]
 run = ["npm", "run", "server:prod"]
 
 [[ports]]
@@ -22,18 +16,6 @@ externalPort = 5000
 [[ports]]
 localPort = 8081
 externalPort = 80
-
-[[ports]]
-localPort = 8082
-externalPort = 3000
-
-[[ports]]
-localPort = 19006
-externalPort = 3001
-
-[[ports]]
-localPort = 19007
-externalPort = 3002
 
 [env]
 PORT = "5000"
@@ -68,7 +50,3 @@ task = "shell.exec"
 args = "npm run expo:dev"
 waitForPort = 8081
 ensurePreviewReachable = "/status"
-
-[userenv]
-
-[userenv.development]
