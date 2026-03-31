@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 import { NavigationContainer } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -54,6 +55,36 @@ export default function App() {
       registerAndSyncPushToken();
     }
   }, [fontsLoaded]);
+
+  // Invalidate React Query caches when a server-driven push notification
+  // signals that data has changed.  This ensures screens that are currently
+  // mounted reflect the update without the user needing to pull-to-refresh.
+  useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const data = notification.request.content.data as Record<string, unknown> | null;
+        if (!data) return;
+
+        if (data.alertType === "COMMITTEE_MEMBER_CHANGE") {
+          // Bust the committee list, all per-committee detail queries, and
+          // the per-official committee assignment caches.
+          queryClient.invalidateQueries({ queryKey: ["/api/committees"] });
+          queryClient.invalidateQueries({
+            predicate: (query) => {
+              const key = query.queryKey;
+              return (
+                Array.isArray(key) &&
+                key.length === 3 &&
+                key[0] === "/api/officials" &&
+                key[2] === "committees"
+              );
+            },
+          });
+        }
+      },
+    );
+    return () => subscription.remove();
+  }, []);
 
   if (!fontsLoaded) {
     return (

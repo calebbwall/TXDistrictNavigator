@@ -260,7 +260,11 @@ function setupErrorHandler(app: express.Application) {
 
     res.status(status).json({ message });
 
-    throw err;
+    // Log the error for observability without re-throwing.  Re-throwing after
+    // res.json() has already been called causes a double-fault: Express catches
+    // it again, tries to write a second response (which Node silently drops),
+    // and the original error stack is lost in the noise.
+    console.error("[Error]", err);
   });
 }
 
@@ -287,7 +291,13 @@ async function cleanupBootstrapAlerts(): Promise<void> {
 
   await cleanupBootstrapAlerts();
 
-  const server = await registerRoutes(app);
+  let server: import("node:http").Server;
+  try {
+    server = await registerRoutes(app);
+  } catch (err) {
+    console.error("[Startup] registerRoutes() failed — server cannot start:", err);
+    process.exit(1);
+  }
 
   setupErrorHandler(app);
 

@@ -1104,7 +1104,11 @@ function getMapHtml(): string {
         } else if (data.type === 'CENTER_MAP') {
           window.centerMap(data.lat, data.lng, data.zoom);
         } else if (data.type === 'FOCUS_DISTRICT') {
-          window.focusDistrict(data.layer, data.district);
+          // Message shape: { source: 'TX_HOUSE'|'TX_SENATE'|'US_HOUSE', districtNumber: number }
+          var focusTypeKey = data.source === 'TX_SENATE' ? 'senate'
+                           : data.source === 'TX_HOUSE'  ? 'house'
+                           : 'congress';
+          window.focusDistrict(focusTypeKey, data.districtNumber);
         } else if (data.type === 'SET_ADDRESS_DOTS') {
           window.setAddressDots(data.dots || []);
         } else if (data.type === 'SET_ACTIVE_ADDRESS_DOT') {
@@ -1139,11 +1143,19 @@ function getMapHtml(): string {
       window.receiveMessage(e.data);
     });
     
+    // Force Leaflet to recalculate tile viewport once the iframe has finished
+    // laying out.  Without this call the map container may have 0-height at
+    // the moment L.map() runs, leaving the map blank/gray.
+    map.invalidateSize();
+    window.addEventListener('resize', function() { map.invalidateSize(); });
+
     // Auto-load GeoJSON on page load
     setTimeout(function() {
+      // Re-check size in case flex layout settled after the first paint.
+      map.invalidateSize();
       console.log('[Leaflet] Auto-loading GeoJSON...');
       postMessage({ type: 'mapReady' });
-      
+
       Promise.all([
         fetchAndSetGeoJSON('tx_senate'),
         fetchAndSetGeoJSON('tx_house'),

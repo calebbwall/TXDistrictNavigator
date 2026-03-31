@@ -198,7 +198,9 @@ export default function CommitteeBrowserScreen() {
       if (!res.ok) throw new Error("Failed to fetch committees");
       return res.json();
     },
-    staleTime: 10 * 60_000,
+    // Committees only update on the Monday scheduler run — never go stale on the
+    // client so we avoid unnecessary background re-fetches on navigation.
+    staleTime: Infinity,
   });
 
   const { data: eventsData, refetch: refetchEvents } = useQuery<EventsResponse>({
@@ -209,7 +211,7 @@ export default function CommitteeBrowserScreen() {
       if (!res.ok) return { events: [], total: 0 };
       return res.json();
     },
-    staleTime: 5 * 60_000,
+    staleTime: 10 * 60_000,
   });
 
   // Build committeeId → upcoming hearing count map
