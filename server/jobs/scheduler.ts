@@ -184,6 +184,11 @@ export function startOfficialsRefreshScheduler(): void {
   // On startup: if the officials table is empty, run a full refresh immediately
   // instead of waiting for the Monday window. This ensures fresh deploys are
   // seeded without manual intervention.
+  //
+  // Uses a PostgreSQL advisory lock (key 8675309) so that when multiple
+  // instances start simultaneously (rolling deploy / restart loop), only ONE
+  // instance runs the seed refresh. The others detect the lock is held and
+  // skip, preventing DB pool exhaustion.
   setTimeout(async () => {
     try {
       const { officialPublic } = await import("@shared/schema");
@@ -191,14 +196,26 @@ export function startOfficialsRefreshScheduler(): void {
         .select({ count: sql<number>`count(*)::int` })
         .from(officialPublic);
       if (count === 0) {
+        // Try to acquire a session-level advisory lock. Returns true only if
+        // this instance won the race; false if another instance already holds it.
+        const [{ acquired }] = await db.execute<{ acquired: boolean }>(
+          sql`SELECT pg_try_advisory_lock(8675309) AS acquired`
+        );
+        if (!acquired) {
+          console.log("[Scheduler] Officials table empty but another instance holds the startup lock — skipping duplicate seed refresh");
+          return;
+        }
         console.log("[Scheduler] Officials table is empty — running immediate full refresh cycle");
-        await runRefreshCycle();
-      } else {
-        // Normal Monday-window tick
-        schedulerTick().catch(err => {
-          console.error("[Scheduler] Initial tick failed:", err);
-        });
+        try {
+          await runRefreshCycle();
+        } finally {
+          // Release the lock when done so it doesn't block forever
+          await db.execute(sql`SELECT pg_advisory_unlock(8675309)`).catch(() => {});
+        }
       }
+      // When officials exist, do NOT trigger schedulerTick() on startup — the
+      // periodic interval handles Monday-window refreshes without racing with
+      // other startup tasks.
     } catch (err) {
       console.error("[Scheduler] Startup check failed:", err);
     }

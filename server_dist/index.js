@@ -494,6 +494,14 @@ var init_db = __esm({
       keepAlive: true,
       max: 10
     });
+    pool.on("error", (err) => {
+      console.error("[DB Pool] Idle client error (connection will be replaced):", err.message);
+    });
+    pool.on("connect", (client) => {
+      client.on("error", (err) => {
+        console.error("[DB Pool] Active client error (connection will be replaced):", err.message);
+      });
+    });
     db = drizzle(pool, { schema: schema_exports });
   }
 });
@@ -1048,15 +1056,27 @@ async function fetchMemberDetails(memberUrl, chamber) {
     const urlMatch = memberUrl.match(/Code=([A-Z0-9]+)/i);
     const sourceMemberId = urlMatch ? urlMatch[1] : "";
     if (!sourceMemberId) return null;
-    const titleText = $("title").text();
-    if (titleText.includes("Lt. Gov.") || titleText.includes("Lieutenant Governor")) {
+    const h1Text = $("h1").first().text().trim();
+    const NAME_RE = /Information for (Rep\.|Sen\.)\s*(.+)$/;
+    let fullName = "";
+    const h1Match = h1Text.match(NAME_RE);
+    if (h1Match) {
+      fullName = h1Match[2].trim();
+    }
+    if (h1Text.includes("Lt. Gov.") || h1Text.includes("Lieutenant Governor")) {
       return null;
     }
-    const nameMatch = titleText.match(/Information for (Rep\.|Sen\.)\s*(.+)$/);
-    let fullName = nameMatch ? nameMatch[2].trim() : "";
+    if (!fullName) {
+      const titleText = $("title").text();
+      if (titleText.includes("Lt. Gov.") || titleText.includes("Lieutenant Governor")) {
+        return null;
+      }
+      const titleMatch = titleText.match(NAME_RE);
+      fullName = titleMatch ? titleMatch[2].trim() : "";
+    }
     if (!fullName) {
       const pageTitle = $("#usrHeader_lblPageTitle").text();
-      const altMatch = pageTitle.match(/Information for (Rep\.|Sen\.)\s*(.+)$/);
+      const altMatch = pageTitle.match(NAME_RE);
       fullName = altMatch ? altMatch[2].trim() : "";
     }
     if (!fullName) return null;
@@ -1211,6 +1231,12 @@ async function refreshTLO(chamber) {
     }
     result.parsedCount = records.length;
     console.log(`[RefreshOfficials] Parsed ${records.length} ${source} members`);
+    if (memberLinks.length >= expectedMin && records.length === 0) {
+      const msg = `SAFETY ABORT: found ${memberLinks.length} member links but parsed 0 records \u2014 TLO page structure may have changed. Skipping upsert and deactivation to protect existing data.`;
+      console.error(`[RefreshOfficials] ${msg}`);
+      result.errors.push(msg);
+      return result;
+    }
     const processedMemberIds = [];
     for (const record of records) {
       const validationError = validateTLORecord(record, chamber);
@@ -1737,7 +1763,9 @@ var init_expoPush = __esm({
 // server/jobs/refreshCommittees.ts
 var refreshCommittees_exports = {};
 __export(refreshCommittees_exports, {
+  backfillMissingCommitteeMembers: () => backfillMissingCommitteeMembers,
   checkAndRefreshCommitteesIfChanged: () => checkAndRefreshCommitteesIfChanged,
+  forceResetIsRefreshingCommittees: () => forceResetIsRefreshingCommittees,
   getAllCommitteeRefreshStates: () => getAllCommitteeRefreshStates,
   getIsRefreshingCommittees: () => getIsRefreshingCommittees,
   maybeRunCommitteeRefresh: () => maybeRunCommitteeRefresh,
@@ -1745,18 +1773,25 @@ __export(refreshCommittees_exports, {
 });
 import * as cheerio2 from "cheerio";
 import * as crypto3 from "crypto";
-import { eq as eq3, and as and3, sql as sql5 } from "drizzle-orm";
+import { eq as eq3, and as and3, sql as sql5, isNotNull } from "drizzle-orm";
 function getIsRefreshingCommittees() {
   return isRefreshing2;
 }
-async function fetchWithRetry3(url, retries = 3) {
+function forceResetIsRefreshingCommittees() {
+  isRefreshing2 = false;
+}
+async function fetchWithRetry3(url, retries = 3, timeoutMs = 2e4) {
   for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, {
+        signal: controller.signal,
         headers: {
           "User-Agent": "TexasDistrictsApp/1.0 (Committee Data Sync)"
         }
       });
+      clearTimeout(timer);
       if (response.ok) return response;
       if (response.status === 429) {
         await new Promise((r) => setTimeout(r, 2e3 * (i + 1)));
@@ -1764,6 +1799,7 @@ async function fetchWithRetry3(url, retries = 3) {
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     } catch (err) {
+      clearTimeout(timer);
       if (i === retries - 1) throw err;
       await new Promise((r) => setTimeout(r, 1e3 * (i + 1)));
     }
@@ -1777,7 +1813,7 @@ function createSlug(name) {
   return name.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").trim();
 }
 function normalizeName(name) {
-  return name.replace(/^(Rep\.|Sen\.|Representative|Senator)\s*/i, "").replace(/\s+/g, " ").trim().toLowerCase();
+  return name.replace(/^(Rep\.|Sen\.|Lt\.?\s*Gov\.?|Representative|Senator|Lieutenant\s+Governor)\s*/i, "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 async function fetchCommitteeList(chamber) {
   const url = `${TLO_BASE_URL2}/committees/Committees.aspx?Chamber=${chamber}`;
@@ -1970,10 +2006,16 @@ async function fetchAllCommitteesWithMembers(chamber) {
   const chamberCode = chamber === "TX_HOUSE" ? "H" : "S";
   const committeeList = await fetchCommitteeList(chamberCode);
   const result = [];
-  for (const committee of committeeList) {
-    await new Promise((r) => setTimeout(r, 200));
-    const members = await fetchCommitteeMembers(committee);
-    result.push({ committee, members });
+  const CONCURRENCY = 5;
+  for (let i = 0; i < committeeList.length; i += CONCURRENCY) {
+    const batch = committeeList.slice(i, i + CONCURRENCY);
+    const membersBatch = await Promise.all(batch.map((c) => fetchCommitteeMembers(c)));
+    for (let j = 0; j < batch.length; j++) {
+      result.push({ committee: batch[j], members: membersBatch[j] });
+    }
+    if (i + CONCURRENCY < committeeList.length) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
   }
   return result;
 }
@@ -2001,7 +2043,11 @@ async function matchMemberToOfficial(memberName, legCode, chamber) {
       }
     }
   }
-  console.log(`[RefreshCommittees] Could not match member "${memberName}" to any ${chamber} official`);
+  const rawLower = memberName.toLowerCase().replace(/\s+/g, " ").trim();
+  const isNonOfficial = NON_OFFICIAL_PREFIXES.some((p) => rawLower.startsWith(p) || rawLower.includes(p));
+  if (!isNonOfficial) {
+    console.log(`[RefreshCommittees] Could not match member "${memberName}" to any ${chamber} official`);
+  }
   return null;
 }
 async function getRefreshState2(source) {
@@ -2152,17 +2198,37 @@ async function checkAndRefreshCommitteesIfChanged(force = false) {
   const startTime = Date.now();
   const results = [];
   if (isRefreshing2) {
-    console.log("[RefreshCommittees] Already refreshing, skipping");
+    console.log("[RefreshCommittees] Already refreshing (local flag), skipping");
     return { results, durationMs: 0 };
   }
-  isRefreshing2 = true;
+  const lockClient = await pool.connect();
+  let lockAcquired = false;
   try {
-    const houseResult = await checkAndRefreshChamber("TX_HOUSE_COMMITTEES", "TX_HOUSE", force);
-    results.push(houseResult);
-    const senateResult = await checkAndRefreshChamber("TX_SENATE_COMMITTEES", "TX_SENATE", force);
-    results.push(senateResult);
+    const lockResult = await lockClient.query(
+      "SELECT pg_try_advisory_lock($1) AS acquired",
+      [COMMITTEE_REFRESH_LOCK_ID]
+    );
+    lockAcquired = lockResult.rows[0].acquired;
+    if (!lockAcquired) {
+      console.log("[RefreshCommittees] Another instance holds the DB lock \u2014 skipping duplicate refresh");
+      return { results, durationMs: 0 };
+    }
+    console.log("[RefreshCommittees] DB advisory lock acquired");
+    isRefreshing2 = true;
+    try {
+      const houseResult = await checkAndRefreshChamber("TX_HOUSE_COMMITTEES", "TX_HOUSE", force);
+      results.push(houseResult);
+      const senateResult = await checkAndRefreshChamber("TX_SENATE_COMMITTEES", "TX_SENATE", force);
+      results.push(senateResult);
+    } finally {
+      isRefreshing2 = false;
+    }
   } finally {
-    isRefreshing2 = false;
+    if (lockAcquired) {
+      await lockClient.query("SELECT pg_advisory_unlock($1)", [COMMITTEE_REFRESH_LOCK_ID]);
+      console.log("[RefreshCommittees] DB advisory lock released");
+    }
+    lockClient.release();
   }
   const durationMs = Date.now() - startTime;
   console.log(`[RefreshCommittees] Complete in ${durationMs}ms`);
@@ -2181,6 +2247,18 @@ async function maybeRunCommitteeRefresh() {
       await checkAndRefreshCommitteesIfChanged(true);
       return;
     }
+    const [{ emptyCount }] = await db.select({
+      emptyCount: sql5`count(*)::int`
+    }).from(committees).where(
+      sql5`${committees.id} NOT IN (SELECT DISTINCT committee_id FROM ${committeeMemberships})`
+    );
+    if (emptyCount > 0) {
+      console.log(
+        `[RefreshCommittees] ${emptyCount} committees have 0 members \u2014 running targeted backfill`
+      );
+      await backfillMissingCommitteeMembers();
+      return;
+    }
     console.log("[RefreshCommittees] Already checked this week, skipping startup seed");
     return;
   }
@@ -2192,6 +2270,83 @@ async function wasCommitteesCheckedThisWeek() {
   const [{ memberCount }] = await db.select({ memberCount: sql5`count(*)::int` }).from(committeeMemberships);
   return committeeCount > 0 && memberCount > 0;
 }
+async function backfillMissingCommitteeMembers() {
+  if (isRefreshing2) {
+    console.log("[RefreshCommittees] backfill skipped \u2014 refresh already in progress");
+    return { filled: 0, skipped: 0, errors: 0 };
+  }
+  const emptyCommittees = await db.select().from(committees).where(
+    and3(
+      isNotNull(committees.sourceUrl),
+      sql5`${committees.id} NOT IN (
+          SELECT DISTINCT committee_id FROM ${committeeMemberships}
+        )`
+    )
+  );
+  if (emptyCommittees.length === 0) {
+    console.log("[RefreshCommittees] backfill: no committees with 0 members found");
+    return { filled: 0, skipped: 0, errors: 0 };
+  }
+  console.log(
+    `[RefreshCommittees] backfill: ${emptyCommittees.length} committees have 0 members \u2014 fetching`
+  );
+  let filled = 0;
+  let skipped = 0;
+  let errors = 0;
+  const CONCURRENCY = 5;
+  for (let i = 0; i < emptyCommittees.length; i += CONCURRENCY) {
+    const batch = emptyCommittees.slice(i, i + CONCURRENCY);
+    await Promise.all(
+      batch.map(async (row) => {
+        try {
+          const members = await fetchCommitteeMembers({
+            name: row.name,
+            sourceUrl: row.sourceUrl,
+            slug: row.slug,
+            code: "",
+            isSubcommittee: row.parentCommitteeId !== null,
+            parentCode: null,
+            sortOrder: 0
+          });
+          if (members.length === 0) {
+            skipped++;
+            console.log(`[RefreshCommittees] backfill: ${row.name} \u2014 0 members returned, skipping`);
+            return;
+          }
+          const chamber = row.chamber;
+          for (const member of members) {
+            const officialId = await matchMemberToOfficial(
+              member.memberName,
+              member.legCode,
+              chamber
+            );
+            await db.insert(committeeMemberships).values({
+              committeeId: row.id,
+              officialPublicId: officialId,
+              memberName: member.memberName,
+              roleTitle: member.roleTitle,
+              sortOrder: String(member.sortOrder)
+            });
+          }
+          filled++;
+          console.log(
+            `[RefreshCommittees] backfill: ${row.name} \u2014 inserted ${members.length} members`
+          );
+        } catch (err) {
+          errors++;
+          console.error(`[RefreshCommittees] backfill error for ${row.name}:`, err);
+        }
+      })
+    );
+    if (i + CONCURRENCY < emptyCommittees.length) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+  console.log(
+    `[RefreshCommittees] backfill complete \u2014 filled=${filled} skipped=${skipped} errors=${errors}`
+  );
+  return { filled, skipped, errors };
+}
 async function getAllCommitteeRefreshStates() {
   const states = await db.select().from(committeeRefreshState);
   return states.map((s) => ({
@@ -2202,16 +2357,18 @@ async function getAllCommitteeRefreshStates() {
     lastRefreshedAt: s.lastRefreshedAt
   }));
 }
-var TLO_BASE_URL2, CURRENT_LEG_SESSION, isRefreshing2, isMainModule2;
+var COMMITTEE_REFRESH_LOCK_ID, TLO_BASE_URL2, CURRENT_LEG_SESSION, isRefreshing2, NON_OFFICIAL_PREFIXES, isMainModule2;
 var init_refreshCommittees = __esm({
   "server/jobs/refreshCommittees.ts"() {
     "use strict";
     init_db();
     init_schema();
     init_expoPush();
+    COMMITTEE_REFRESH_LOCK_ID = 624242;
     TLO_BASE_URL2 = "https://capitol.texas.gov";
     CURRENT_LEG_SESSION = "89R";
     isRefreshing2 = false;
+    NON_OFFICIAL_PREFIXES = ["lt. gov.", "lieutenant governor", "speaker"];
     isMainModule2 = import.meta.url === `file://${process.argv[1]}`;
     if (isMainModule2) {
       checkAndRefreshCommitteesIfChanged(true).then((result) => {
@@ -3178,7 +3335,7 @@ var bulkFillHometowns_exports = {};
 __export(bulkFillHometowns_exports, {
   bulkFillHometowns: () => bulkFillHometowns
 });
-import { eq as eq9 } from "drizzle-orm";
+import { eq as eq8 } from "drizzle-orm";
 async function delay(ms) {
   return new Promise((resolve3) => setTimeout(resolve3, ms));
 }
@@ -3221,7 +3378,7 @@ async function bulkFillHometowns() {
     personId: officialPublic.personId,
     source: officialPublic.source,
     active: officialPublic.active
-  }).from(officialPublic).where(eq9(officialPublic.active, true)), "fetch officials");
+  }).from(officialPublic).where(eq8(officialPublic.active, true)), "fetch officials");
   const uncheckedOfficials = allOfficials.filter((o) => {
     if (coveredOfficialIds.has(o.id)) return false;
     if (o.personId && coveredPersonIds.has(o.personId)) return false;
@@ -3349,57 +3506,57 @@ import { createServer } from "node:http";
 // server/data/geojson.ts
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-var __filename = fileURLToPath(import.meta.url);
-var __dirname = path.dirname(__filename);
+var EMPTY = { type: "FeatureCollection", features: [] };
 function findGeoJSONPath(filename) {
-  const possiblePaths = [
-    path.join(__dirname, "geojson", filename),
+  const candidates = [
     path.join(process.cwd(), "server", "data", "geojson", filename),
     path.join(process.cwd(), "data", "geojson", filename),
     path.resolve("server", "data", "geojson", filename)
   ];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      return p;
-    }
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
   }
   return null;
 }
-function loadGeoJSON(filename) {
+async function loadGeoJSONAsync(filename) {
   try {
     const filePath = findGeoJSONPath(filename);
     if (!filePath) {
-      console.error(`[GeoJSON] File not found: ${filename}`);
-      console.log(`[GeoJSON] __dirname is: ${__dirname}`);
-      console.log(`[GeoJSON] process.cwd() is: ${process.cwd()}`);
-      const checkDir = path.join(__dirname, "geojson");
-      if (fs.existsSync(checkDir)) {
-        console.log(`[GeoJSON] Contents of ${checkDir}:`, fs.readdirSync(checkDir));
-      } else {
-        console.log(`[GeoJSON] Directory does not exist: ${checkDir}`);
-        if (fs.existsSync(__dirname)) {
-          console.log(`[GeoJSON] Contents of __dirname:`, fs.readdirSync(__dirname));
-        }
-      }
-      return { type: "FeatureCollection", features: [] };
+      console.error(`[GeoJSON] File not found: ${filename} (cwd=${process.cwd()})`);
+      return EMPTY;
     }
     console.log(`[GeoJSON] Loading ${filename} from: ${filePath}`);
-    const data = fs.readFileSync(filePath, "utf8");
+    const data = await fs.promises.readFile(filePath, "utf8");
     const parsed = JSON.parse(data);
     console.log(`[GeoJSON] Successfully loaded ${filename}: ${parsed.features.length} features`);
     return parsed;
-  } catch (error) {
-    console.error(`[GeoJSON] Error loading ${filename}:`, error);
-    return { type: "FeatureCollection", features: [] };
+  } catch (err) {
+    console.error(`[GeoJSON] Error loading ${filename}:`, err);
+    return EMPTY;
   }
 }
-var txSenateGeoJSON = loadGeoJSON("tx_senate_simplified.geojson");
-var txHouseGeoJSON = loadGeoJSON("tx_house_simplified.geojson");
-var usCongressGeoJSON = loadGeoJSON("us_congress_simplified.geojson");
-var txSenateGeoJSONFull = loadGeoJSON("tx_senate.geojson");
-var txHouseGeoJSONFull = loadGeoJSON("tx_house.geojson");
-var usCongressGeoJSONFull = loadGeoJSON("us_congress.geojson");
+var txSenateGeoJSON = EMPTY;
+var txHouseGeoJSON = EMPTY;
+var usCongressGeoJSON = EMPTY;
+var txSenateGeoJSONFull = EMPTY;
+var txHouseGeoJSONFull = EMPTY;
+var usCongressGeoJSONFull = EMPTY;
+(async () => {
+  const [senate, house, congress, senateFull, houseFull, congressFull] = await Promise.all([
+    loadGeoJSONAsync("tx_senate_simplified.geojson"),
+    loadGeoJSONAsync("tx_house_simplified.geojson"),
+    loadGeoJSONAsync("us_congress_simplified.geojson"),
+    loadGeoJSONAsync("tx_senate.geojson"),
+    loadGeoJSONAsync("tx_house.geojson"),
+    loadGeoJSONAsync("us_congress.geojson")
+  ]);
+  txSenateGeoJSON = senate;
+  txHouseGeoJSON = house;
+  usCongressGeoJSON = congress;
+  txSenateGeoJSONFull = senateFull;
+  txHouseGeoJSONFull = houseFull;
+  usCongressGeoJSONFull = congressFull;
+})();
 
 // server/routes.ts
 init_db();
@@ -4091,7 +4248,7 @@ function registerPrayerRoutes(app2) {
 // server/routes/legislativeRoutes.ts
 init_db();
 init_schema();
-import { eq as eq10, and as and9, isNull as isNull4, desc as desc2, asc as asc2, gte as gte3, lte as lte2, sql as sql12 } from "drizzle-orm";
+import { eq as eq9, and as and8, isNull as isNull4, desc as desc2, asc as asc2, gte as gte3, lte as lte2, sql as sql12, inArray as inArray3 } from "drizzle-orm";
 
 // server/jobs/scheduler.ts
 init_refreshOfficials();
@@ -4101,10 +4258,10 @@ init_db();
 import * as crypto2 from "crypto";
 import * as fs2 from "node:fs";
 import * as path2 from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { fileURLToPath } from "node:url";
 import { sql as sql4 } from "drizzle-orm";
-var __filename2 = fileURLToPath2(import.meta.url);
-var __dirname2 = path2.dirname(__filename2);
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = path2.dirname(__filename);
 var GEOJSON_SOURCES = {
   TX_HOUSE_GEOJSON_V2: {
     url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
@@ -4122,7 +4279,7 @@ var GEOJSON_SOURCES = {
     simplifiedFile: "us_congress_simplified.geojson"
   }
 };
-var GEOJSON_DIR = path2.join(__dirname2, "..", "data", "geojson");
+var GEOJSON_DIR = path2.join(__dirname, "..", "data", "geojson");
 async function ensureGeoJSONRefreshTable() {
   await db.execute(sql4`
     CREATE TABLE IF NOT EXISTS geojson_refresh_state (
@@ -4658,58 +4815,85 @@ function sleep2(ms) {
 function fingerprint(data) {
   return crypto4.createHash("sha256").update(data).digest("hex").slice(0, 16);
 }
-function parseIsoDateTime(dateStr, timeStr) {
+function parseMeetingsUpcomingPage(html, chamberCode) {
+  const $ = cheerio3.load(html);
+  const meetings = [];
+  let currentDateStr = null;
+  let currentTimeStr = null;
+  $("table tr").each((_, row) => {
+    const tds = $(row).find("td");
+    if (tds.length === 0) return;
+    const firstTd = $(tds[0]);
+    const dataLabel = (firstTd.attr("data-label") ?? "").toLowerCase();
+    if (dataLabel === "committee meeting date") {
+      currentDateStr = firstTd.text().trim();
+      return;
+    }
+    if (dataLabel === "committee meeting time") {
+      currentTimeStr = firstTd.text().trim();
+      return;
+    }
+    if (!dataLabel.includes("committee name")) return;
+    if (!currentDateStr || !currentTimeStr) return;
+    const startsAt = parseUpcomingDateTime(currentDateStr, currentTimeStr);
+    const cellHtml = firstTd.html() ?? "";
+    const brIdx = cellHtml.search(/<br\s*\/?>/i);
+    const namePart = brIdx >= 0 ? cellHtml.slice(0, brIdx) : cellHtml;
+    const committeeName = cheerio3.load(namePart).text().trim();
+    if (!committeeName) return;
+    const afterBr = brIdx >= 0 ? firstTd.text().slice(committeeName.length).replace(/\u00a0/g, " ").trim() : "";
+    const typeMatch = afterBr.match(/Type:\s*([^L]+?)(?:\s+Location:|$)/i);
+    const locationMatch = afterBr.match(/Location:\s*(.+)/i);
+    const meetingType = typeMatch ? typeMatch[1].trim() : null;
+    const location = locationMatch ? locationMatch[1].trim() : null;
+    let noticeDocUrl = null;
+    let cmteCode = null;
+    tds.each((_2, td) => {
+      $(td).find("a[href]").each((__, a) => {
+        const href = $(a).attr("href") ?? "";
+        if (!href.includes("tlodocs") && !href.includes("schedules")) return;
+        const fullHref = href.startsWith("http") ? href : `${TLO_BASE}${href.startsWith("/") ? "" : "/"}${href}`;
+        if (!noticeDocUrl) noticeDocUrl = fullHref;
+        if (!cmteCode) {
+          const filename = href.split("/").pop() ?? "";
+          const m = filename.match(/^([A-Z][A-Z0-9]{1,5}?)(?=20\d{2})/i);
+          cmteCode = m ? m[1].toUpperCase() : null;
+        }
+      });
+    });
+    const dateKey = startsAt ? `${startsAt.getFullYear()}${String(startsAt.getMonth() + 1).padStart(2, "0")}${String(startsAt.getDate()).padStart(2, "0")}` : currentDateStr.replace(/[^0-9]/g, "").slice(0, 8);
+    const timeKey = currentTimeStr.replace(/[^0-9APM]/g, "");
+    const codeKey = cmteCode ?? committeeName.replace(/[^A-Z0-9]/gi, "").slice(0, 8).toUpperCase();
+    const externalId = `${chamberCode}${codeKey}-${dateKey}-${timeKey}`;
+    const sourceUrl = noticeDocUrl ?? `${TLO_BASE}/Committees/MeetingsUpcoming.aspx?chamber=${chamberCode}`;
+    meetings.push({
+      externalId,
+      title: committeeName,
+      startsAt,
+      location,
+      sourceUrl,
+      noticeDocUrl,
+      cmteCode,
+      meetingType
+    });
+  });
+  return meetings;
+}
+function parseUpcomingDateTime(dateStr, timeStr) {
   try {
-    const [month, day, year] = dateStr.split("/").map(Number);
-    const [timePart, ampm] = timeStr.trim().split(" ");
-    const [rawHour, rawMin] = timePart.split(":").map(Number);
-    let hour = rawHour;
-    if (ampm?.toUpperCase() === "PM" && hour !== 12) hour += 12;
-    if (ampm?.toUpperCase() === "AM" && hour === 12) hour = 0;
-    if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour)) return null;
-    const dateIso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(rawMin ?? 0).padStart(2, "0")}:00`;
-    const d = new Date(dateIso);
+    const cleanDate = dateStr.replace(/^[A-Z][a-z]+,\s*/i, "").trim();
+    const timeMatch = timeStr.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (!timeMatch) return null;
+    let hour = parseInt(timeMatch[1], 10);
+    const min = parseInt(timeMatch[2], 10);
+    const ampm = timeMatch[3].toUpperCase();
+    if (ampm === "PM" && hour !== 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+    const d = /* @__PURE__ */ new Date(`${cleanDate} ${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}:00`);
     return isNaN(d.getTime()) ? null : d;
   } catch {
     return null;
   }
-}
-function parseMeetingsPage(html, committeeCode, chamberCode) {
-  const $ = cheerio3.load(html);
-  const meetings = [];
-  $("table tr").each((_, row) => {
-    const cells = $(row).find("td");
-    if (cells.length < 3) return;
-    const dateText = $(cells[0]).text().trim();
-    const timeText = $(cells[1]).text().trim();
-    const roomText = $(cells[2]).text().trim();
-    if (!dateText.match(/\d{1,2}\/\d{1,2}\/\d{4}/)) return;
-    const startsAt = parseIsoDateTime(dateText, timeText);
-    const dateKey = dateText.replace(/\//g, "");
-    let noticeDocUrl = null;
-    let noticeHref = null;
-    cells.each((_2, cell) => {
-      const link = $(cell).find("a[href]").first();
-      if (link.length) {
-        const href = link.attr("href") || "";
-        if (href.includes("tlodocs") || href.includes("schedules") || href.includes("MtgNotice")) {
-          noticeHref = href.startsWith("http") ? href : `${TLO_BASE}${href.startsWith("/") ? "" : "/"}${href}`;
-          noticeDocUrl = noticeHref;
-        }
-      }
-    });
-    const externalId = `${chamberCode}${committeeCode}-${dateKey}-${timeText.replace(/[^0-9APM]/g, "")}`;
-    meetings.push({
-      externalId,
-      title: `Committee Hearing`,
-      // enriched in detail fetch
-      startsAt,
-      location: roomText || null,
-      sourceUrl: noticeDocUrl ?? `${TLO_BASE}/Committees/MeetingsByCmte.aspx?LegSess=${LEG_SESSION}&CmteCode=${committeeCode}`,
-      noticeDocUrl
-    });
-  });
-  return meetings;
 }
 function parseHearingNoticePage(html) {
   const $ = cheerio3.load(html);
@@ -4754,51 +4938,44 @@ function parseHearingNoticePage(html) {
     meetingType
   };
 }
-async function refreshCommitteeHearings(committeeId, windowDays = 14) {
-  const tag = "[targetedRefresh.hearings]";
-  const [committee] = await db.select().from(committees).where(eq6(committees.id, committeeId)).limit(1);
-  if (!committee) {
-    console.warn(`${tag} Committee ${committeeId} not found`);
-    return { newEvents: 0, updatedEvents: 0 };
+async function refreshChamberUpcomingHearings(chamber, windowDays = 30) {
+  const tag = `[targetedRefresh.chamberHearings.${chamber}]`;
+  const allCommittees = await db.select({ id: committees.id, chamber: committees.chamber, sourceUrl: committees.sourceUrl }).from(committees);
+  const codeToId = /* @__PURE__ */ new Map();
+  for (const c of allCommittees) {
+    const m = (c.sourceUrl ?? "").match(/CmteCode=([A-Z0-9]+)/i);
+    if (m) codeToId.set(m[1].toUpperCase(), c.id);
   }
-  const codeMatch = (committee.sourceUrl ?? "").match(/CmteCode=([A-Z0-9]+)/i);
-  if (!codeMatch) {
-    console.warn(`${tag} Cannot derive CmteCode from ${committee.sourceUrl}`);
-    return { newEvents: 0, updatedEvents: 0 };
-  }
-  const cmteCode = codeMatch[1];
-  const chamberCode = committee.chamber === "TX_SENATE" ? "S" : "H";
-  const url = `${TLO_BASE}/Committees/MeetingsByCmte.aspx?LegSess=${LEG_SESSION}&CmteCode=${cmteCode}`;
+  const url = `${TLO_BASE}/Committees/MeetingsUpcoming.aspx?chamber=${chamber}`;
   console.log(`${tag} Fetching ${url}`);
   let html;
   try {
     const res = await fetchWithRetry4(url);
     if (!res.ok) {
-      console.warn(`${tag} HTTP ${res.status} for ${url}`);
+      console.warn(`${tag} HTTP ${res.status}`);
       return { newEvents: 0, updatedEvents: 0 };
     }
     html = await res.text();
   } catch (err) {
-    console.error(`${tag} Fetch failed for ${url}:`, err);
+    console.error(`${tag} Fetch failed:`, err);
     return { newEvents: 0, updatedEvents: 0 };
   }
-  const meetings = parseMeetingsPage(html, cmteCode, chamberCode);
+  const parsed = parseMeetingsUpcomingPage(html, chamber);
+  const chamberDb = chamber === "S" ? "TX_SENATE" : "TX_HOUSE";
   const cutoff = new Date(Date.now() + windowDays * 24 * 60 * 60 * 1e3);
-  const windowedMeetings = meetings.filter(
-    (m) => !m.startsAt || m.startsAt <= cutoff
-  );
+  const windowed = parsed.filter((m) => !m.startsAt || m.startsAt <= cutoff);
+  console.log(`${tag} Parsed ${parsed.length} meetings, ${windowed.length} within ${windowDays}d window`);
   let newEvents = 0;
   let updatedEvents = 0;
-  for (const meeting of windowedMeetings) {
-    const fp = fingerprint(
-      JSON.stringify({ externalId: meeting.externalId, sourceUrl: meeting.sourceUrl })
-    );
+  for (const meeting of windowed) {
+    const committeeId = meeting.cmteCode ? codeToId.get(meeting.cmteCode) : void 0;
+    const fp = fingerprint(JSON.stringify({ externalId: meeting.externalId, sourceUrl: meeting.sourceUrl }));
     const existing = await db.select({ id: legislativeEvents.id, fingerprint: legislativeEvents.fingerprint }).from(legislativeEvents).where(eq6(legislativeEvents.externalId, meeting.externalId)).limit(1);
     if (existing.length === 0) {
       const [inserted] = await db.insert(legislativeEvents).values({
         eventType: "COMMITTEE_HEARING",
-        chamber: committee.chamber,
-        committeeId,
+        chamber: chamberDb,
+        committeeId: committeeId ?? void 0,
         title: meeting.title,
         startsAt: meeting.startsAt ?? void 0,
         location: meeting.location ?? void 0,
@@ -4833,7 +5010,7 @@ async function refreshCommitteeHearings(committeeId, windowDays = 14) {
             body: alertBody
           });
           sendPushToAll(alertTitle, alertBody, { alertType: "HEARING_UPDATED", entityId: existing[0].id }).catch(
-            (err) => console.error("[targetedRefresh] Push failed:", err)
+            (err) => console.error(`${tag} Push failed:`, err)
           );
         }
         updatedEvents++;
@@ -4842,10 +5019,17 @@ async function refreshCommitteeHearings(committeeId, windowDays = 14) {
       }
     }
   }
-  console.log(
-    `${tag} Committee ${cmteCode}: ${meetings.length} meetings found, +${newEvents} new, ~${updatedEvents} updated`
-  );
+  console.log(`${tag} Done: +${newEvents} new, ~${updatedEvents} updated`);
   return { newEvents, updatedEvents };
+}
+async function refreshCommitteeHearings(committeeId, _windowDays = 14) {
+  const [committee] = await db.select({ chamber: committees.chamber }).from(committees).where(eq6(committees.id, committeeId)).limit(1);
+  if (!committee) {
+    console.warn(`[targetedRefresh.hearings] Committee ${committeeId} not found`);
+    return { newEvents: 0, updatedEvents: 0 };
+  }
+  const chamberCode = committee.chamber === "TX_SENATE" ? "S" : "H";
+  return refreshChamberUpcomingHearings(chamberCode);
 }
 async function refreshHearingDetail(eventId) {
   const tag = "[targetedRefresh.hearingDetail]";
@@ -4879,9 +5063,11 @@ async function refreshHearingDetail(eventId) {
     return false;
   }
   const parsed = parseHearingNoticePage(html);
+  const currentTitle = event.title ?? "";
+  const titleToStore = currentTitle && currentTitle !== "Committee Hearing" ? currentTitle : parsed.title;
   await db.update(legislativeEvents).set({
-    title: parsed.title,
-    location: parsed.location ?? event.location ?? void 0,
+    title: titleToStore,
+    location: event.location ?? parsed.location ?? void 0,
     fingerprint: fp,
     updatedAt: /* @__PURE__ */ new Date()
   }).where(eq6(legislativeEvents.id, eventId));
@@ -5121,28 +5307,11 @@ function sleep3(ms) {
 // server/jobs/refreshDailyLegislative.ts
 init_db();
 init_schema();
-import { eq as eq8, sql as sql9, and as and8, gte as gte2 } from "drizzle-orm";
+import { sql as sql9, gte as gte2 } from "drizzle-orm";
 init_expoPush();
 var isDailyRefreshing = false;
 function getIsDailyRefreshing() {
   return isDailyRefreshing;
-}
-async function getScopedCommitteeIds() {
-  const ids = /* @__PURE__ */ new Set();
-  const memberships = await db.select({ committeeId: committeeMemberships.committeeId }).from(committeeMemberships).groupBy(committeeMemberships.committeeId).limit(100);
-  memberships.forEach((m) => ids.add(m.committeeId));
-  const subs = await db.select({ committeeId: userSubscriptions.committeeId }).from(userSubscriptions).where(
-    and8(
-      eq8(userSubscriptions.type, "COMMITTEE"),
-      sql9`${userSubscriptions.committeeId} IS NOT NULL`
-    )
-  );
-  subs.forEach((s) => s.committeeId && ids.add(s.committeeId));
-  if (ids.size === 0) {
-    const fallback = await db.select({ id: committees.id }).from(committees).limit(20);
-    fallback.forEach((c) => ids.add(c.id));
-  }
-  return [...ids];
 }
 async function runDailyRefresh() {
   if (isDailyRefreshing) {
@@ -5166,69 +5335,61 @@ async function runDailyRefresh() {
   let detailsFetched = 0;
   let alertsCreated = 0;
   try {
-    const committeeIds = await getScopedCommitteeIds();
-    console.log(`[dailyRefresh] Scoped to ${committeeIds.length} committees`);
-    for (const committeeId of committeeIds) {
+    const alertsSince = /* @__PURE__ */ new Date();
+    const refreshStart = Date.now();
+    for (const chamber of ["H", "S"]) {
       try {
-        const { newEvents, updatedEvents } = await refreshCommitteeHearings(
-          committeeId,
-          14
-        );
+        const { newEvents, updatedEvents } = await refreshChamberUpcomingHearings(chamber, 30);
         totalNew += newEvents;
         totalUpdated += updatedEvents;
         committeesRefreshed++;
-        if (newEvents > 0) {
-          const recentEvents = await db.select({
-            id: legislativeEvents.id,
-            title: legislativeEvents.title,
-            startsAt: legislativeEvents.startsAt
-          }).from(legislativeEvents).where(
-            and8(
-              eq8(legislativeEvents.committeeId, committeeId),
-              gte2(
-                legislativeEvents.createdAt,
-                new Date(Date.now() - 2 * 60 * 1e3)
-              )
-            )
-          );
-          for (const event of recentEvents) {
-            const dateLabel = event.startsAt ? event.startsAt.toLocaleDateString("en-US", {
-              timeZone: "America/Chicago",
-              month: "short",
-              day: "numeric",
-              year: "numeric"
-            }) : "TBD";
-            const alertTitle = `New Hearing: ${event.title}`;
-            const alertBody = `Scheduled for ${dateLabel}`;
-            await db.insert(alerts).values({
-              userId: "default",
-              alertType: "HEARING_POSTED",
-              entityType: "event",
-              entityId: event.id,
-              title: alertTitle,
-              body: alertBody
-            });
-            alertsCreated++;
-            sendPushToAll(alertTitle, alertBody, { alertType: "HEARING_POSTED", entityId: event.id }).catch(
-              (err) => console.error("[dailyRefresh] Push failed:", err)
-            );
-          }
-        }
-        const hearingsNeedingDetails = await db.select({ id: legislativeEvents.id, sourceUrl: legislativeEvents.sourceUrl }).from(legislativeEvents).where(
-          and8(
-            eq8(legislativeEvents.committeeId, committeeId),
-            sql9`${legislativeEvents.sourceUrl} LIKE '%tlodocs%' OR ${legislativeEvents.sourceUrl} LIKE '%MtgNotice%'`
-          )
-        ).limit(10);
-        for (const ev of hearingsNeedingDetails) {
-          const changed = await refreshHearingDetail(ev.id);
-          if (changed) detailsFetched++;
-        }
-        await sleep4(500);
       } catch (err) {
-        console.error(`[dailyRefresh] Error refreshing committee ${committeeId}:`, err);
+        console.error(`[dailyRefresh] Error refreshing chamber ${chamber}:`, err);
       }
     }
+    if (totalNew > 0) {
+      const recentEvents = await db.select({
+        id: legislativeEvents.id,
+        title: legislativeEvents.title,
+        startsAt: legislativeEvents.startsAt
+      }).from(legislativeEvents).where(gte2(legislativeEvents.createdAt, alertsSince));
+      for (const event of recentEvents) {
+        const dateLabel = event.startsAt ? event.startsAt.toLocaleDateString("en-US", {
+          timeZone: "America/Chicago",
+          month: "short",
+          day: "numeric",
+          year: "numeric"
+        }) : "TBD";
+        const alertTitle = `New Hearing: ${event.title}`;
+        const alertBody = `Scheduled for ${dateLabel}`;
+        await db.insert(alerts).values({
+          userId: "default",
+          alertType: "HEARING_POSTED",
+          entityType: "event",
+          entityId: event.id,
+          title: alertTitle,
+          body: alertBody
+        });
+        alertsCreated++;
+        sendPushToAll(alertTitle, alertBody, {
+          alertType: "HEARING_POSTED",
+          entityId: event.id
+        }).catch((err) => console.error("[dailyRefresh] Push failed:", err));
+      }
+    }
+    const hearingsNeedingDetails = await db.select({ id: legislativeEvents.id, sourceUrl: legislativeEvents.sourceUrl }).from(legislativeEvents).where(
+      sql9`${legislativeEvents.sourceUrl} LIKE '%tlodocs%' OR ${legislativeEvents.sourceUrl} LIKE '%MtgNotice%'`
+    ).limit(20);
+    for (const ev of hearingsNeedingDetails) {
+      try {
+        const changed = await refreshHearingDetail(ev.id);
+        if (changed) detailsFetched++;
+        await sleep4(300);
+      } catch (err) {
+        console.error("[dailyRefresh] Detail fetch failed:", err);
+      }
+    }
+    console.log(`[dailyRefresh] Chamber refresh took ${Date.now() - refreshStart}ms`);
     const duration = Date.now() - jobStart;
     console.log("========================================");
     console.log(
@@ -5415,15 +5576,23 @@ function startOfficialsRefreshScheduler() {
   schedulerInterval = setInterval(schedulerTick, CHECK_INTERVAL_MS);
   setTimeout(async () => {
     try {
-      const { officialPublic: officialPublic3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const [{ count }] = await db.select({ count: sql11`count(*)::int` }).from(officialPublic3);
+      const { officialPublic: officialPublic2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const [{ count }] = await db.select({ count: sql11`count(*)::int` }).from(officialPublic2);
       if (count === 0) {
+        const [{ acquired }] = await db.execute(
+          sql11`SELECT pg_try_advisory_lock(8675309) AS acquired`
+        );
+        if (!acquired) {
+          console.log("[Scheduler] Officials table empty but another instance holds the startup lock \u2014 skipping duplicate seed refresh");
+          return;
+        }
         console.log("[Scheduler] Officials table is empty \u2014 running immediate full refresh cycle");
-        await runRefreshCycle();
-      } else {
-        schedulerTick().catch((err) => {
-          console.error("[Scheduler] Initial tick failed:", err);
-        });
+        try {
+          await runRefreshCycle();
+        } finally {
+          await db.execute(sql11`SELECT pg_advisory_unlock(8675309)`).catch(() => {
+          });
+        }
       }
     } catch (err) {
       console.error("[Scheduler] Startup check failed:", err);
@@ -5596,10 +5765,10 @@ function registerLegislativeRoutes(app2) {
   app2.get("/api/alerts", async (req, res) => {
     try {
       const unreadOnly = req.query.unreadOnly === "true";
-      const conditions = [eq10(alerts.userId, "default")];
+      const conditions = [eq9(alerts.userId, "default")];
       if (unreadOnly) conditions.push(isNull4(alerts.readAt));
-      const rows = await db.select().from(alerts).where(and9(...conditions)).orderBy(desc2(alerts.createdAt)).limit(100);
-      const unreadCount = await db.select({ count: sql12`count(*)` }).from(alerts).where(and9(eq10(alerts.userId, "default"), isNull4(alerts.readAt)));
+      const rows = await db.select().from(alerts).where(and8(...conditions)).orderBy(desc2(alerts.createdAt)).limit(100);
+      const unreadCount = await db.select({ count: sql12`count(*)` }).from(alerts).where(and8(eq9(alerts.userId, "default"), isNull4(alerts.readAt)));
       res.json({ alerts: rows, unreadCount: Number(unreadCount[0]?.count ?? 0) });
     } catch (err) {
       console.error("[api/alerts] Error:", err);
@@ -5609,7 +5778,7 @@ function registerLegislativeRoutes(app2) {
   app2.post("/api/alerts/:id/read", async (req, res) => {
     try {
       const { id } = req.params;
-      const [updated] = await db.update(alerts).set({ readAt: /* @__PURE__ */ new Date() }).where(and9(eq10(alerts.id, id), isNull4(alerts.readAt))).returning({ id: alerts.id });
+      const [updated] = await db.update(alerts).set({ readAt: /* @__PURE__ */ new Date() }).where(and8(eq9(alerts.id, id), isNull4(alerts.readAt))).returning({ id: alerts.id });
       if (!updated) {
         return res.status(404).json({ error: "Alert not found or already read" });
       }
@@ -5617,6 +5786,45 @@ function registerLegislativeRoutes(app2) {
     } catch (err) {
       console.error("[api/alerts/:id/read] Error:", err);
       res.status(500).json({ error: "Failed to mark alert as read" });
+    }
+  });
+  app2.post("/api/alerts/mark-read", async (req, res) => {
+    try {
+      const { ids } = req.body;
+      const now = /* @__PURE__ */ new Date();
+      if (Array.isArray(ids) && ids.length > 0) {
+        await db.update(alerts).set({ readAt: now }).where(and8(eq9(alerts.userId, "default"), isNull4(alerts.readAt), inArray3(alerts.id, ids)));
+      } else {
+        await db.update(alerts).set({ readAt: now }).where(and8(eq9(alerts.userId, "default"), isNull4(alerts.readAt)));
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[api/alerts/mark-read] Error:", err);
+      res.status(500).json({ error: "Failed to mark alerts as read" });
+    }
+  });
+  app2.delete("/api/alerts/bulk", async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (Array.isArray(ids) && ids.length > 0) {
+        await db.delete(alerts).where(and8(eq9(alerts.userId, "default"), inArray3(alerts.id, ids)));
+      } else {
+        await db.delete(alerts).where(eq9(alerts.userId, "default"));
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[api/alerts/bulk] Error:", err);
+      res.status(500).json({ error: "Failed to delete alerts" });
+    }
+  });
+  app2.delete("/api/alerts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.delete(alerts).where(and8(eq9(alerts.id, id), eq9(alerts.userId, "default")));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[api/alerts/:id] Error:", err);
+      res.status(500).json({ error: "Failed to delete alert" });
     }
   });
   app2.get("/api/events/upcoming", async (req, res) => {
@@ -5640,8 +5848,8 @@ function registerLegislativeRoutes(app2) {
         committeeName: committees.name,
         committeeChamber: committees.chamber,
         witnessCount: hearingDetails.witnessCount
-      }).from(legislativeEvents).leftJoin(committees, eq10(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq10(hearingDetails.eventId, legislativeEvents.id)).where(
-        and9(
+      }).from(legislativeEvents).leftJoin(committees, eq9(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq9(hearingDetails.eventId, legislativeEvents.id)).where(
+        and8(
           gte3(legislativeEvents.startsAt, now),
           lte2(legislativeEvents.startsAt, cutoff)
         )
@@ -5680,10 +5888,10 @@ function registerLegislativeRoutes(app2) {
         externalId: legislativeEvents.externalId,
         witnessCount: hearingDetails.witnessCount,
         noticeText: hearingDetails.noticeText
-      }).from(legislativeEvents).leftJoin(hearingDetails, eq10(hearingDetails.eventId, legislativeEvents.id)).where(
-        and9(
-          eq10(legislativeEvents.committeeId, id),
-          eq10(legislativeEvents.eventType, "COMMITTEE_HEARING"),
+      }).from(legislativeEvents).leftJoin(hearingDetails, eq9(hearingDetails.eventId, legislativeEvents.id)).where(
+        and8(
+          eq9(legislativeEvents.committeeId, id),
+          eq9(legislativeEvents.eventType, "COMMITTEE_HEARING"),
           range === "upcoming" ? gte3(legislativeEvents.startsAt, now) : lte2(legislativeEvents.startsAt, now)
         )
       ).orderBy(
@@ -5727,7 +5935,7 @@ function registerLegislativeRoutes(app2) {
         postingDate: hearingDetails.postingDate,
         videoUrl: hearingDetails.videoUrl,
         witnessCount: hearingDetails.witnessCount
-      }).from(legislativeEvents).leftJoin(committees, eq10(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq10(hearingDetails.eventId, legislativeEvents.id)).where(eq10(legislativeEvents.id, eventId)).limit(1);
+      }).from(legislativeEvents).leftJoin(committees, eq9(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq9(hearingDetails.eventId, legislativeEvents.id)).where(eq9(legislativeEvents.id, eventId)).limit(1);
       if (!event) {
         return res.status(404).json({ error: "Hearing not found" });
       }
@@ -5736,7 +5944,7 @@ function registerLegislativeRoutes(app2) {
         billNumber: hearingAgendaItems.billNumber,
         itemText: hearingAgendaItems.itemText,
         sortOrder: hearingAgendaItems.sortOrder
-      }).from(hearingAgendaItems).where(eq10(hearingAgendaItems.eventId, eventId)).orderBy(asc2(hearingAgendaItems.sortOrder)).limit(100);
+      }).from(hearingAgendaItems).where(eq9(hearingAgendaItems.eventId, eventId)).orderBy(asc2(hearingAgendaItems.sortOrder)).limit(100);
       res.json({ hearing: event, agenda });
     } catch (err) {
       console.error("[api/hearings/:eventId] Error:", err);
@@ -5748,7 +5956,7 @@ function registerLegislativeRoutes(app2) {
     async (req, res) => {
       try {
         const { eventId } = req.params;
-        const rows = await db.select().from(witnesses).where(eq10(witnesses.eventId, eventId)).orderBy(asc2(witnesses.sortOrder)).limit(500);
+        const rows = await db.select().from(witnesses).where(eq9(witnesses.eventId, eventId)).orderBy(asc2(witnesses.sortOrder)).limit(500);
         res.json({ witnesses: rows, total: rows.length });
       } catch (err) {
         console.error("[api/hearings/:eventId/witnesses] Error:", err);
@@ -5779,7 +5987,7 @@ function registerLegislativeRoutes(app2) {
   app2.delete("/api/subscriptions/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const [deleted] = await db.delete(userSubscriptions).where(and9(eq10(userSubscriptions.id, id), eq10(userSubscriptions.userId, "default"))).returning({ id: userSubscriptions.id });
+      const [deleted] = await db.delete(userSubscriptions).where(and8(eq9(userSubscriptions.id, id), eq9(userSubscriptions.userId, "default"))).returning({ id: userSubscriptions.id });
       if (!deleted) {
         return res.status(404).json({ error: "Subscription not found" });
       }
@@ -5791,7 +5999,7 @@ function registerLegislativeRoutes(app2) {
   });
   app2.get("/api/subscriptions", async (_req, res) => {
     try {
-      const rows = await db.select().from(userSubscriptions).where(eq10(userSubscriptions.userId, "default")).orderBy(desc2(userSubscriptions.createdAt));
+      const rows = await db.select().from(userSubscriptions).where(eq9(userSubscriptions.userId, "default")).orderBy(desc2(userSubscriptions.createdAt));
       res.json({ subscriptions: rows });
     } catch (err) {
       console.error("[api/subscriptions GET] Error:", err);
@@ -5849,7 +6057,7 @@ function registerLegislativeRoutes(app2) {
   app2.delete("/api/push-tokens/:token", async (req, res) => {
     try {
       const { token } = req.params;
-      await db.delete(pushTokens).where(eq10(pushTokens.token, token));
+      await db.delete(pushTokens).where(eq9(pushTokens.token, token));
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -5976,7 +6184,7 @@ ${witnessLine}`;
 // server/routes/aiRoutes.ts
 init_db();
 init_schema();
-import { eq as eq11, ilike as ilike3, or as or3, and as and10, gte as gte4, asc as asc3, desc as desc3, inArray as inArray4 } from "drizzle-orm";
+import { eq as eq10, ilike as ilike3, or as or3, and as and9, gte as gte4, asc as asc3, desc as desc3, inArray as inArray4 } from "drizzle-orm";
 function registerAiRoutes(app2) {
   app2.post("/api/ai/parse-search", async (req, res) => {
     const { query } = req.body ?? {};
@@ -6013,10 +6221,10 @@ function registerAiRoutes(app2) {
       const { intent, entities } = classification;
       let dataContext = "";
       if (intent === "officials" || intent === "committees") {
-        const conditions = [eq11(officialPublic.active, true)];
+        const conditions = [eq10(officialPublic.active, true)];
         if (entities.party) {
           const partyCode = entities.party.toLowerCase().startsWith("r") ? "R" : entities.party.toLowerCase().startsWith("d") ? "D" : null;
-          if (partyCode) conditions.push(eq11(officialPublic.party, partyCode));
+          if (partyCode) conditions.push(eq10(officialPublic.party, partyCode));
         }
         if (entities.chamber) {
           const sourceMap = {
@@ -6025,7 +6233,7 @@ function registerAiRoutes(app2) {
             "US House": "US_HOUSE"
           };
           const src = sourceMap[entities.chamber];
-          if (src) conditions.push(eq11(officialPublic.source, src));
+          if (src) conditions.push(eq10(officialPublic.source, src));
         }
         if (entities.names?.length) {
           const nameConditions = entities.names.map((n) => ilike3(officialPublic.fullName, `%${n}%`));
@@ -6040,7 +6248,7 @@ function registerAiRoutes(app2) {
               officialId: committeeMemberships.officialPublicId,
               role: committeeMemberships.role,
               committeeName: committees.name
-            }).from(committeeMemberships).innerJoin(committees, eq11(committeeMemberships.committeeId, committees.id)).where(inArray4(committeeMemberships.committeeId, cmteIds)).limit(60);
+            }).from(committeeMemberships).innerJoin(committees, eq10(committeeMemberships.committeeId, committees.id)).where(inArray4(committeeMemberships.committeeId, cmteIds)).limit(60);
             if (memberships.length > 0) {
               const memberIds = [...new Set(memberships.map((m) => m.officialId).filter(Boolean))];
               const officialsData = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, party: officialPublic.party, source: officialPublic.source, district: officialPublic.district, roleTitle: officialPublic.roleTitle }).from(officialPublic).where(inArray4(officialPublic.id, memberIds.slice(0, 40))).limit(40);
@@ -6056,7 +6264,7 @@ ${lines.join("\n")}`;
           }
         }
         if (!dataContext) {
-          const officials = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, party: officialPublic.party, source: officialPublic.source, district: officialPublic.district, roleTitle: officialPublic.roleTitle, searchCities: officialPublic.searchCities }).from(officialPublic).where(and10(...conditions)).orderBy(asc3(officialPublic.source), asc3(officialPublic.district)).limit(40);
+          const officials = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, party: officialPublic.party, source: officialPublic.source, district: officialPublic.district, roleTitle: officialPublic.roleTitle, searchCities: officialPublic.searchCities }).from(officialPublic).where(and9(...conditions)).orderBy(asc3(officialPublic.source), asc3(officialPublic.district)).limit(40);
           const lines = officials.map((o) => {
             const party = o.party === "R" ? "Republican" : o.party === "D" ? "Democrat" : o.party ?? "Unknown";
             const role = o.roleTitle ? ` (${o.roleTitle})` : "";
@@ -6073,7 +6281,7 @@ ${lines.join("\n")}` : "No matching legislators found.";
         } else if (entities.keywords?.length) {
           billConditions.push(or3(...entities.keywords.map((kw) => ilike3(bills.caption, `%${kw}%`))));
         }
-        const billsData = await db.select({ id: bills.id, billNumber: bills.billNumber, legSession: bills.legSession, caption: bills.caption }).from(bills).where(billConditions.length > 0 ? and10(...billConditions) : void 0).orderBy(desc3(bills.updatedAt)).limit(15);
+        const billsData = await db.select({ id: bills.id, billNumber: bills.billNumber, legSession: bills.legSession, caption: bills.caption }).from(bills).where(billConditions.length > 0 ? and9(...billConditions) : void 0).orderBy(desc3(bills.updatedAt)).limit(15);
         if (billsData.length > 0) {
           const billIds = billsData.map((b) => b.id);
           const actionsData = await db.select({ billId: billActions.billId, actionText: billActions.actionText, actionAt: billActions.actionAt }).from(billActions).where(inArray4(billActions.billId, billIds)).orderBy(desc3(billActions.actionAt)).limit(75);
@@ -6105,8 +6313,8 @@ ${lines.join("\n\n")}`;
           startsAt: legislativeEvents.startsAt,
           location: legislativeEvents.location,
           chamber: legislativeEvents.chamber
-        }).from(legislativeEvents).where(and10(
-          eq11(legislativeEvents.eventType, "HEARING"),
+        }).from(legislativeEvents).where(and9(
+          eq10(legislativeEvents.eventType, "HEARING"),
           gte4(legislativeEvents.startsAt, now),
           gte4(twoWeeksOut, legislativeEvents.startsAt)
         )).orderBy(asc3(legislativeEvents.startsAt)).limit(10);
@@ -6133,13 +6341,13 @@ ${lines.join("\n\n")}`;
         }
       } else {
         const [txHouseCount, txSenateCount, usHouseCount, otherTxCount] = await Promise.all([
-          db.select({ count: officialPublic.id }).from(officialPublic).where(and10(eq11(officialPublic.source, "TX_HOUSE"), eq11(officialPublic.active, true))),
-          db.select({ count: officialPublic.id }).from(officialPublic).where(and10(eq11(officialPublic.source, "TX_SENATE"), eq11(officialPublic.active, true))),
-          db.select({ count: officialPublic.id }).from(officialPublic).where(and10(eq11(officialPublic.source, "US_HOUSE"), eq11(officialPublic.active, true))),
-          db.select({ count: officialPublic.id }).from(officialPublic).where(and10(eq11(officialPublic.source, "OTHER_TX"), eq11(officialPublic.active, true)))
+          db.select({ count: officialPublic.id }).from(officialPublic).where(and9(eq10(officialPublic.source, "TX_HOUSE"), eq10(officialPublic.active, true))),
+          db.select({ count: officialPublic.id }).from(officialPublic).where(and9(eq10(officialPublic.source, "TX_SENATE"), eq10(officialPublic.active, true))),
+          db.select({ count: officialPublic.id }).from(officialPublic).where(and9(eq10(officialPublic.source, "US_HOUSE"), eq10(officialPublic.active, true))),
+          db.select({ count: officialPublic.id }).from(officialPublic).where(and9(eq10(officialPublic.source, "OTHER_TX"), eq10(officialPublic.active, true)))
         ]);
         const now = /* @__PURE__ */ new Date();
-        const nextHearings = await db.select({ title: legislativeEvents.title, startsAt: legislativeEvents.startsAt }).from(legislativeEvents).where(and10(eq11(legislativeEvents.eventType, "HEARING"), gte4(legislativeEvents.startsAt, now))).orderBy(asc3(legislativeEvents.startsAt)).limit(3);
+        const nextHearings = await db.select({ title: legislativeEvents.title, startsAt: legislativeEvents.startsAt }).from(legislativeEvents).where(and9(eq10(legislativeEvents.eventType, "HEARING"), gte4(legislativeEvents.startsAt, now))).orderBy(asc3(legislativeEvents.startsAt)).limit(3);
         const hearingLines = nextHearings.map((h) => {
           const dateStr = h.startsAt ? h.startsAt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" }) : "TBD";
           return `${h.title} (${dateStr})`;
@@ -6166,7 +6374,7 @@ ${hearingLines.join("\n")}` : "No upcoming hearings."}`;
 init_schema();
 init_refreshOfficials();
 import { desc as desc4 } from "drizzle-orm";
-import { eq as eq12, and as and11, sql as sql13, or as or4, inArray as inArray5, isNull as isNull5 } from "drizzle-orm";
+import { eq as eq11, and as and10, sql as sql13, or as or4, inArray as inArray5, isNull as isNull5 } from "drizzle-orm";
 import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
 init_refreshCommittees();
@@ -7457,7 +7665,11 @@ function getMapHtml() {
         } else if (data.type === 'CENTER_MAP') {
           window.centerMap(data.lat, data.lng, data.zoom);
         } else if (data.type === 'FOCUS_DISTRICT') {
-          window.focusDistrict(data.layer, data.district);
+          // Message shape: { source: 'TX_HOUSE'|'TX_SENATE'|'US_HOUSE', districtNumber: number }
+          var focusTypeKey = data.source === 'TX_SENATE' ? 'senate'
+                           : data.source === 'TX_HOUSE'  ? 'house'
+                           : 'congress';
+          window.focusDistrict(focusTypeKey, data.districtNumber);
         } else if (data.type === 'SET_ADDRESS_DOTS') {
           window.setAddressDots(data.dots || []);
         } else if (data.type === 'SET_ACTIVE_ADDRESS_DOT') {
@@ -7492,11 +7704,19 @@ function getMapHtml() {
       window.receiveMessage(e.data);
     });
     
+    // Force Leaflet to recalculate tile viewport once the iframe has finished
+    // laying out.  Without this call the map container may have 0-height at
+    // the moment L.map() runs, leaving the map blank/gray.
+    map.invalidateSize();
+    window.addEventListener('resize', function() { map.invalidateSize(); });
+
     // Auto-load GeoJSON on page load
     setTimeout(function() {
+      // Re-check size in case flex layout settled after the first paint.
+      map.invalidateSize();
       console.log('[Leaflet] Auto-loading GeoJSON...');
       postMessage({ type: 'mapReady' });
-      
+
       Promise.all([
         fetchAndSetGeoJSON('tx_senate'),
         fetchAndSetGeoJSON('tx_house'),
@@ -7637,7 +7857,7 @@ async function registerRoutes(app2) {
       const { district_type, source, search, q, active } = req.query;
       const conditions = [];
       if (active !== "false") {
-        conditions.push(eq12(officialPublic.active, true));
+        conditions.push(eq11(officialPublic.active, true));
       }
       let sourceFilter = null;
       const isAllSources = source === "ALL";
@@ -7647,7 +7867,7 @@ async function registerRoutes(app2) {
           return res.status(400).json({ error: "Invalid district_type" });
         }
         sourceFilter = sourceFromDistrictType(district_type);
-        conditions.push(eq12(officialPublic.source, sourceFilter));
+        conditions.push(eq11(officialPublic.source, sourceFilter));
       }
       if (source && typeof source === "string" && source !== "ALL") {
         const validSources = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "OTHER_TX"];
@@ -7655,9 +7875,9 @@ async function registerRoutes(app2) {
           return res.status(400).json({ error: "Invalid source" });
         }
         sourceFilter = source;
-        conditions.push(eq12(officialPublic.source, sourceFilter));
+        conditions.push(eq11(officialPublic.source, sourceFilter));
       }
-      const publicOfficials = await db.select().from(officialPublic).where(conditions.length > 0 ? and11(...conditions) : void 0);
+      const publicOfficials = await db.select().from(officialPublic).where(conditions.length > 0 ? and10(...conditions) : void 0);
       const privateData = await db.select().from(officialPrivate);
       const privateMap = new Map(privateData.map((p) => [p.officialPublicId, p]));
       let officials = publicOfficials.map(
@@ -7768,7 +7988,7 @@ async function registerRoutes(app2) {
         fullName: officialPublic.fullName,
         source: officialPublic.source,
         district: officialPublic.district
-      }).from(officialPublic).where(eq12(officialPublic.active, true));
+      }).from(officialPublic).where(eq11(officialPublic.active, true));
       const allPrivate = await db.select().from(officialPrivate);
       const privMap = new Map(allPrivate.map((p) => [p.officialPublicId, p]));
       const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
@@ -7816,9 +8036,9 @@ async function registerRoutes(app2) {
         fullName: officialPublic.fullName,
         source: officialPublic.source,
         personalAddress: officialPrivate.personalAddress
-      }).from(officialPublic).innerJoin(officialPrivate, eq12(officialPublic.id, officialPrivate.officialPublicId)).where(
-        and11(
-          eq12(officialPublic.active, true),
+      }).from(officialPublic).innerJoin(officialPrivate, eq11(officialPublic.id, officialPrivate.officialPublicId)).where(
+        and10(
+          eq11(officialPublic.active, true),
           sql13`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
         )
       );
@@ -7849,25 +8069,25 @@ async function registerRoutes(app2) {
       if (sourceDistrictMatch) {
         const source = sourceDistrictMatch[1];
         const district = sourceDistrictMatch[2];
-        const [pub2] = await db.select().from(officialPublic).where(and11(
-          eq12(officialPublic.source, source),
-          eq12(officialPublic.district, district),
-          eq12(officialPublic.active, true)
+        const [pub2] = await db.select().from(officialPublic).where(and10(
+          eq11(officialPublic.source, source),
+          eq11(officialPublic.district, district),
+          eq11(officialPublic.active, true)
         )).limit(1);
         if (!pub2) {
           const vacant = createVacantOfficial(source, parseInt(district, 10));
           return res.json({ official: vacant });
         }
-        const [priv2] = await db.select().from(officialPrivate).where(eq12(officialPrivate.officialPublicId, pub2.id)).limit(1);
+        const [priv2] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, pub2.id)).limit(1);
         const official2 = mergeOfficial(pub2, priv2 || null);
         official2.isVacant = false;
         return res.json({ official: official2 });
       }
-      const [pub] = await db.select().from(officialPublic).where(eq12(officialPublic.id, id)).limit(1);
+      const [pub] = await db.select().from(officialPublic).where(eq11(officialPublic.id, id)).limit(1);
       if (!pub) {
         return res.status(404).json({ error: "Official not found" });
       }
-      const [priv] = await db.select().from(officialPrivate).where(eq12(officialPrivate.officialPublicId, id)).limit(1);
+      const [priv] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, id)).limit(1);
       const official = mergeOfficial(pub, priv || null);
       official.isVacant = false;
       res.json({ official });
@@ -7888,15 +8108,15 @@ async function registerRoutes(app2) {
       }
       const distNum = String(district_number);
       const source = sourceFromDistrictType(district_type);
-      const [pub] = await db.select().from(officialPublic).where(and11(
-        eq12(officialPublic.source, source),
-        eq12(officialPublic.district, distNum),
-        eq12(officialPublic.active, true)
+      const [pub] = await db.select().from(officialPublic).where(and10(
+        eq11(officialPublic.source, source),
+        eq11(officialPublic.district, distNum),
+        eq11(officialPublic.active, true)
       )).limit(1);
       if (!pub) {
         return res.status(404).json({ error: "Official not found" });
       }
-      const [priv] = await db.select().from(officialPrivate).where(eq12(officialPrivate.officialPublicId, pub.id)).limit(1);
+      const [priv] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, pub.id)).limit(1);
       const official = mergeOfficial(pub, priv || null);
       res.json({ official });
     } catch (err) {
@@ -7914,13 +8134,13 @@ async function registerRoutes(app2) {
       for (const dist of districts) {
         const { source, districtNumber } = dist;
         if (!source || districtNumber === void 0) continue;
-        const [pub] = await db.select().from(officialPublic).where(and11(
-          eq12(officialPublic.source, source),
-          eq12(officialPublic.district, String(districtNumber)),
-          eq12(officialPublic.active, true)
+        const [pub] = await db.select().from(officialPublic).where(and10(
+          eq11(officialPublic.source, source),
+          eq11(officialPublic.district, String(districtNumber)),
+          eq11(officialPublic.active, true)
         )).limit(1);
         if (pub) {
-          const [priv] = await db.select().from(officialPrivate).where(eq12(officialPrivate.officialPublicId, pub.id)).limit(1);
+          const [priv] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, pub.id)).limit(1);
           results.push(mergeOfficial(pub, priv || null));
         } else {
           results.push(createVacantOfficial(source, districtNumber));
@@ -7935,7 +8155,7 @@ async function registerRoutes(app2) {
   app2.patch("/api/officials/:id/private", async (req, res) => {
     try {
       const { id } = req.params;
-      const [pub] = await db.select().from(officialPublic).where(eq12(officialPublic.id, id)).limit(1);
+      const [pub] = await db.select().from(officialPublic).where(eq11(officialPublic.id, id)).limit(1);
       if (!pub) {
         return res.status(404).json({ error: "Official not found" });
       }
@@ -7944,13 +8164,13 @@ async function registerRoutes(app2) {
         return res.status(400).json({ error: "Invalid request body", details: parseResult.error.issues });
       }
       const updateData = parseResult.data;
-      const [existing] = await db.select().from(officialPrivate).where(eq12(officialPrivate.officialPublicId, id)).limit(1);
+      const [existing] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, id)).limit(1);
       if (existing) {
         await db.update(officialPrivate).set({
           ...updateData,
           addressSource: "user",
           updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq12(officialPrivate.id, existing.id));
+        }).where(eq11(officialPrivate.id, existing.id));
       } else {
         let finalUpdateData = { ...updateData };
         let autoFilled = false;
@@ -7978,7 +8198,7 @@ async function registerRoutes(app2) {
           updatedAt: /* @__PURE__ */ new Date()
         });
       }
-      const [updatedPriv] = await db.select().from(officialPrivate).where(eq12(officialPrivate.officialPublicId, id)).limit(1);
+      const [updatedPriv] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, id)).limit(1);
       const official = mergeOfficial(pub, updatedPriv);
       res.json({ official });
     } catch (err) {
@@ -8161,7 +8381,7 @@ async function registerRoutes(app2) {
       const counts = await db.select({
         source: officialPublic.source,
         count: sql13`count(*)::int`
-      }).from(officialPublic).where(eq12(officialPublic.active, true)).groupBy(officialPublic.source);
+      }).from(officialPublic).where(eq11(officialPublic.active, true)).groupBy(officialPublic.source);
       const countsBySource = {
         TX_HOUSE: 0,
         TX_SENATE: 0,
@@ -8210,7 +8430,7 @@ async function registerRoutes(app2) {
       const counts = await db.select({
         source: officialPublic.source,
         count: sql13`count(*)::int`
-      }).from(officialPublic).where(eq12(officialPublic.active, true)).groupBy(officialPublic.source);
+      }).from(officialPublic).where(eq11(officialPublic.active, true)).groupBy(officialPublic.source);
       const stats = {
         tx_house: 0,
         tx_senate: 0,
@@ -8366,7 +8586,7 @@ async function registerRoutes(app2) {
       const chamber = req.query.chamber;
       let query = db.select().from(committees);
       if (chamber === "TX_HOUSE" || chamber === "TX_SENATE") {
-        query = query.where(eq12(committees.chamber, chamber));
+        query = query.where(eq11(committees.chamber, chamber));
       }
       const allCommittees = await query.orderBy(committees.sortOrder, committees.name);
       const parentCommittees = allCommittees.filter((c) => !c.parentCommitteeId);
@@ -8384,7 +8604,7 @@ async function registerRoutes(app2) {
   app2.get("/api/committees/:committeeId", async (req, res) => {
     try {
       const { committeeId } = req.params;
-      const committee = await db.select().from(committees).where(eq12(committees.id, committeeId)).limit(1);
+      const committee = await db.select().from(committees).where(eq11(committees.id, committeeId)).limit(1);
       if (committee.length === 0) {
         return res.status(404).json({ error: "Committee not found" });
       }
@@ -8398,7 +8618,7 @@ async function registerRoutes(app2) {
         officialDistrict: officialPublic.district,
         officialParty: officialPublic.party,
         officialPhotoUrl: officialPublic.photoUrl
-      }).from(committeeMemberships).leftJoin(officialPublic, eq12(committeeMemberships.officialPublicId, officialPublic.id)).where(eq12(committeeMemberships.committeeId, committeeId)).orderBy(committeeMemberships.sortOrder);
+      }).from(committeeMemberships).leftJoin(officialPublic, eq11(committeeMemberships.officialPublicId, officialPublic.id)).where(eq11(committeeMemberships.committeeId, committeeId)).orderBy(committeeMemberships.sortOrder);
       res.json({
         committee: committee[0],
         members
@@ -8415,10 +8635,10 @@ async function registerRoutes(app2) {
       if (sourceDistrictMatch) {
         const source = sourceDistrictMatch[1];
         const district = sourceDistrictMatch[2];
-        const [pub] = await db.select({ id: officialPublic.id }).from(officialPublic).where(and11(
-          eq12(officialPublic.source, source),
-          eq12(officialPublic.district, district),
-          eq12(officialPublic.active, true)
+        const [pub] = await db.select({ id: officialPublic.id }).from(officialPublic).where(and10(
+          eq11(officialPublic.source, source),
+          eq11(officialPublic.district, district),
+          eq11(officialPublic.active, true)
         )).limit(1);
         if (pub) officialId = pub.id;
       }
@@ -8427,7 +8647,7 @@ async function registerRoutes(app2) {
         committeeName: committees.name,
         chamber: committees.chamber,
         roleTitle: committeeMemberships.roleTitle
-      }).from(committeeMemberships).innerJoin(committees, eq12(committeeMemberships.committeeId, committees.id)).where(eq12(committeeMemberships.officialPublicId, officialId)).orderBy(committees.name);
+      }).from(committeeMemberships).innerJoin(committees, eq11(committeeMemberships.committeeId, committees.id)).where(eq11(committeeMemberships.officialPublicId, officialId)).orderBy(committees.name);
       res.json(memberships);
     } catch (err) {
       console.error("[API] Error fetching official committees:", err);
@@ -8460,14 +8680,37 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Committees refresh failed" });
     }
   });
+  app2.post("/admin/refresh/committees/reset", (req, res) => {
+    const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+    const providedToken = req.headers["x-admin-token"];
+    if (!adminToken || providedToken !== adminToken) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    forceResetIsRefreshingCommittees();
+    console.log("[Admin] isRefreshingCommittees flag force-reset");
+    res.json({ success: true, message: "isRefreshing flag reset. You can now trigger a fresh refresh." });
+  });
+  app2.post("/admin/refresh/committees/backfill-missing", async (req, res) => {
+    const token = req.headers["x-admin-token"];
+    if (token !== process.env.ADMIN_REFRESH_TOKEN) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const result = await backfillMissingCommitteeMembers();
+      res.json({ success: true, ...result });
+    } catch (err) {
+      console.error("[Admin] backfill-missing error:", err);
+      res.status(500).json({ error: String(err) });
+    }
+  });
   app2.get("/api/other-tx-officials", async (req, res) => {
     try {
       const { active, grouped } = req.query;
-      const conditions = [eq12(officialPublic.source, "OTHER_TX")];
+      const conditions = [eq11(officialPublic.source, "OTHER_TX")];
       if (active !== "false") {
-        conditions.push(eq12(officialPublic.active, true));
+        conditions.push(eq11(officialPublic.active, true));
       }
-      const officials = await db.select().from(officialPublic).where(and11(...conditions));
+      const officials = await db.select().from(officialPublic).where(and10(...conditions));
       const privateData = await db.select().from(officialPrivate);
       const privateMap = new Map(privateData.map((p) => [p.officialPublicId, p]));
       const merged = officials.map(
@@ -8566,12 +8809,12 @@ async function registerRoutes(app2) {
         fullName: officialPublic.fullName,
         source: officialPublic.source,
         photoUrl: officialPublic.photoUrl
-      }).from(officialPublic).where(and11(
-        eq12(officialPublic.active, true),
+      }).from(officialPublic).where(and10(
+        eq11(officialPublic.active, true),
         inArray5(officialPublic.source, ["TX_HOUSE", "TX_SENATE"]),
         or4(
           isNull5(officialPublic.photoUrl),
-          eq12(officialPublic.photoUrl, "")
+          eq11(officialPublic.photoUrl, "")
         )
       ));
       console.log(`[Admin] Headshot backfill: ${officials.length} officials missing photos`);
@@ -8585,7 +8828,7 @@ async function registerRoutes(app2) {
         try {
           const result = await lookupHeadshotFromTexasTribune2(official.fullName);
           if (result.success && result.photoUrl) {
-            await db.update(officialPublic).set({ photoUrl: result.photoUrl }).where(eq12(officialPublic.id, official.id));
+            await db.update(officialPublic).set({ photoUrl: result.photoUrl }).where(eq11(officialPublic.id, official.id));
             found++;
             console.log(`[Headshot] ${found}/${officials.length} Found: ${official.fullName}`);
           } else {
@@ -8620,12 +8863,12 @@ async function registerRoutes(app2) {
       if (!officialPublicId || !personId) {
         return res.status(400).json({ error: "officialPublicId and personId are required" });
       }
-      const official = await db.select().from(officialPublic).where(eq12(officialPublic.id, officialPublicId)).limit(1);
+      const official = await db.select().from(officialPublic).where(eq11(officialPublic.id, officialPublicId)).limit(1);
       if (official.length === 0) {
         return res.status(404).json({ error: "Official not found" });
       }
       const { persons: persons3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const person = await db.select().from(persons3).where(eq12(persons3.id, personId)).limit(1);
+      const person = await db.select().from(persons3).where(eq11(persons3.id, personId)).limit(1);
       if (person.length === 0) {
         return res.status(404).json({ error: "Person not found" });
       }
@@ -8798,7 +9041,7 @@ init_schema();
 import * as fs3 from "fs";
 import * as path3 from "path";
 import * as http from "http";
-import { and as and12, eq as eq13, like } from "drizzle-orm";
+import { and as and11, eq as eq12, like } from "drizzle-orm";
 var app = express();
 var log = console.log;
 function setupCors(app2) {
@@ -8873,6 +9116,15 @@ function getAppName() {
     return "App Landing Page";
   }
 }
+function rebaseUrl(url, baseUrl) {
+  try {
+    const parsed = new URL(url, baseUrl);
+    return `${baseUrl}${parsed.pathname}`;
+  } catch {
+    const pathname = url.startsWith("/") ? url : `/${url}`;
+    return `${baseUrl}${pathname}`;
+  }
+}
 function serveExpoManifest(platform, req, res) {
   const manifestPath = path3.resolve(
     process.cwd(),
@@ -8894,14 +9146,12 @@ function serveExpoManifest(platform, req, res) {
   const requestBaseUrl = `${protocol}://${host}`;
   const hostWithoutProtocol = host;
   if (manifest.launchAsset?.url) {
-    const originalUrl = new URL(manifest.launchAsset.url);
-    manifest.launchAsset.url = `${requestBaseUrl}${originalUrl.pathname}`;
+    manifest.launchAsset.url = rebaseUrl(manifest.launchAsset.url, requestBaseUrl);
   }
   if (manifest.assets) {
     manifest.assets.forEach((asset) => {
       if (asset.url) {
-        const originalUrl = new URL(asset.url);
-        asset.url = `${requestBaseUrl}${originalUrl.pathname}`;
+        asset.url = rebaseUrl(asset.url, requestBaseUrl);
       }
     });
   }
@@ -8912,15 +9162,13 @@ function serveExpoManifest(platform, req, res) {
     manifest.extra.expoGo.debuggerHost = `${hostWithoutProtocol}/${platform}`;
   }
   if (manifest.extra?.expoClient?.iconUrl) {
-    const originalUrl = new URL(manifest.extra.expoClient.iconUrl);
-    manifest.extra.expoClient.iconUrl = `${requestBaseUrl}${originalUrl.pathname}`;
+    manifest.extra.expoClient.iconUrl = rebaseUrl(manifest.extra.expoClient.iconUrl, requestBaseUrl);
   }
   if (manifest.extra?.expoClient?.android?.adaptiveIcon) {
     const icon = manifest.extra.expoClient.android.adaptiveIcon;
     for (const key of ["foregroundImageUrl", "monochromeImageUrl", "backgroundImageUrl"]) {
       if (icon[key]) {
-        const originalUrl = new URL(icon[key]);
-        icon[key] = `${requestBaseUrl}${originalUrl.pathname}`;
+        icon[key] = rebaseUrl(icon[key], requestBaseUrl);
       }
     }
   }
@@ -8964,7 +9212,12 @@ function configureExpoAndLanding(app2) {
     }
     const platform = req.header("expo-platform");
     if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, req, res);
+      try {
+        return serveExpoManifest(platform, req, res);
+      } catch (manifestErr) {
+        log("[Manifest] Error serving manifest:", manifestErr);
+        return res.status(500).json({ error: "Failed to serve manifest" });
+      }
     }
     if (req.path === "/") {
       return serveLandingPage({
@@ -8986,12 +9239,12 @@ function setupErrorHandler(app2) {
     const status = error.status || error.statusCode || 500;
     const message = error.message || "Internal Server Error";
     res.status(status).json({ message });
-    throw err;
+    console.error("[Error]", err);
   });
 }
 async function cleanupBootstrapAlerts() {
   try {
-    const result = await db.delete(alerts).where(and12(eq13(alerts.alertType, "RSS_ITEM"), like(alerts.body, "Page content updated%"))).returning({ id: alerts.id });
+    const result = await db.delete(alerts).where(and11(eq12(alerts.alertType, "RSS_ITEM"), like(alerts.body, "Page content updated%"))).returning({ id: alerts.id });
     if (result.length > 0) {
       console.log(`[Startup] Cleaned up ${result.length} false-positive RSS bootstrap alert(s)`);
     }
@@ -9005,7 +9258,13 @@ async function cleanupBootstrapAlerts() {
   setupRequestLogging(app);
   configureExpoAndLanding(app);
   await cleanupBootstrapAlerts();
-  const server = await registerRoutes(app);
+  let server;
+  try {
+    server = await registerRoutes(app);
+  } catch (err) {
+    console.error("[Startup] registerRoutes() failed \u2014 server cannot start:", err);
+    process.exit(1);
+  }
   setupErrorHandler(app);
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
