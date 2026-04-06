@@ -1,0 +1,134 @@
+{
+  "id": "1139c660-57d4-4010-b782-ec63933a9021",
+  "createdAt": "2026-04-06T00:40:43.441Z",
+  "runtimeVersion": "exposdk:54.0.0",
+  "launchAsset": {
+    "key": "bundle-1775436043441-1962",
+    "contentType": "application/javascript",
+    "url": "https://c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/1775436043441-1962/_expo/static/js/android/bundle.js"
+  },
+  "assets": [],
+  "metadata": {},
+  "extra": {
+    "eas": {
+      "projectId": "f1fa6722-e341-4f9f-a57e-2327bffc26eb"
+    },
+    "expoClient": {
+      "name": "TXDistrictNavigator",
+      "slug": "txdistrictnavigator",
+      "version": "1.0.0",
+      "orientation": "portrait",
+      "icon": "./assets/images/icon.png",
+      "scheme": "txdistrictnavigator",
+      "userInterfaceStyle": "automatic",
+      "newArchEnabled": true,
+      "ios": {
+        "supportsTablet": true,
+        "bundleIdentifier": "com.txdistrictnavigator.app",
+        "buildNumber": "1"
+      },
+      "android": {
+        "adaptiveIcon": {
+          "backgroundColor": "#0047BB",
+          "foregroundImage": "./assets/images/android-icon-foreground.png",
+          "backgroundImage": "./assets/images/android-icon-background.png",
+          "monochromeImage": "./assets/images/android-icon-monochrome.png",
+          "foregroundImageUrl": "http://127.0.0.1:8082/assets/./assets/images/android-icon-foreground.png",
+          "monochromeImageUrl": "http://127.0.0.1:8082/assets/./assets/images/android-icon-monochrome.png",
+          "backgroundImageUrl": "http://127.0.0.1:8082/assets/./assets/images/android-icon-background.png"
+        },
+        "edgeToEdgeEnabled": true,
+        "predictiveBackGestureEnabled": false,
+        "package": "com.txdistrictnavigator.app",
+        "versionCode": 1,
+        "permissions": [
+          "android.permission.RECORD_AUDIO"
+        ]
+      },
+      "extra": {
+        "API_BASE_URL": "https://tx-district-navigator.replit.app",
+        "eas": {
+          "projectId": "f1fa6722-e341-4f9f-a57e-2327bffc26eb"
+        }
+      },
+      "web": {
+        "output": "single",
+        "favicon": "./assets/images/favicon.png"
+      },
+      "plugins": [
+        [
+          "expo-splash-screen",
+          {
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 200,
+            "resizeMode": "contain",
+            "backgroundColor": "#ffffff",
+            "dark": {
+              "backgroundColor": "#1A1A1A"
+            }
+          }
+        ],
+        "expo-web-browser",
+        "expo-notifications",
+        [
+          "expo-image-picker",
+          {
+            "photosPermission": "Allow TXDistrictNavigator to access your photos for mileage odometer images.",
+            "cameraPermission": "Allow TXDistrictNavigator to use the camera to capture odometer photos."
+          }
+        ]
+      ],
+      "experiments": {
+        "reactCompiler": true
+      },
+      "_internal": {
+        "isDebug": false,
+        "projectRoot": "/home/runner/workspace",
+        "dynamicConfigPath": {},
+        "staticConfigPath": "/home/runner/workspace/app.json",
+        "packageJsonPath": "/home/runner/workspace/package.json",
+        "pluginHistory": {
+          "expo-splash-screen": {
+            "name": "expo-splash-screen",
+            "version": "31.0.13"
+          },
+          "expo-web-browser": {
+            "name": "expo-web-browser",
+            "version": "15.0.10"
+          },
+          "expo-notifications": {
+            "name": "expo-notifications",
+            "version": "0.31.5"
+          },
+          "expo-image-picker": {
+            "name": "expo-image-picker",
+            "version": "55.0.12"
+          }
+        }
+      },
+      "sdkVersion": "54.0.0",
+      "platforms": [
+        "ios",
+        "android",
+        "web"
+      ],
+      "androidStatusBar": {
+        "backgroundColor": "#ffffff"
+      },
+      "iconUrl": "http://127.0.0.1:8082/assets/./assets/images/icon.png",
+      "hostUri": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/android"
+    },
+    "expoGo": {
+      "debuggerHost": "c8c69d4c-863b-4bf3-b9b1-63ea1532f2e9-00-19seo2djeqa39.spock.replit.dev/android",
+      "developer": {
+        "tool": "expo-cli",
+        "projectRoot": "/home/runner/workspace"
+      },
+      "packagerOpts": {
+        "dev": false
+      },
+      "mainModuleName": "client/index"
+    },
+    "scopeKey": "@anonymous/txdistrictnavigator-6dfe70de-d612-4869-a8e0-ee456e9d23de"
+  }
+}
