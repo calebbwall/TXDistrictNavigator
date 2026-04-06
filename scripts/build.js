@@ -5,6 +5,7 @@ const { Readable } = require("stream");
 const { pipeline } = require("stream/promises");
 
 let metroProcess = null;
+const METRO_PORT = parseInt(process.env.METRO_PORT || "8082", 10);
 
 function exitWithError(message) {
   console.error(message);
@@ -96,7 +97,7 @@ function clearMetroCache() {
 
 async function checkMetroHealth() {
   try {
-    const response = await fetch("http://localhost:8081/status", {
+    const response = await fetch(`http://localhost:${METRO_PORT}/status`, {
       signal: AbortSignal.timeout(5000),
     });
     return response.ok;
@@ -112,17 +113,21 @@ async function startMetro(expoPublicDomain) {
     return;
   }
 
-  console.log("Starting Metro...");
+  console.log(`Starting Metro on port ${METRO_PORT}...`);
   console.log(`Setting EXPO_PUBLIC_DOMAIN=${expoPublicDomain}`);
   const env = {
     ...process.env,
     EXPO_PUBLIC_DOMAIN: expoPublicDomain,
   };
-  metroProcess = spawn("npm", ["run", "expo:start:static:build"], {
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: false,
-    env,
-  });
+  metroProcess = spawn(
+    "npx",
+    ["expo", "start", "--no-dev", "--minify", "--localhost", "--port", METRO_PORT.toString()],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+      env,
+    }
+  );
 
   if (metroProcess.stdout) {
     metroProcess.stdout.on("data", (data) => {
@@ -187,7 +192,7 @@ async function downloadFile(url, outputPath) {
 }
 
 async function downloadBundle(platform, timestamp) {
-  const url = new URL("http://localhost:8081/client/index.bundle");
+  const url = new URL(`http://localhost:${METRO_PORT}/client/index.bundle`);
   url.searchParams.set("platform", platform);
   url.searchParams.set("dev", "false");
   url.searchParams.set("hot", "false");
@@ -215,7 +220,7 @@ async function downloadManifest(platform) {
 
   try {
     console.log(`Fetching ${platform} manifest...`);
-    const response = await fetch("http://localhost:8081/manifest", {
+    const response = await fetch(`http://localhost:${METRO_PORT}/manifest`, {
       headers: { "expo-platform": platform },
       signal: controller.signal,
     });
@@ -318,7 +323,7 @@ function extractAssets(timestamp) {
       const originalPath = match[1];
       const filename = match[3] + "." + match[4];
 
-      const tempUrl = new URL(`http://localhost:8081${originalPath}`);
+      const tempUrl = new URL(`http://localhost:${METRO_PORT}${originalPath}`);
       const unstablePath = tempUrl.searchParams.get("unstable_path");
 
       if (!unstablePath) {
@@ -362,7 +367,7 @@ async function downloadAssets(assets, timestamp) {
   const downloadPromises = assets.map(async (asset) => {
     const platform = Array.from(asset.platforms)[0];
 
-    const tempUrl = new URL(`http://localhost:8081${asset.originalPath}`);
+    const tempUrl = new URL(`http://localhost:${METRO_PORT}${asset.originalPath}`);
     const unstablePath = tempUrl.searchParams.get("unstable_path");
 
     if (!unstablePath) {
@@ -371,7 +376,7 @@ async function downloadAssets(assets, timestamp) {
 
     const decodedPath = decodeURIComponent(unstablePath);
     const metroUrl = new URL(
-      `http://localhost:8081${path.posix.join("/assets", decodedPath, asset.filename)}`,
+      `http://localhost:${METRO_PORT}${path.posix.join("/assets", decodedPath, asset.filename)}`,
     );
     metroUrl.searchParams.set("platform", platform);
     metroUrl.searchParams.set("hash", asset.hash);
@@ -430,7 +435,7 @@ function updateBundleUrls(timestamp, baseUrl) {
     bundle = bundle.replace(
       /httpServerLocation:"(\/[^"]+)"/g,
       (_match, capturedPath) => {
-        const tempUrl = new URL(`http://localhost:8081${capturedPath}`);
+        const tempUrl = new URL(`http://localhost:${METRO_PORT}${capturedPath}`);
         const unstablePath = tempUrl.searchParams.get("unstable_path");
 
         if (!unstablePath) {
