@@ -15,7 +15,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { OfficialCard } from "@/components/OfficialCard";
 import { ThemedText } from "@/components/ThemedText";
@@ -549,21 +549,6 @@ export default function BrowseOfficialsScreen() {
             </Pressable>
           ) : null}
         </View>
-        {/* Ask AI button */}
-        <Pressable
-          onPress={() => navigation.navigate("AskAI")}
-          style={({ pressed }) => [
-            styles.placeSearchButton,
-            {
-              backgroundColor: theme.inputBackground,
-              borderColor: theme.border,
-              borderWidth: 1,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Ionicons name="sparkles" size={20} color={theme.secondaryText} />
-        </Pressable>
         {selectedSource !== "OTHER_TX" ? (
           <Pressable
             onPress={() => setShowPlaceSearch(true)}
