@@ -26,12 +26,12 @@ interface Message {
 }
 
 const SUGGESTIONS = [
+  "Which Republicans are on Business & Commerce?",
+  "What are the highest profile hearings coming up?",
+  "Tell me about the upcoming State Affairs hearing",
   "Who chairs the Education committee?",
+  "Describe HB 2127",
   "Which Democrats are in the TX Senate?",
-  "What bills are being heard this week?",
-  "How many Republicans are in the TX House?",
-  "Tell me about HB 1234",
-  "Which officials represent Austin?",
 ];
 
 export default function AskAIScreen() {

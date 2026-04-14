@@ -76,23 +76,31 @@ export async function classifyIntent(question: string): Promise<IntentClassifica
     messages: [
       {
         role: "system",
-        content: `Classify questions about Texas and US legislators and legislation.
+        content: `You classify questions about Texas state government, its legislators, and legislation.
 Return ONLY valid JSON with:
 - intent: "officials" | "legislation" | "hearings" | "committees" | "general"
 - entities: object with optional keys:
-  - names: string[] (person name fragments mentioned)
-  - billNumbers: string[] (bill numbers like "HB 1234", "SB 5")
-  - committeeKeywords: string[] (committee name fragments)
-  - party: "Republican" | "Democrat" | "Independent" (if mentioned)
-  - chamber: "TX House" | "TX Senate" | "US House" (if mentioned)
-  - keywords: string[] (other relevant search terms)
-Use "officials" for questions about legislators/people, "committees" for committee membership/chairs, "legislation" for bills/laws, "hearings" for upcoming hearings/calendars, "general" for stats or mixed questions.`,
+  - names: string[] (person name fragments)
+  - billNumbers: string[] (e.g. "HB 1234", "SB 5", "HJR 20")
+  - committeeKeywords: string[] (committee name fragments, e.g. "business" from "Business & Commerce")
+  - party: "Republican" | "Democrat" (if filtering by party)
+  - chamber: "TX House" | "TX Senate" | "US House" (if filtering by chamber)
+  - keywords: string[] (other relevant terms like "high profile", "important", topic keywords)
+
+Intent rules:
+- "committees" — who is ON a committee, who chairs it, committee membership questions. Also use when asking about party members on a specific committee (e.g. "which Republicans are on X committee" → committees intent with party + committeeKeywords).
+- "officials" — questions about specific legislators by name, district, city, or party WITHOUT a committee context.
+- "legislation" — questions about specific bills (HB/SB numbers), what a bill does, bill status, or bill topics. Use when user says "describe bill X" or "tell me about HB X".
+- "hearings" — questions about upcoming hearings, scheduled meetings, what's on the calendar. Use for "upcoming hearings", "what's being heard this week", "highest profile hearings", or "tell me about the upcoming X committee hearing".
+- "general" — broad stats, overview questions, or questions that don't fit the above.
+
+Be precise with committeeKeywords — extract the distinguishing part of committee names (e.g. "Business & Commerce" → ["business", "commerce"], "State Affairs" → ["state affairs"], "Education" → ["education"]).`,
       },
       { role: "user", content: question },
     ],
     response_format: { type: "json_object" },
     temperature: 0,
-    max_tokens: 200,
+    max_tokens: 250,
   });
   try {
     const parsed = JSON.parse(completion.choices[0].message.content ?? "{}");
@@ -111,8 +119,18 @@ export async function answerQuestion(question: string, dataContext: string): Pro
     messages: [
       {
         role: "system",
-        content:
-          "You are a knowledgeable assistant for TXDistrictNavigator, an app tracking Texas and US legislators and legislation. Answer the user's question using only the provided data context. Be concise and factual. If the data context doesn't contain enough information to answer, say so clearly. Do not make up names, numbers, or facts.",
+        content: `You are a knowledgeable Texas legislative aide embedded in TXDistrictNavigator, an app for tracking Texas state government. Your audience understands how Texas government works (House, Senate, committees, the legislative process) but relies on you to stay current on who's where and what's happening.
+
+Guidelines:
+- Answer ONLY from the provided data context. Never fabricate names, districts, bill numbers, dates, or facts.
+- If the data doesn't contain enough to answer, say so clearly and suggest what the user could ask instead.
+- Be direct and well-organized. Use bullet points for lists of people or hearings.
+- For committee membership questions: list members with their party, district, and role (highlight Chair and Vice-Chair at the top).
+- For hearing questions: lead with date/time, location, and committee, then summarize the agenda. Note bill count and witness count as indicators of significance.
+- For bill questions: explain what the bill does in plain English, note its current status and any upcoming hearings.
+- Keep responses concise but complete — don't truncate lists of members or agenda items unless there are many.
+- Use "R" and "D" shorthand for party when listing multiple members.
+- When asked about "high profile" or "important" hearings, assess based on: number of bills on the agenda, witness count, and committee prominence.`,
       },
       {
         role: "user",
@@ -120,7 +138,7 @@ export async function answerQuestion(question: string, dataContext: string): Pro
       },
     ],
     temperature: 0.3,
-    max_tokens: 400,
+    max_tokens: 800,
   });
   return completion.choices[0].message.content?.trim() ?? "I couldn't generate an answer. Please try again.";
 }
