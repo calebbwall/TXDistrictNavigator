@@ -19,6 +19,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
 import { apiRequest } from "@/lib/query-client";
+import { addHearingToCalendar } from "@/lib/calendar";
 
 type RouteParams = RouteProp<LegislativeStackParamList, "HearingDetail">;
 type NavigationProp = NativeStackNavigationProp<LegislativeStackParamList>;
@@ -381,6 +382,17 @@ export default function HearingDetailScreen() {
                 </ThemedText>
               </Pressable>
             ) : null}
+            {hearing.startsAt ? (
+              <Pressable
+                onPress={() => addHearingToCalendar(hearing)}
+                style={[styles.actionButton, { backgroundColor: theme.backgroundSecondary }]}
+              >
+                <Feather name="calendar" size={14} color={theme.text} />
+                <ThemedText type="small" style={{ color: theme.text, marginLeft: 6 }}>
+                  Add to Calendar
+                </ThemedText>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </View>
@@ -457,7 +469,7 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 3, borderRadius: BorderRadius.xs },
   hearingTitle: { fontWeight: "700", marginBottom: Spacing.sm },
   detailRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: Spacing.sm },
-  buttonRow: { flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.sm },
+  buttonRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm, marginTop: Spacing.sm },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
