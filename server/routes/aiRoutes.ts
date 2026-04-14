@@ -4,6 +4,7 @@ import {
   summarizeBill,
   classifyIntent,
   answerQuestion,
+  searchWeb,
   type BillSummaryContext,
 } from "../services/groqService";
 import { db } from "../db";
@@ -90,6 +91,12 @@ export function registerAiRoutes(app: Express) {
         if (entities.names?.length) {
           const nameConditions = entities.names.map(n => ilike(officialPublic.fullName, `%${n}%`));
           conditions.push(or(...nameConditions)!);
+        }
+
+        // Support city/area keyword searches
+        if (entities.keywords?.length) {
+          const cityConditions = entities.keywords.map(kw => ilike(officialPublic.searchCities, `%${kw}%`));
+          conditions.push(or(...cityConditions)!);
         }
 
         if (entities.committeeKeywords?.length) {
@@ -315,7 +322,7 @@ export function registerAiRoutes(app: Express) {
 
           const lines = events.map(e => {
             const dateStr = e.startsAt
-              ? e.startsAt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" })
+              ? e.startsAt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" })
               : "TBD";
             const chamberStr = e.chamber === "TX_HOUSE" ? "House" : e.chamber === "TX_SENATE" ? "Senate" : "";
             const billCount = billCountByEvent.get(e.id) ?? 0;
@@ -356,7 +363,7 @@ export function registerAiRoutes(app: Express) {
           .limit(5);
 
         const hearingLines = nextHearings.map(h => {
-          const dateStr = h.startsAt ? h.startsAt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" }) : "TBD";
+          const dateStr = h.startsAt ? h.startsAt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" }) : "TBD";
           const chamberStr = h.chamber === "TX_HOUSE" ? "House" : h.chamber === "TX_SENATE" ? "Senate" : "";
           return `[${chamberStr}] ${h.committeeName ?? h.title} — ${dateStr}`;
         });
@@ -370,7 +377,22 @@ Committees tracked: ${cmteCount[0]?.cnt ?? 0}
 ${nextHearings.length > 0 ? `\nNext ${nextHearings.length} upcoming hearings:\n${hearingLines.join("\n")}` : "No upcoming hearings."}`;
       }
 
-      const answer = await answerQuestion(question as string, dataContext);
+      // Optionally supplement with web search for richer context
+      let webContext: string | undefined;
+      if (process.env.BRAVE_SEARCH_API_KEY) {
+        const searchQuery = intent === "legislation" && entities.billNumbers?.length
+          ? `Texas ${entities.billNumbers.join(" ")} bill`
+          : intent === "hearings" && entities.committeeKeywords?.length
+          ? `Texas legislature ${entities.committeeKeywords.join(" ")} committee hearing`
+          : intent === "officials" && entities.names?.length
+          ? `Texas legislator ${entities.names.join(" ")}`
+          : null;
+        if (searchQuery) {
+          webContext = await searchWeb(searchQuery);
+        }
+      }
+
+      const answer = await answerQuestion(question as string, dataContext, webContext || undefined);
       res.json({ answer });
     } catch (err) {
       console.error("[/api/ai/ask] error:", err);
