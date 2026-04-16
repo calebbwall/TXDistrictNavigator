@@ -113,32 +113,28 @@ Be precise with committeeKeywords — extract the distinguishing part of committ
   }
 }
 
-/** Search the web using Brave Search API (free tier). Returns empty string if not configured. */
+/** Search the web using Google Custom Search API (100 free queries/day). Returns empty string if not configured. */
 export async function searchWeb(query: string): Promise<string> {
-  const apiKey = process.env.BRAVE_SEARCH_API_KEY;
-  if (!apiKey) return "";
+  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
+  const cx = process.env.GOOGLE_SEARCH_CX;
+  if (!apiKey || !cx) return "";
 
   try {
     const params = new URLSearchParams({
+      key: apiKey,
+      cx,
       q: query,
-      count: "5",
-      text_decorations: "false",
+      num: "5",
     });
-    const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
-      headers: {
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": apiKey,
-      },
-    });
+    const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
     if (!res.ok) return "";
 
     const data = await res.json();
-    const results = (data.web?.results ?? []).slice(0, 5);
-    if (results.length === 0) return "";
+    const items = (data.items ?? []).slice(0, 5);
+    if (items.length === 0) return "";
 
-    const lines = results.map((r: any, i: number) =>
-      `${i + 1}. ${r.title}\n   ${r.description ?? ""}\n   Source: ${r.url}`
+    const lines = items.map((item: any, i: number) =>
+      `${i + 1}. ${item.title}\n   ${item.snippet ?? ""}\n   Source: ${item.link}`
     );
     return `Web search results for "${query}":\n${lines.join("\n\n")}`;
   } catch {

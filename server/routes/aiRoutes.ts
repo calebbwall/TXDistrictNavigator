@@ -379,7 +379,7 @@ ${nextHearings.length > 0 ? `\nNext ${nextHearings.length} upcoming hearings:\n$
 
       // Optionally supplement with web search for richer context
       let webContext: string | undefined;
-      if (process.env.BRAVE_SEARCH_API_KEY) {
+      if (process.env.GOOGLE_SEARCH_API_KEY && process.env.GOOGLE_SEARCH_CX) {
         const searchQuery = intent === "legislation" && entities.billNumbers?.length
           ? `Texas ${entities.billNumbers.join(" ")} bill`
           : intent === "hearings" && entities.committeeKeywords?.length
