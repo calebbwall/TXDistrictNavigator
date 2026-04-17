@@ -319,6 +319,9 @@ async function cleanupBootstrapAlerts(): Promise<void> {
   );
 
   if (process.env.NODE_ENV === "development") {
+    // Replit web preview expects the Expo manifest on port 8081 (the Metro bundler port).
+    // Since we serve static builds (no Metro), we mirror the main app here so manifest
+    // requests from the Expo Go app work on the Replit dev domain.
     const EXPO_PORT = 8081;
     const expoServer = http.createServer((req, res) => {
       app(req as any, res as any);
