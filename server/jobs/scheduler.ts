@@ -18,7 +18,7 @@ import { refreshOtherTexasOfficials } from "./refreshOtherTexasOfficials";
 import { resolveAllMissingPersonIds } from "../lib/identityResolver";
 import { pollAllFeeds, getIsPollingRss } from "./pollRssFeeds";
 import { runDailyRefresh, getIsDailyRefreshing, msUntilNext5amChicago } from "./refreshDailyLegislative";
-import { processEventDateActions } from "../routes/prayerRoutes";
+import { processEventDateActions } from "../lib/prayerUtils";
 import { seedLegislativeFeeds } from "./seedLegislativeFeeds";
 import { db } from "../db";
 import { committees, legislativeEvents } from "@shared/schema";
