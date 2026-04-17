@@ -8,13 +8,6 @@ import { db } from "./db";
 import { alerts } from "@shared/schema";
 import { and, eq, like } from "drizzle-orm";
 const app = express();
-const log = console.log;
-
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
-  }
-}
 
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
@@ -51,13 +44,7 @@ function setupCors(app: express.Application) {
 }
 
 function setupBodyParsing(app: express.Application) {
-  app.use(
-    express.json({
-      verify: (req, _res, buf) => {
-        req.rawBody = buf;
-      },
-    }),
-  );
+  app.use(express.json());
 
   app.use(express.urlencoded({ extended: false }));
 }
@@ -84,11 +71,12 @@ function setupRequestLogging(app: express.Application) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      const maxLen = process.env.NODE_ENV === "development" ? 500 : 200;
+      if (logLine.length > maxLen) {
+        logLine = logLine.slice(0, maxLen - 1) + "…";
       }
 
-      log(logLine);
+      console.log(logLine);
     });
 
     next();
@@ -177,7 +165,7 @@ function serveExpoManifest(platform: string, req: Request, res: Response) {
     }
   }
 
-  log(`[Manifest] Serving ${platform} manifest with baseUrl: ${requestBaseUrl}`);
+  console.log(`[Manifest] Serving ${platform} manifest with baseUrl: ${requestBaseUrl}`);
   res.json(manifest);
 }
 
@@ -199,8 +187,8 @@ function serveLandingPage({
   const baseUrl = `${protocol}://${host}`;
   const expsUrl = `${host}`;
 
-  log(`baseUrl`, baseUrl);
-  log(`expsUrl`, expsUrl);
+  console.log(`baseUrl`, baseUrl);
+  console.log(`expsUrl`, expsUrl);
 
   const html = landingPageTemplate
     .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
@@ -221,7 +209,7 @@ function configureExpoAndLanding(app: express.Application) {
   const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
 
-  log("Serving static Expo files with dynamic manifest routing");
+  console.log("Serving static Expo files with dynamic manifest routing");
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
@@ -237,7 +225,7 @@ function configureExpoAndLanding(app: express.Application) {
       try {
         return serveExpoManifest(platform, req, res);
       } catch (manifestErr) {
-        log("[Manifest] Error serving manifest:", manifestErr);
+        console.log("[Manifest] Error serving manifest:", manifestErr);
         return res.status(500).json({ error: "Failed to serve manifest" });
       }
     }
@@ -257,7 +245,7 @@ function configureExpoAndLanding(app: express.Application) {
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
-  log("Expo routing: Checking expo-platform header on / and /manifest");
+  console.log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 
 function setupErrorHandler(app: express.Application) {
@@ -281,12 +269,16 @@ function setupErrorHandler(app: express.Application) {
   });
 }
 
+let bootstrapAlertsCleaned = false;
+
 async function cleanupBootstrapAlerts(): Promise<void> {
+  if (bootstrapAlertsCleaned) return;
   try {
     const result = await db
       .delete(alerts)
       .where(and(eq(alerts.alertType, "RSS_ITEM"), like(alerts.body, "Page content updated%")))
       .returning({ id: alerts.id });
+    bootstrapAlertsCleaned = true;
     if (result.length > 0) {
       console.log(`[Startup] Cleaned up ${result.length} false-positive RSS bootstrap alert(s)`);
     }
@@ -322,7 +314,7 @@ async function cleanupBootstrapAlerts(): Promise<void> {
       reusePort: true,
     },
     () => {
-      log(`express server serving on port ${port}`);
+      console.log(`express server serving on port ${port}`);
     },
   );
 
@@ -333,7 +325,7 @@ async function cleanupBootstrapAlerts(): Promise<void> {
     });
     expoServer.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
-        log(`[ExpoServer] Port ${EXPO_PORT} in use (Metro running?), will retry in 5s...`);
+        console.log(`[ExpoServer] Port ${EXPO_PORT} in use (Metro running?), will retry in 5s...`);
         setTimeout(() => {
           expoServer.close();
           expoServer.listen({ port: EXPO_PORT, host: "0.0.0.0" });
@@ -341,7 +333,7 @@ async function cleanupBootstrapAlerts(): Promise<void> {
       }
     });
     expoServer.listen({ port: EXPO_PORT, host: "0.0.0.0" }, () => {
-      log(`[ExpoServer] Serving static Expo manifests on port ${EXPO_PORT}`);
+      console.log(`[ExpoServer] Serving static Expo manifests on port ${EXPO_PORT}`);
     });
   }
 
