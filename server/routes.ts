@@ -1,33 +1,25 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
-import fs from "fs";
-import path from "path";
-import { txHouseGeoJSON, txSenateGeoJSON, usCongressGeoJSON, txHouseGeoJSONFull, txSenateGeoJSONFull, usCongressGeoJSONFull } from "./data/geojson";
 import { db } from "./db";
 import { registerPrayerRoutes } from "./routes/prayerRoutes";
 import { registerLegislativeRoutes } from "./routes/legislativeRoutes";
 import { registerAiRoutes } from "./routes/aiRoutes";
-import { 
-  officialPublic, 
-  officialPrivate, 
-  refreshJobLog,
+import { registerMapRoutes } from "./routes/mapRoutes";
+import { registerAdminRoutes } from "./routes/adminRoutes";
+import {
+  officialPublic,
+  officialPrivate,
   updateOfficialPrivateSchema,
   DISTRICT_RANGES,
   type MergedOfficial,
   type OfficialPublic,
-  type OfficialPrivate 
+  type OfficialPrivate,
 } from "@shared/schema";
-import { desc } from "drizzle-orm";
 import { eq, and, sql, or, ilike, inArray, isNull } from "drizzle-orm";
-import * as turf from "@turf/turf";
-import booleanIntersects from "@turf/boolean-intersects";
-import type { Feature, FeatureCollection, Polygon } from "geojson";
+import { committees, committeeMemberships } from "@shared/schema";
 
 type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
 type DistrictSourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE";
-
-// Map HTML loaded once at startup from server/templates/map.html
-const mapHtml = fs.readFileSync(path.resolve(process.cwd(), "server", "templates", "map.html"), "utf-8");
 
 function createVacantOfficial(source: DistrictSourceType, district: number): MergedOfficial {
   const chamber = source === "TX_HOUSE" ? "TX House" 
@@ -87,30 +79,10 @@ function fillVacancies(
   
   return result;
 }
-import { 
-  maybeRunScheduledRefresh, 
-  checkAndRefreshIfChanged, 
-  getAllRefreshStates,
-  getIsRefreshing,
-  type SmartRefreshResult 
-} from "./jobs/refreshOfficials";
-import { startOfficialsRefreshScheduler, getSchedulerStatus } from "./jobs/scheduler";
-import { 
-  checkAndRefreshGeoJSONIfChanged, 
-  getGeoJSONRefreshStates,
-  getIsRefreshingGeoJSON,
-} from "./jobs/refreshGeoJSON";
-import {
-  checkAndRefreshCommitteesIfChanged,
-  getAllCommitteeRefreshStates,
-  getIsRefreshingCommittees,
-  forceResetIsRefreshingCommittees,
-  maybeRunCommitteeRefresh,
-  backfillMissingCommitteeMembers,
-} from "./jobs/refreshCommittees";
+import { maybeRunScheduledRefresh } from "./jobs/refreshOfficials";
+import { startOfficialsRefreshScheduler } from "./jobs/scheduler";
+import { maybeRunCommitteeRefresh } from "./jobs/refreshCommittees";
 import { maybeRunOtherTxRefresh } from "./jobs/refreshOtherTexasOfficials";
-import { lookupPlace, lookupPlaceCandidates, getCacheStats, type PlaceResult } from "./geonames";
-import { committees, committeeMemberships } from "@shared/schema";
 
 type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
@@ -170,36 +142,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerPrayerRoutes(app);
   registerLegislativeRoutes(app);
   registerAiRoutes(app);
-
-  app.get("/api/geojson/tx_house", (_req, res) => {
-    res.json(txHouseGeoJSON);
-  });
-
-  app.get("/api/geojson/tx_senate", (_req, res) => {
-    res.json(txSenateGeoJSON);
-  });
-
-  app.get("/api/geojson/us_congress", (_req, res) => {
-    res.json(usCongressGeoJSON);
-  });
-
-  app.get("/api/geojson/tx_house_full", (_req, res) => {
-    res.json(txHouseGeoJSONFull);
-  });
-
-  app.get("/api/geojson/tx_senate_full", (_req, res) => {
-    res.json(txSenateGeoJSONFull);
-  });
-
-  app.get("/api/geojson/us_congress_full", (_req, res) => {
-    res.json(usCongressGeoJSONFull);
-  });
-
-  // Serve the map HTML page for iframe embedding
-  app.get("/api/map.html", (_req, res) => {
-    res.setHeader("Content-Type", "text/html");
-    res.send(mapHtml);
-  });
+  registerMapRoutes(app);
+  registerAdminRoutes(app);
 
   app.get("/api/officials", async (req, res) => {
     try {
@@ -690,272 +634,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/refresh", async (req, res) => {
-    try {
-      const { refreshAllOfficials } = await import("./jobs/refreshOfficials");
-      await refreshAllOfficials();
-      res.json({ success: true, message: "Refresh completed" });
-    } catch (err) {
-      console.error("[API] Error during manual refresh:", err);
-      res.status(500).json({ error: "Refresh failed" });
-    }
-  });
-
-  app.post("/admin/refresh/officials", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(503).json({ 
-          error: "Admin refresh not configured",
-          message: "Set ADMIN_REFRESH_TOKEN environment variable" 
-        });
-      }
-      
-      if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
-      }
-      
-      if (getIsRefreshing()) {
-        return res.status(409).json({ 
-          error: "Refresh in progress",
-          message: "A refresh is already running. Try again later." 
-        });
-      }
-      
-      const force = req.query.force === "true";
-      
-      console.log(`[Admin] Manual refresh triggered (force=${force})`);
-      
-      const result = await checkAndRefreshIfChanged(force);
-      
-      res.json({
-        success: true,
-        force,
-        sourcesChecked: result.sourcesChecked,
-        sourcesChanged: result.sourcesChanged,
-        sourcesRefreshed: result.sourcesRefreshed,
-        errors: result.errors,
-        durationMs: result.durationMs,
-      });
-      
-    } catch (err) {
-      console.error("[Admin] Refresh error:", err);
-      res.status(500).json({ error: "Refresh failed", details: String(err) });
-    }
-  });
-
-  app.get("/admin/refresh/status", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(503).json({ error: "Admin not configured" });
-      }
-      
-      if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
-      }
-      
-      const refreshStates = await getAllRefreshStates();
-      const geoJSONStates = await getGeoJSONRefreshStates();
-      const committeeStates = await getAllCommitteeRefreshStates();
-      const schedulerStatus = getSchedulerStatus();
-      const isRefreshing = getIsRefreshing();
-      const isRefreshingGeoJSON = getIsRefreshingGeoJSON();
-      const isRefreshingCommittees = getIsRefreshingCommittees();
-      
-      res.json({
-        isRefreshing,
-        isRefreshingGeoJSON,
-        isRefreshingCommittees,
-        scheduler: schedulerStatus,
-        officialsSources: refreshStates,
-        geoJSONSources: geoJSONStates,
-        committeeSources: committeeStates,
-      });
-      
-    } catch (err) {
-      console.error("[Admin] Status error:", err);
-      res.status(500).json({ error: "Failed to get status" });
-    }
-  });
-
-  app.post("/admin/refresh/geojson", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(503).json({ 
-          error: "Admin refresh not configured",
-          message: "Set ADMIN_REFRESH_TOKEN environment variable" 
-        });
-      }
-      
-      if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
-      }
-      
-      if (getIsRefreshingGeoJSON()) {
-        return res.status(409).json({ 
-          error: "Refresh in progress",
-          message: "A GeoJSON refresh is already running. Try again later." 
-        });
-      }
-      
-      const force = req.query.force === "true";
-      
-      console.log(`[Admin] Manual GeoJSON refresh triggered (force=${force})`);
-      
-      const result = await checkAndRefreshGeoJSONIfChanged(force);
-      
-      res.json({
-        success: true,
-        force,
-        sourcesChecked: result.sourcesChecked,
-        sourcesChanged: result.sourcesChanged,
-        sourcesRefreshed: result.sourcesRefreshed,
-        errors: result.errors,
-        durationMs: result.durationMs,
-      });
-      
-    } catch (err) {
-      console.error("[Admin] GeoJSON refresh error:", err);
-      res.status(500).json({ error: "Refresh failed", details: String(err) });
-    }
-  });
-
-  app.get("/api/admin/geojson/source-debug", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(503).json({ 
-          error: "Admin refresh not configured",
-          message: "Set ADMIN_REFRESH_TOKEN environment variable" 
-        });
-      }
-      
-      if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
-      }
-      
-      const sources = [
-        {
-          name: "TX_HOUSE",
-          url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson&resultRecordCount=1"
-        },
-        {
-          name: "TX_SENATE",
-          url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_Senate_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson&resultRecordCount=1"
-        },
-        {
-          name: "US_CONGRESS",
-          url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_US_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson&resultRecordCount=1"
-        }
-      ];
-      
-      const results = await Promise.all(sources.map(async (source) => {
-        try {
-          const response = await fetch(source.url);
-          const data = await response.json() as { features?: Array<{ properties?: Record<string, unknown> }> };
-          const sampleProps = data.features?.[0]?.properties || {};
-          
-          const countUrl = source.url.replace("resultRecordCount=1", "returnCountOnly=true");
-          const countResponse = await fetch(countUrl);
-          const countData = await countResponse.json() as { count?: number };
-          
-          return {
-            name: source.name,
-            featureCount: countData.count,
-            samplePropertyKeys: Object.keys(sampleProps),
-            sampleDistrictValue: sampleProps.DIST_NBR,
-            sampleRepName: sampleProps.REP_NM,
-            status: "ok"
-          };
-        } catch (err) {
-          return {
-            name: source.name,
-            status: "error",
-            error: String(err)
-          };
-        }
-      }));
-      
-      res.json({ sources: results });
-      
-    } catch (err) {
-      console.error("[Admin] GeoJSON source debug error:", err);
-      res.status(500).json({ error: "Debug failed", details: String(err) });
-    }
-  });
-
-  app.get("/api/admin/officials-counts", async (_req, res) => {
-    try {
-      const counts = await db.select({
-        source: officialPublic.source,
-        count: sql<number>`count(*)::int`,
-      })
-        .from(officialPublic)
-        .where(eq(officialPublic.active, true))
-        .groupBy(officialPublic.source);
-      
-      const countsBySource: Record<string, number> = {
-        TX_HOUSE: 0,
-        TX_SENATE: 0,
-        US_HOUSE: 0,
-      };
-      
-      for (const { source, count } of counts) {
-        countsBySource[source] = count;
-      }
-      
-      const lastRefreshJobs = await db.select()
-        .from(refreshJobLog)
-        .orderBy(desc(refreshJobLog.startedAt))
-        .limit(5);
-      
-      const lastSuccessfulRefresh = lastRefreshJobs.find(j => j.status === 'success');
-      const lastFailedRefresh = lastRefreshJobs.find(j => j.status === 'failed' || j.status === 'aborted');
-      
-      const result = {
-        counts: countsBySource,
-        total: countsBySource.TX_HOUSE + countsBySource.TX_SENATE + countsBySource.US_HOUSE,
-        lastRefresh: lastSuccessfulRefresh ? {
-          source: lastSuccessfulRefresh.source,
-          completedAt: lastSuccessfulRefresh.completedAt,
-          parsedCount: lastSuccessfulRefresh.parsedCount,
-          upsertedCount: lastSuccessfulRefresh.upsertedCount,
-          durationMs: lastSuccessfulRefresh.durationMs,
-        } : null,
-        lastError: lastFailedRefresh ? {
-          source: lastFailedRefresh.source,
-          startedAt: lastFailedRefresh.startedAt,
-          status: lastFailedRefresh.status,
-          errorMessage: lastFailedRefresh.errorMessage,
-        } : null,
-        recentJobs: lastRefreshJobs.map(j => ({
-          source: j.source,
-          status: j.status,
-          startedAt: j.startedAt,
-          completedAt: j.completedAt,
-          errorMessage: j.errorMessage,
-        })),
-      };
-      
-      console.log("[API] Admin officials counts:", result.counts);
-      
-      res.set("Cache-Control", "no-store, no-cache, must-revalidate");
-      res.json(result);
-    } catch (err) {
-      console.error("[API] Error fetching admin counts:", err);
-      res.status(500).json({ error: "Failed to fetch counts" });
-    }
-  });
 
   app.get("/api/stats", async (_req, res) => {
     try {
@@ -1004,151 +682,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Cache parsed GeoJSON feature collections for spatial queries
-  let cachedGeoJSON: {
-    tx_house: FeatureCollection | null;
-    tx_senate: FeatureCollection | null;
-    us_congress: FeatureCollection | null;
-  } = {
-    tx_house: null,
-    tx_senate: null,
-    us_congress: null,
-  };
-
-  function getGeoJSONForOverlay(overlayType: string): FeatureCollection | null {
-    if (overlayType === "house" || overlayType === "tx_house") {
-      if (!cachedGeoJSON.tx_house) {
-        cachedGeoJSON.tx_house = txHouseGeoJSON as unknown as FeatureCollection;
-      }
-      return cachedGeoJSON.tx_house;
-    }
-    if (overlayType === "senate" || overlayType === "tx_senate") {
-      if (!cachedGeoJSON.tx_senate) {
-        cachedGeoJSON.tx_senate = txSenateGeoJSON as unknown as FeatureCollection;
-      }
-      return cachedGeoJSON.tx_senate;
-    }
-    if (overlayType === "congress" || overlayType === "us_congress") {
-      if (!cachedGeoJSON.us_congress) {
-        cachedGeoJSON.us_congress = usCongressGeoJSON as unknown as FeatureCollection;
-      }
-      return cachedGeoJSON.us_congress;
-    }
-    return null;
-  }
-
-  function getSourceFromOverlay(overlay: string): SourceType {
-    if (overlay === "house" || overlay === "tx_house") return "TX_HOUSE";
-    if (overlay === "senate" || overlay === "tx_senate") return "TX_SENATE";
-    return "US_HOUSE";
-  }
-
-  function getDistrictNumber(feature: Feature): number | null {
-    const props = feature.properties || {};
-    const districtNum = props.district || props.SLDUST || props.SLDLST || props.CD;
-    return districtNum ? parseInt(String(districtNum)) : null;
-  }
-
-  app.get("/api/lookup/place", async (req, res) => {
-    try {
-      const q = String(req.query.q || "").trim();
-      
-      if (q.length < 2) {
-        return res.status(400).json({ error: "Query too short (min 2 characters)" });
-      }
-
-      const { result, fromCache, error } = await lookupPlace(q);
-
-      if (error) {
-        console.log(`[Lookup] Place error: ${error}`);
-        return res.status(500).json({ error });
-      }
-
-      if (!result) {
-        console.log(`[Lookup] No Texas place found for "${q}"`);
-        return res.status(404).json({ message: "No Texas place found" });
-      }
-
-      console.log(`[Lookup] Place: "${q}" → ${result.name} (${result.lat}, ${result.lng}) [cache=${fromCache}]`);
-      res.json({ ...result, fromCache });
-    } catch (err) {
-      console.error("[Lookup] Place error:", err);
-      res.status(500).json({ error: "Place lookup failed" });
-    }
-  });
-
-  app.get("/api/lookup/place/candidates", async (req, res) => {
-    try {
-      const q = String(req.query.q || "").trim();
-      const maxResults = Math.min(parseInt(String(req.query.max || "5"), 10) || 5, 10);
-      
-      if (q.length < 2) {
-        return res.status(400).json({ error: "Query too short (min 2 characters)" });
-      }
-
-      const { results, fromCache, error } = await lookupPlaceCandidates(q, maxResults);
-
-      if (error) {
-        console.log(`[Lookup] Place candidates error: ${error}`);
-        return res.status(500).json({ error });
-      }
-
-      console.log(`[Lookup] Place candidates: "${q}" → ${results.length} results [cache=${fromCache}]`);
-      res.json({ results, fromCache });
-    } catch (err) {
-      console.error("[Lookup] Place candidates error:", err);
-      res.status(500).json({ error: "Place lookup failed" });
-    }
-  });
-
-  app.post("/api/lookup/districts-at-point", (req, res) => {
-    try {
-      const { lat, lng } = req.body;
-
-      if (typeof lat !== "number" || typeof lng !== "number") {
-        return res.status(400).json({ error: "lat and lng (numbers) are required" });
-      }
-
-      console.log(`[Lookup] Districts at point: (${lat}, ${lng})`);
-
-      const point = turf.point([lng, lat]);
-      const hits: { source: SourceType; districtNumber: number }[] = [];
-
-      const overlayMappings: Array<{ overlay: "house" | "senate" | "congress"; source: SourceType }> = [
-        { overlay: "house", source: "TX_HOUSE" },
-        { overlay: "senate", source: "TX_SENATE" },
-        { overlay: "congress", source: "US_HOUSE" },
-      ];
-
-      for (const { overlay, source } of overlayMappings) {
-        const featureCollection = getGeoJSONForOverlay(overlay);
-        if (!featureCollection || !featureCollection.features) continue;
-
-        for (const feature of featureCollection.features) {
-          try {
-            if (turf.booleanPointInPolygon(point, feature as Feature<Polygon>)) {
-              const districtNumber = getDistrictNumber(feature as Feature);
-              if (districtNumber !== null) {
-                hits.push({ source, districtNumber });
-                break;
-              }
-            }
-          } catch {
-          }
-        }
-      }
-
-      console.log(`[Lookup] Districts found: ${hits.map(h => `${h.source}:${h.districtNumber}`).join(", ") || "none"}`);
-      res.json({ hits, lat, lng });
-    } catch (err) {
-      console.error("[Lookup] Districts-at-point error:", err);
-      res.status(500).json({ error: "Failed to find districts at point" });
-    }
-  });
-
-  app.get("/api/lookup/cache-stats", (req, res) => {
-    res.json(getCacheStats());
-  });
 
   // Committee API endpoints
   app.get("/api/committees", async (req, res) => {
@@ -1258,87 +791,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/admin/refresh/committees", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
-      }
-      
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      
-      const force = req.query.force === "true";
-      
-      if (getIsRefreshingCommittees()) {
-        return res.status(409).json({ error: "Committees refresh already in progress" });
-      }
-      
-      console.log(`[Admin] Committees refresh triggered (force=${force})`);
-      const result = await checkAndRefreshCommitteesIfChanged(force);
-      
-      res.json({
-        success: true,
-        results: result.results,
-        durationMs: result.durationMs,
-      });
-    } catch (err) {
-      console.error("[Admin] Committees refresh error:", err);
-      res.status(500).json({ error: "Committees refresh failed" });
-    }
-  });
 
-  app.post("/admin/refresh/committees/reset", (req, res) => {
-    const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-    const providedToken = req.headers["x-admin-token"];
-    if (!adminToken || providedToken !== adminToken) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    forceResetIsRefreshingCommittees();
-    console.log("[Admin] isRefreshingCommittees flag force-reset");
-    res.json({ success: true, message: "isRefreshing flag reset. You can now trigger a fresh refresh." });
-  });
 
-  app.post("/admin/refresh/committees/backfill-missing", async (req, res) => {
-    const token = req.headers["x-admin-token"];
-    if (token !== process.env.ADMIN_REFRESH_TOKEN) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    try {
-      const result = await backfillMissingCommitteeMembers();
-      res.json({ success: true, ...result });
-    } catch (err) {
-      console.error("[Admin] backfill-missing error:", err);
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  // Other Texas Officials endpoints
   app.get("/api/other-tx-officials", async (req, res) => {
     try {
       const { active, grouped } = req.query;
-      
+
       const conditions = [eq(officialPublic.source, "OTHER_TX")];
-      
+
       if (active !== "false") {
         conditions.push(eq(officialPublic.active, true));
       }
-      
-      const officials = await db.select()
-        .from(officialPublic)
-        .where(and(...conditions));
-      
+
+      const officials = await db.select().from(officialPublic).where(and(...conditions));
+
       const privateData = await db.select().from(officialPrivate);
-      const privateMap = new Map(privateData.map(p => [p.officialPublicId, p]));
-      
-      const merged: MergedOfficial[] = officials.map(pub => 
+      const privateMap = new Map(privateData.map((p) => [p.officialPublicId, p]));
+
+      const merged: MergedOfficial[] = officials.map((pub) =>
         mergeOfficial(pub, privateMap.get(pub.id) || null)
       );
-      
-      // Return grouped by category if requested
+
       if (grouped === "true") {
         const groupedOfficials = {
           executive: [] as MergedOfficial[],
@@ -1346,33 +819,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           supremeCourt: [] as MergedOfficial[],
           criminalAppeals: [] as MergedOfficial[],
         };
-        
+
         for (const official of merged) {
-          const role = official.roleTitle || '';
-          if (role.includes('Supreme Court')) {
+          const role = official.roleTitle || "";
+          if (role.includes("Supreme Court")) {
             groupedOfficials.supremeCourt.push(official);
-          } else if (role.includes('Criminal Appeals')) {
+          } else if (role.includes("Criminal Appeals")) {
             groupedOfficials.criminalAppeals.push(official);
-          } else if (role.includes('Secretary of State')) {
+          } else if (role.includes("Secretary of State")) {
             groupedOfficials.secretaryOfState.push(official);
           } else {
             groupedOfficials.executive.push(official);
           }
         }
-        
-        // Sort Supreme Court and Criminal Appeals by place number
+
         const extractPlace = (role: string): number => {
           const match = role.match(/Place (\d+)/);
           return match ? parseInt(match[1], 10) : 0;
         };
-        
-        groupedOfficials.supremeCourt.sort((a, b) => 
-          extractPlace(a.roleTitle || '') - extractPlace(b.roleTitle || '')
+
+        groupedOfficials.supremeCourt.sort(
+          (a, b) => extractPlace(a.roleTitle || "") - extractPlace(b.roleTitle || "")
         );
-        groupedOfficials.criminalAppeals.sort((a, b) => 
-          extractPlace(a.roleTitle || '') - extractPlace(b.roleTitle || '')
+        groupedOfficials.criminalAppeals.sort(
+          (a, b) => extractPlace(a.roleTitle || "") - extractPlace(b.roleTitle || "")
         );
-        
+
         res.json({
           grouped: groupedOfficials,
           counts: {
@@ -1385,357 +857,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         return;
       }
-      
+
       res.json(merged);
     } catch (err) {
       console.error("[API] Error fetching other TX officials:", err);
       res.status(500).json({ error: "Failed to fetch other TX officials" });
-    }
-  });
-
-  app.post("/admin/refresh/other-tx-officials", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
-      }
-      
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      
-      const force = req.query.force === "true";
-      
-      console.log(`[Admin] Other TX Officials refresh triggered (force=${force})`);
-      
-      const { refreshOtherTexasOfficials } = await import("./jobs/refreshOtherTexasOfficials");
-      const result = await refreshOtherTexasOfficials({ force });
-      
-      res.json({
-        success: result.success,
-        fingerprint: result.fingerprint,
-        changed: result.changed,
-        upsertedCount: result.upsertedCount,
-        deactivatedCount: result.deactivatedCount,
-        totalOfficials: result.totalOfficials,
-        breakdown: result.breakdown,
-        sources: result.sources,
-        error: result.error,
-      });
-    } catch (err) {
-      console.error("[Admin] Other TX Officials refresh error:", err);
-      res.status(500).json({ error: "Other TX Officials refresh failed" });
-    }
-  });
-
-  // Admin endpoint: Backfill headshots from Texas Tribune for TX House/Senate
-  app.post("/admin/backfill/headshots", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(503).json({ error: "Admin not configured" });
-      }
-      
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      
-      const { lookupHeadshotFromTexasTribune } = await import("./lib/texasTribuneLookup");
-      
-      const officials = await db.select({
-        id: officialPublic.id,
-        fullName: officialPublic.fullName,
-        source: officialPublic.source,
-        photoUrl: officialPublic.photoUrl,
-      })
-      .from(officialPublic)
-      .where(and(
-        eq(officialPublic.active, true),
-        inArray(officialPublic.source, ["TX_HOUSE", "TX_SENATE"]),
-        or(
-          isNull(officialPublic.photoUrl),
-          eq(officialPublic.photoUrl, "")
-        )
-      ));
-      
-      console.log(`[Admin] Headshot backfill: ${officials.length} officials missing photos`);
-      
-      res.json({ 
-        message: "Headshot backfill started",
-        totalToProcess: officials.length,
-      });
-      
-      let found = 0;
-      let failed = 0;
-      
-      for (const official of officials) {
-        try {
-          const result = await lookupHeadshotFromTexasTribune(official.fullName);
-          if (result.success && result.photoUrl) {
-            await db.update(officialPublic)
-              .set({ photoUrl: result.photoUrl })
-              .where(eq(officialPublic.id, official.id));
-            found++;
-            console.log(`[Headshot] ${found}/${officials.length} Found: ${official.fullName}`);
-          } else {
-            failed++;
-            console.log(`[Headshot] Not found: ${official.fullName}`);
-          }
-        } catch (err) {
-          failed++;
-          console.error(`[Headshot] Error for ${official.fullName}:`, err);
-        }
-        await new Promise(r => setTimeout(r, 1000));
-      }
-      
-      console.log(`[Admin] Headshot backfill complete: ${found} found, ${failed} not found`);
-    } catch (err) {
-      console.error("[Admin] Headshot backfill error:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Headshot backfill failed" });
-      }
-    }
-  });
-
-  // Admin endpoint: Create explicit person link (identity override)
-  app.post("/admin/person/link", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(503).json({ error: "Admin not configured" });
-      }
-      
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      
-      const { officialPublicId, personId } = req.body;
-      
-      if (!officialPublicId || !personId) {
-        return res.status(400).json({ error: "officialPublicId and personId are required" });
-      }
-      
-      // Verify official exists
-      const official = await db
-        .select()
-        .from(officialPublic)
-        .where(eq(officialPublic.id, officialPublicId))
-        .limit(1);
-      
-      if (official.length === 0) {
-        return res.status(404).json({ error: "Official not found" });
-      }
-      
-      // Verify person exists
-      const { persons } = await import("@shared/schema");
-      const person = await db
-        .select()
-        .from(persons)
-        .where(eq(persons.id, personId))
-        .limit(1);
-      
-      if (person.length === 0) {
-        return res.status(404).json({ error: "Person not found" });
-      }
-      
-      const { setExplicitPersonLink } = await import("./lib/identityResolver");
-      const result = await setExplicitPersonLink(officialPublicId, personId);
-      
-      console.log(`[Admin] Created explicit person link: official ${officialPublicId} -> person ${personId}`);
-      
-      res.json({
-        success: true,
-        link: result,
-        official: official[0],
-        person: person[0],
-      });
-    } catch (err) {
-      console.error("[Admin] Person link error:", err);
-      res.status(500).json({ error: "Failed to create person link" });
-    }
-  });
-
-  // Admin endpoint: Get comprehensive system status
-  app.get("/admin/status", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      
-      if (!adminToken) {
-        return res.status(503).json({ error: "Admin not configured" });
-      }
-      
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      
-      // Get identity stats
-      const { getIdentityStats, getAllExplicitPersonLinks } = await import("./lib/identityResolver");
-      const identityStats = await getIdentityStats();
-      const explicitLinks = await getAllExplicitPersonLinks();
-      
-      // Get refresh states for all data sources
-      const officialsStates = await getAllRefreshStates();
-      const geojsonStates = await getGeoJSONRefreshStates();
-      const committeesStates = await getAllCommitteeRefreshStates();
-      
-      // Get scheduler status
-      const schedulerStatus = getSchedulerStatus();
-      
-      // Format response
-      const datasets = {
-        officials: {
-          TX_HOUSE: officialsStates.find(s => s.source === "TX_HOUSE") || null,
-          TX_SENATE: officialsStates.find(s => s.source === "TX_SENATE") || null,
-          US_HOUSE: officialsStates.find(s => s.source === "US_HOUSE") || null,
-          isRefreshing: getIsRefreshing(),
-        },
-        other_tx_officials: {
-          note: "Static data source - no refresh state tracking",
-        },
-        geojson: {
-          states: geojsonStates,
-          isRefreshing: getIsRefreshingGeoJSON(),
-        },
-        committees: {
-          states: committeesStates,
-          isRefreshing: getIsRefreshingCommittees(),
-        },
-      };
-      
-      res.json({
-        timestamp: new Date().toISOString(),
-        scheduler: schedulerStatus,
-        datasets,
-        identity: {
-          ...identityStats,
-          explicitLinksDetails: explicitLinks,
-        },
-      });
-    } catch (err) {
-      console.error("[Admin] Status error:", err);
-      res.status(500).json({ error: "Failed to get system status" });
-    }
-  });
-
-  app.post("/api/map/area-hits", (req, res) => {
-    try {
-      const { geometry, overlays } = req.body;
-
-      if (!geometry || geometry.type !== "Polygon" || !Array.isArray(geometry.coordinates)) {
-        return res.status(400).json({ error: "Invalid geometry: must be a Polygon" });
-      }
-
-      if (!overlays || typeof overlays !== "object") {
-        return res.status(400).json({ error: "overlays object is required" });
-      }
-
-      console.log("[API] /api/map/area-hits - geometry points:", geometry.coordinates[0]?.length);
-      console.log("[API] /api/map/area-hits - overlays:", JSON.stringify(overlays));
-
-      const drawnPolygon = turf.polygon(geometry.coordinates);
-      const hits: { source: SourceType; districtNumber: number }[] = [];
-      const hitDebug: Record<string, number> = {};
-
-      const overlayTypes = ["house", "senate", "congress"] as const;
-
-      for (const overlayType of overlayTypes) {
-        if (!overlays[overlayType]) continue;
-
-        const featureCollection = getGeoJSONForOverlay(overlayType);
-        if (!featureCollection || !featureCollection.features) {
-          console.log(`[API] No GeoJSON for overlay: ${overlayType}`);
-          continue;
-        }
-
-        let hitCount = 0;
-        for (const feature of featureCollection.features) {
-          try {
-            if (booleanIntersects(drawnPolygon, feature as Feature)) {
-              const districtNumber = getDistrictNumber(feature as Feature);
-              if (districtNumber !== null) {
-                const source = getSourceFromOverlay(overlayType);
-                const alreadyExists = hits.some(
-                  (h) => h.source === source && h.districtNumber === districtNumber
-                );
-                if (!alreadyExists) {
-                  hits.push({ source, districtNumber });
-                  hitCount++;
-                }
-              }
-            }
-          } catch (intersectErr) {
-            // Skip invalid geometries
-          }
-        }
-        hitDebug[overlayType] = hitCount;
-      }
-
-      console.log("[API] /api/map/area-hits - hits per overlay:", JSON.stringify(hitDebug));
-      console.log("[API] /api/map/area-hits - total hits:", hits.length);
-
-      res.json({ hits });
-    } catch (err) {
-      console.error("[API] Error in /api/map/area-hits:", err);
-      res.status(500).json({ error: "Failed to compute area hits" });
-    }
-  });
-
-  app.get("/api/photo-proxy", async (req, res) => {
-    try {
-      const url = req.query.url as string;
-      if (!url) {
-        return res.status(400).json({ error: "Missing url parameter" });
-      }
-
-      const allowedDomains = [
-        "directory.texastribune.org",
-        "www.congress.gov",
-        "congress.gov",
-        "bioguide.congress.gov",
-      ];
-
-      let parsedUrl: URL;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        return res.status(400).json({ error: "Invalid URL" });
-      }
-
-      if (!allowedDomains.includes(parsedUrl.hostname)) {
-        return res.status(403).json({ error: "Domain not allowed" });
-      }
-
-      const imageResponse = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-          "Referer": `https://${parsedUrl.hostname}/`,
-        },
-      });
-
-      if (!imageResponse.ok) {
-        return res.status(imageResponse.status).json({ error: "Failed to fetch image" });
-      }
-
-      const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
-      const buffer = Buffer.from(await imageResponse.arrayBuffer());
-
-      res.set({
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=604800, immutable",
-        "Content-Length": String(buffer.length),
-      });
-      res.send(buffer);
-    } catch (error) {
-      console.error("[API] Photo proxy error:", error);
-      res.status(500).json({ error: "Photo proxy failed" });
     }
   });
 
