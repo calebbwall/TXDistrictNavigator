@@ -11,6 +11,9 @@ import {
   type Prayer,
 } from "@shared/schema";
 import { eq, and, sql, or, ilike, inArray, desc, asc, isNull, lte, gte, not } from "drizzle-orm";
+import { processEventDateActions } from "../lib/prayerUtils";
+
+export { processEventDateActions };
 
 function getTodayDateKey(): string {
   const now = new Date();
@@ -68,39 +71,6 @@ async function autoArchiveAnswered(): Promise<void> {
       eq(prayers.status, "ANSWERED"),
       lte(prayers.answeredAt, cutoff)
     ));
-}
-
-export async function processEventDateActions(): Promise<void> {
-  try {
-    const now = new Date();
-    const openWithEvents = await db.select().from(prayers)
-      .where(and(
-        eq(prayers.status, "OPEN"),
-        not(eq(prayers.autoAfterEventAction, "none")),
-      ));
-
-    for (const prayer of openWithEvents) {
-      if (!prayer.eventDate) continue;
-      const triggerDate = new Date(prayer.eventDate);
-      triggerDate.setDate(triggerDate.getDate() + (prayer.autoAfterEventDaysOffset || 0));
-      if (now >= triggerDate) {
-        if (prayer.autoAfterEventAction === "markAnswered") {
-          await db.update(prayers).set({
-            status: "ANSWERED",
-            answeredAt: now,
-            answerNote: "Auto-marked answered after event date",
-            updatedAt: now,
-          }).where(eq(prayers.id, prayer.id));
-        } else if (prayer.autoAfterEventAction === "archive") {
-          await db.update(prayers).set({
-            status: "ARCHIVED",
-            archivedAt: now,
-            updatedAt: now,
-          }).where(eq(prayers.id, prayer.id));
-        }
-      }
-    }
-  } catch (_) {}
 }
 
 async function ensureStreakRow() {

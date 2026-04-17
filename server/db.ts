@@ -13,7 +13,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 30000,
   idleTimeoutMillis: 30000,
   keepAlive: true,
-  max: 10,
+  max: 3,
 });
 
 // Prevent unhandled 'error' events on idle clients (pool-level handler).

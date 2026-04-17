@@ -504,11 +504,26 @@ async function refreshChamberCommittees(
     if (members.length > 0) {
       // Snapshot existing roster before we touch anything
       const existingRows = await db
-        .select({ memberName: committeeMemberships.memberName, roleTitle: committeeMemberships.roleTitle })
+        .select({
+          memberName: committeeMemberships.memberName,
+          roleTitle: committeeMemberships.roleTitle,
+          legCode: committeeMemberships.legCode,
+        })
         .from(committeeMemberships)
         .where(eq(committeeMemberships.committeeId, committeeId));
-      const existingSet = new Set(existingRows.map(r => `${r.memberName}|${r.roleTitle}`));
-      const newSet = new Set(members.map(m => `${m.memberName}|${m.roleTitle}`));
+
+      // Use legCode as a stable diff key when available (immune to name formatting
+      // variations from TLO). Fall back to memberName for non-legislator entries
+      // (Lt. Gov., Speaker) that have no legCode href.
+      const makeKey = (name: string, role: string, code: string | null | undefined) =>
+        code ? `${code}|${role}` : `name:${name}|${role}`;
+
+      const existingSet = new Set(
+        existingRows.map(r => makeKey(r.memberName, r.roleTitle ?? "", r.legCode))
+      );
+      const newSet = new Set(
+        members.map(m => makeKey(m.memberName, m.roleTitle, m.legCode || null))
+      );
 
       await db
         .delete(committeeMemberships)
@@ -523,17 +538,27 @@ async function refreshChamberCommittees(
           memberName: member.memberName,
           roleTitle: member.roleTitle,
           sortOrder: String(member.sortOrder),
+          legCode: member.legCode || null,
         });
         membershipsCount++;
       }
 
-      // Alert only when the roster actually changed (not on every routine refresh)
-      const added = [...newSet].filter(k => !existingSet.has(k)).length;
-      const removed = [...existingSet].filter(k => !newSet.has(k)).length;
-      if (added > 0 || removed > 0) {
+      // Alert only when the roster actually changed (not on every routine refresh).
+      // Distinguish true membership changes from role-only updates.
+      const addedKeys   = [...newSet].filter(k => !existingSet.has(k));
+      const removedKeys = [...existingSet].filter(k => !newSet.has(k));
+
+      const addedPrefixes   = new Set(addedKeys.map(k => k.split("|")[0]));
+      const removedPrefixes = new Set(removedKeys.map(k => k.split("|")[0]));
+      const roleChanges = [...addedPrefixes].filter(p => removedPrefixes.has(p)).length;
+      const trueAdded   = addedKeys.filter(k => !removedPrefixes.has(k.split("|")[0])).length;
+      const trueRemoved = removedKeys.filter(k => !addedPrefixes.has(k.split("|")[0])).length;
+
+      if (trueAdded > 0 || trueRemoved > 0 || roleChanges > 0) {
         const parts: string[] = [];
-        if (added > 0) parts.push(`${added} member${added > 1 ? "s" : ""} added`);
-        if (removed > 0) parts.push(`${removed} member${removed > 1 ? "s" : ""} removed`);
+        if (trueAdded   > 0) parts.push(`${trueAdded} member${trueAdded > 1 ? "s" : ""} added`);
+        if (trueRemoved > 0) parts.push(`${trueRemoved} member${trueRemoved > 1 ? "s" : ""} removed`);
+        if (roleChanges > 0) parts.push(`${roleChanges} member${roleChanges > 1 ? "s'" : "'s"} role updated`);
         const alertTitle = `Committee Updated: ${committee.name}`;
         const alertBody = parts.join(", ");
         await db.insert(alerts).values({
@@ -836,6 +861,7 @@ export async function backfillMissingCommitteeMembers(): Promise<{
               memberName: member.memberName,
               roleTitle: member.roleTitle,
               sortOrder: String(member.sortOrder),
+              legCode: member.legCode || null,
             });
           }
 
