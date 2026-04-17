@@ -205,6 +205,13 @@ function parseUpcomingDateTime(dateStr: string, timeStr: string): Date | null {
 }
 
 // ---------- parse hearing notice page (agenda + witnesses) ----------
+interface ParsedWitness {
+  fullName: string;
+  organization: string | null;
+  position: string | null; // "FOR" | "AGAINST" | "ON"
+  billNumber: string | null;
+}
+
 interface ParsedHearingDetail {
   title: string;
   committeeName: string | null;
@@ -213,6 +220,133 @@ interface ParsedHearingDetail {
   noticeText: string;
   agendaItems: { billNumber: string | null; itemText: string; sortOrder: number }[];
   meetingType: string | null;
+  witnesses: ParsedWitness[];
+}
+
+const WITNESS_POSITION_RE = /^(FOR|AGAINST|ON)$/i;
+const WITNESS_BILL_RE = /\b([HS][BJR]{1,2}\s*\d+)\b/i;
+
+/**
+ * Extract witnesses from TLO notice HTML.
+ *
+ * TLO notice pages list witnesses in an HTML table whose cells contain
+ * FOR/AGAINST/ON position keywords. When no table is found the function
+ * falls back to scanning the plain text for a WITNESSES section.
+ *
+ * Column order varies across chambers and sessions; the function detects
+ * layout from header text and falls back to positional heuristics.
+ */
+function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitness[] {
+  const results: ParsedWitness[] = [];
+
+  // Strategy 1: find tables that contain position keyword cells
+  $("table").each((_, table) => {
+    const rows = $(table).find("tr");
+    if (rows.length < 2) return;
+
+    // Confirm this table has at least one FOR/AGAINST/ON cell
+    let hasPositionCell = false;
+    rows.each((_, row) => {
+      if (hasPositionCell) return;
+      $(row).find("td").each((_, td) => {
+        if (WITNESS_POSITION_RE.test($(td).text().trim())) hasPositionCell = true;
+      });
+    });
+    if (!hasPositionCell) return;
+
+    // Detect column indices from header row (th or first tr with th)
+    let posCol = -1, nameCol = -1, orgCol = -1, billCol = -1;
+    const headerCells = $(rows[0]).find("th");
+    if (headerCells.length > 0) {
+      headerCells.each((idx, th) => {
+        const t = $(th).text().trim().toLowerCase();
+        if (/position|stance/.test(t)) posCol = idx;
+        else if (/witness|name/.test(t)) nameCol = idx;
+        else if (/organ|represent|behalf|group/.test(t)) orgCol = idx;
+        else if (/bill/.test(t)) billCol = idx;
+      });
+    }
+
+    rows.each((_, row) => {
+      const cells = $(row).find("td");
+      if (cells.length < 2) return;
+      const texts = cells.map((_, td) => $(td).text().trim()).get();
+
+      // Find the position cell in this row
+      const posIdx = posCol >= 0 ? posCol : texts.findIndex(t => WITNESS_POSITION_RE.test(t));
+      if (posIdx < 0 || posIdx >= texts.length) return;
+
+      const rawPosition = texts[posIdx].toUpperCase();
+      const position = ["FOR", "AGAINST", "ON"].includes(rawPosition) ? rawPosition : null;
+
+      // Remaining cells (excluding position) carry name, org, bill
+      const rest = texts.filter((_, i) => i !== posIdx);
+
+      let fullName: string | null = null;
+      let organization: string | null = null;
+      let billNumber: string | null = null;
+
+      if (nameCol >= 0 && orgCol >= 0) {
+        // Columns identified from header
+        fullName = texts[nameCol] || null;
+        organization = texts[orgCol] || null;
+        billNumber = billCol >= 0 ? texts[billCol] || null : null;
+      } else {
+        // Heuristic: first non-empty rest cell = name, second = org
+        // Any cell matching a bill pattern = bill
+        for (const t of rest) {
+          const bm = t.match(WITNESS_BILL_RE);
+          if (bm && !billNumber) {
+            billNumber = bm[1].replace(/\s+/g, "").toUpperCase();
+            continue;
+          }
+          if (!fullName && t.length >= 2) { fullName = t; continue; }
+          if (!organization && t.length >= 2) { organization = t; }
+        }
+      }
+
+      if (!fullName || fullName.length < 2) return;
+
+      if (billNumber) billNumber = billNumber.replace(/\s+/g, "").toUpperCase();
+
+      results.push({ fullName, organization: organization || null, position, billNumber: billNumber || null });
+    });
+  });
+
+  if (results.length > 0) return results;
+
+  // Strategy 2: plain-text fallback — find a WITNESSES section and parse lines
+  const fullText = $("body").text();
+  const sectionMatch = fullText.match(/WITNESS(?:ES)?(?:\s+LIST)?\s*[:\n]([\s\S]{1,4000})/i);
+  if (!sectionMatch) return results;
+
+  const lines = sectionMatch[1].split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+  let currentPosition: string | null = null;
+
+  for (const line of lines) {
+    // Position header line: "FOR:" or "AGAINST" alone on a line
+    const posMatch = line.match(/^(FOR|AGAINST|ON(?:\s+THE\s+BILL)?)[:\s]*$/i);
+    if (posMatch) {
+      const raw = posMatch[1].replace(/\s+THE\s+BILL$/i, "").toUpperCase();
+      currentPosition = ["FOR", "AGAINST", "ON"].includes(raw) ? raw : null;
+      continue;
+    }
+    if (line.length < 3 || line.length > 200) continue;
+    // "Name, Organization" or "Name - Organization"
+    const parts = line.split(/,\s*|-\s+/);
+    const fullName = parts[0]?.trim() || null;
+    if (!fullName) continue;
+    const organization = parts[1]?.trim() || null;
+    const billMatch = line.match(WITNESS_BILL_RE);
+    results.push({
+      fullName,
+      organization: organization || null,
+      position: currentPosition,
+      billNumber: billMatch ? billMatch[1].replace(/\s+/g, "").toUpperCase() : null,
+    });
+  }
+
+  return results;
 }
 
 function parseHearingNoticePage(html: string): ParsedHearingDetail {
@@ -267,6 +401,8 @@ function parseHearingNoticePage(html: string): ParsedHearingDetail {
     ? `${committeeName} Hearing`
     : "Committee Hearing";
 
+  const witnesses = parseWitnessesFromHtml($);
+
   return {
     title,
     committeeName,
@@ -275,6 +411,7 @@ function parseHearingNoticePage(html: string): ParsedHearingDetail {
     noticeText: fullText.slice(0, 4000),
     agendaItems,
     meetingType,
+    witnesses,
   };
 }
 
@@ -518,24 +655,6 @@ export async function refreshHearingDetail(eventId: string): Promise<boolean> {
     })
     .where(eq(legislativeEvents.id, eventId));
 
-  // Upsert hearing_details
-  await db
-    .insert(hearingDetails)
-    .values({
-      eventId,
-      noticeText: parsed.noticeText,
-      meetingType: parsed.meetingType ?? undefined,
-      witnessCount: 0,
-    } satisfies InsertHearingDetail)
-    .onConflictDoUpdate({
-      target: hearingDetails.eventId,
-      set: {
-        noticeText: parsed.noticeText,
-        meetingType: parsed.meetingType ?? undefined,
-        updatedDate: new Date(),
-      },
-    });
-
   // Replace agenda items
   await db.delete(hearingAgendaItems).where(eq(hearingAgendaItems.eventId, eventId));
 
@@ -555,8 +674,47 @@ export async function refreshHearingDetail(eventId: string): Promise<boolean> {
     } satisfies InsertHearingAgendaItem);
   }
 
+  // Replace witnesses and update witness count
+  await db.delete(witnesses).where(eq(witnesses.eventId, eventId));
+
+  let insertedWitnessCount = 0;
+  for (const [idx, w] of parsed.witnesses.entries()) {
+    let billId: string | null = null;
+    if (w.billNumber) {
+      billId = await findOrCreateBill(w.billNumber);
+    }
+    await db.insert(witnesses).values({
+      eventId,
+      fullName: w.fullName,
+      organization: w.organization ?? undefined,
+      position: w.position ?? undefined,
+      billId: billId ?? undefined,
+      sortOrder: idx,
+    } satisfies InsertWitness);
+    insertedWitnessCount++;
+  }
+
+  // Upsert hearing_details with accurate witnessCount
+  await db
+    .insert(hearingDetails)
+    .values({
+      eventId,
+      noticeText: parsed.noticeText,
+      meetingType: parsed.meetingType ?? undefined,
+      witnessCount: insertedWitnessCount,
+    } satisfies InsertHearingDetail)
+    .onConflictDoUpdate({
+      target: hearingDetails.eventId,
+      set: {
+        noticeText: parsed.noticeText,
+        meetingType: parsed.meetingType ?? undefined,
+        witnessCount: insertedWitnessCount,
+        updatedDate: new Date(),
+      },
+    });
+
   console.log(
-    `${tag} Event ${eventId} updated: ${parsed.agendaItems.length} agenda items`,
+    `${tag} Event ${eventId} updated: ${parsed.agendaItems.length} agenda items, ${insertedWitnessCount} witnesses`,
   );
   return true;
 }
