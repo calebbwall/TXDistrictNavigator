@@ -10,7 +10,7 @@ import { db } from "../db";
 import { pushTokens } from "@shared/schema";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-const CHUNK_SIZE = 100; // Expo max per request
+const CHUNK_SIZE = 100; // Expo max per request (single-user: loop always runs once)
 
 interface ExpoPushMessage {
   to: string;
