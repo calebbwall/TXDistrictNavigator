@@ -174,6 +174,7 @@ export const committeeMemberships = pgTable("committee_memberships", {
   memberName: varchar("member_name", { length: 255 }).notNull(),
   roleTitle: varchar("role_title", { length: 100 }),
   sortOrder: varchar("sort_order", { length: 10 }),
+  legCode: varchar("leg_code", { length: 20 }), // TLO legislator code — stable diff key
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
