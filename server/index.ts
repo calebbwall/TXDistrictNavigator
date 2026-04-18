@@ -292,6 +292,10 @@ async function cleanupBootstrapAlerts(): Promise<void> {
   setupBodyParsing(app);
   setupRequestLogging(app);
 
+  app.get("/status", (_req: Request, res: Response) => {
+    res.status(200).json({ status: "ok" });
+  });
+
   configureExpoAndLanding(app);
 
   await cleanupBootstrapAlerts();

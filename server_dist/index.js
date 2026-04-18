@@ -8420,6 +8420,9 @@ async function cleanupBootstrapAlerts() {
   setupCors(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
+  app.get("/status", (_req, res) => {
+    res.status(200).json({ status: "ok" });
+  });
   configureExpoAndLanding(app);
   await cleanupBootstrapAlerts();
   let server;
