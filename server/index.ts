@@ -297,8 +297,6 @@ async function cleanupBootstrapAlerts(): Promise<void> {
 
   configureExpoAndLanding(app);
 
-  await cleanupBootstrapAlerts();
-
   let server: import("node:http").Server;
   try {
     server = await registerRoutes(app);
@@ -320,5 +318,8 @@ async function cleanupBootstrapAlerts(): Promise<void> {
       console.log(`express server serving on port ${port}`);
     },
   );
+
+  // Run after port is bound so waitForPort resolves without waiting on DB
+  await cleanupBootstrapAlerts();
 
 })();

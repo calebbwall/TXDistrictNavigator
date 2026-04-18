@@ -5,7 +5,7 @@ import * as schema from "@shared/schema";
 const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
+  console.error("[DB] DATABASE_URL is not set — database queries will fail. Add it to your Replit Secrets.");
 }
 
 const pool = new Pool({
