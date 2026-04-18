@@ -30,7 +30,6 @@ __export(schema_exports, {
   insertOfficialPrivateSchema: () => insertOfficialPrivateSchema,
   insertOfficialPublicSchema: () => insertOfficialPublicSchema,
   insertPrayerSchema: () => insertPrayerSchema,
-  insertUserSchema: () => insertUserSchema,
   legislativeEvents: () => legislativeEvents,
   notificationPrefEnum: () => notificationPrefEnum,
   officialPrivate: () => officialPrivate,
@@ -51,26 +50,16 @@ __export(schema_exports, {
   updateOfficialPrivateSchema: () => updateOfficialPrivateSchema,
   updatePrayerSchema: () => updatePrayerSchema,
   userSubscriptions: () => userSubscriptions,
-  users: () => users,
   witnesses: () => witnesses
 });
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, boolean, timestamp, json, pgEnum, uniqueIndex, index, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, sourceEnum, persons, officialPublic, officialPrivate, refreshState, refreshJobLog, personLinks, DISTRICT_RANGES, chamberEnum, committees, committeeMemberships, committeeRefreshState, OTHER_TX_ROLES, insertOfficialPublicSchema, insertOfficialPrivateSchema, updateOfficialPrivateSchema, prayerStatusEnum, prayerCategories, prayers, dailyPrayerPicks, prayerStreak, appSettings, insertPrayerSchema, updatePrayerSchema, subscriptionTypeEnum, alertTypeEnum, eventTypeEnum, eventStatusEnum, notificationPrefEnum, bills, billActions, rssFeeds, rssItems, userSubscriptions, alerts, legislativeEvents, hearingDetails, hearingAgendaItems, witnesses, pushTokens;
+var sourceEnum, persons, officialPublic, officialPrivate, refreshState, refreshJobLog, personLinks, DISTRICT_RANGES, chamberEnum, committees, committeeMemberships, committeeRefreshState, OTHER_TX_ROLES, insertOfficialPublicSchema, insertOfficialPrivateSchema, updateOfficialPrivateSchema, prayerStatusEnum, prayerCategories, prayers, dailyPrayerPicks, prayerStreak, appSettings, insertPrayerSchema, updatePrayerSchema, subscriptionTypeEnum, alertTypeEnum, eventTypeEnum, eventStatusEnum, notificationPrefEnum, bills, billActions, rssFeeds, rssItems, userSubscriptions, alerts, legislativeEvents, hearingDetails, hearingAgendaItems, witnesses, pushTokens;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
-    users = pgTable("users", {
-      id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-      username: text("username").notNull().unique(),
-      password: text("password").notNull()
-    });
-    insertUserSchema = createInsertSchema(users).pick({
-      username: true,
-      password: true
-    });
     sourceEnum = pgEnum("source_type", ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "OTHER_TX"]);
     persons = pgTable("persons", {
       id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -195,6 +184,8 @@ var init_schema = __esm({
       memberName: varchar("member_name", { length: 255 }).notNull(),
       roleTitle: varchar("role_title", { length: 100 }),
       sortOrder: varchar("sort_order", { length: 10 }),
+      legCode: varchar("leg_code", { length: 20 }),
+      // TLO legislator code — stable diff key
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -492,7 +483,7 @@ var init_db = __esm({
       connectionTimeoutMillis: 3e4,
       idleTimeoutMillis: 3e4,
       keepAlive: true,
-      max: 10
+      max: 3
     });
     pool.on("error", (err) => {
       console.error("[DB Pool] Idle client error (connection will be replaced):", err.message);
@@ -503,6 +494,40 @@ var init_db = __esm({
       });
     });
     db = drizzle(pool, { schema: schema_exports });
+  }
+});
+
+// server/lib/prayerUtils.ts
+import { eq, and, not } from "drizzle-orm";
+async function processEventDateActions() {
+  try {
+    const now = /* @__PURE__ */ new Date();
+    const openWithEvents = await db.select().from(prayers).where(and(eq(prayers.status, "OPEN"), not(eq(prayers.autoAfterEventAction, "none"))));
+    for (const prayer of openWithEvents) {
+      if (!prayer.eventDate) continue;
+      const triggerDate = new Date(prayer.eventDate);
+      triggerDate.setDate(triggerDate.getDate() + (prayer.autoAfterEventDaysOffset || 0));
+      if (now >= triggerDate) {
+        if (prayer.autoAfterEventAction === "markAnswered") {
+          await db.update(prayers).set({
+            status: "ANSWERED",
+            answeredAt: now,
+            answerNote: "Auto-marked answered after event date",
+            updatedAt: now
+          }).where(eq(prayers.id, prayer.id));
+        } else if (prayer.autoAfterEventAction === "archive") {
+          await db.update(prayers).set({ status: "ARCHIVED", archivedAt: now, updatedAt: now }).where(eq(prayers.id, prayer.id));
+        }
+      }
+    }
+  } catch (_) {
+  }
+}
+var init_prayerUtils = __esm({
+  "server/lib/prayerUtils.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
   }
 });
 
@@ -863,7 +888,7 @@ __export(refreshOfficials_exports, {
 });
 import * as cheerio from "cheerio";
 import * as crypto from "crypto";
-import { eq as eq2, and as and2, sql as sql3 } from "drizzle-orm";
+import { eq as eq3, and as and3, sql as sql3 } from "drizzle-orm";
 function extractSearchZips(addresses) {
   const zips = /* @__PURE__ */ new Set();
   for (const addr of addresses) {
@@ -914,7 +939,7 @@ function computeFingerprint(data) {
   return crypto.createHash("sha256").update(data).digest("hex");
 }
 async function getRefreshState(source) {
-  const [state] = await db.select().from(refreshState).where(eq2(refreshState.source, source)).limit(1);
+  const [state] = await db.select().from(refreshState).where(eq3(refreshState.source, source)).limit(1);
   if (!state) return null;
   return {
     fingerprint: state.fingerprint,
@@ -923,7 +948,7 @@ async function getRefreshState(source) {
   };
 }
 async function updateRefreshState(source, fingerprint2, changed) {
-  const [existing] = await db.select().from(refreshState).where(eq2(refreshState.source, source)).limit(1);
+  const [existing] = await db.select().from(refreshState).where(eq3(refreshState.source, source)).limit(1);
   const now = /* @__PURE__ */ new Date();
   if (existing) {
     await db.update(refreshState).set({
@@ -932,7 +957,7 @@ async function updateRefreshState(source, fingerprint2, changed) {
       lastChangedAt: changed ? now : existing.lastChangedAt,
       lastRefreshedAt: changed ? now : existing.lastRefreshedAt,
       updatedAt: now
-    }).where(eq2(refreshState.id, existing.id));
+    }).where(eq3(refreshState.id, existing.id));
   } else {
     await db.insert(refreshState).values({
       source,
@@ -944,10 +969,10 @@ async function updateRefreshState(source, fingerprint2, changed) {
   }
 }
 async function markCheckedOnly(source) {
-  const [existing] = await db.select().from(refreshState).where(eq2(refreshState.source, source)).limit(1);
+  const [existing] = await db.select().from(refreshState).where(eq3(refreshState.source, source)).limit(1);
   const now = /* @__PURE__ */ new Date();
   if (existing) {
-    await db.update(refreshState).set({ lastCheckedAt: now, updatedAt: now }).where(eq2(refreshState.id, existing.id));
+    await db.update(refreshState).set({ lastCheckedAt: now, updatedAt: now }).where(eq3(refreshState.id, existing.id));
   } else {
     await db.insert(refreshState).values({
       source,
@@ -1246,9 +1271,9 @@ async function refreshTLO(chamber) {
         continue;
       }
       try {
-        const existing = await db.select().from(officialPublic).where(and2(
-          eq2(officialPublic.source, source),
-          eq2(officialPublic.sourceMemberId, record.sourceMemberId)
+        const existing = await db.select().from(officialPublic).where(and3(
+          eq3(officialPublic.source, source),
+          eq3(officialPublic.sourceMemberId, record.sourceMemberId)
         )).limit(1);
         const allAddresses = [];
         if (record.capitolAddress) allAddresses.push(record.capitolAddress);
@@ -1291,7 +1316,7 @@ async function refreshTLO(chamber) {
               console.log(`[RefreshOfficials] Headshot lookup failed for ${record.fullName}`);
             }
           }
-          await db.update(officialPublic).set(updateData).where(eq2(officialPublic.id, existing[0].id));
+          await db.update(officialPublic).set(updateData).where(eq3(officialPublic.id, existing[0].id));
         } else {
           if (!insertData.photoUrl) {
             try {
@@ -1314,9 +1339,9 @@ async function refreshTLO(chamber) {
       }
     }
     if (processedMemberIds.length > 0) {
-      const deactivated = await db.update(officialPublic).set({ active: false }).where(and2(
-        eq2(officialPublic.source, source),
-        eq2(officialPublic.active, true),
+      const deactivated = await db.update(officialPublic).set({ active: false }).where(and3(
+        eq3(officialPublic.source, source),
+        eq3(officialPublic.active, true),
         sql3`${officialPublic.sourceMemberId} NOT IN (${sql3.join(processedMemberIds.map((id) => sql3`${id}`), sql3`, `)})`
       )).returning();
       result.deactivatedCount = deactivated.length;
@@ -1401,9 +1426,9 @@ async function refreshUSHouse() {
         continue;
       }
       try {
-        const existing = await db.select().from(officialPublic).where(and2(
-          eq2(officialPublic.source, source),
-          eq2(officialPublic.sourceMemberId, record.sourceMemberId)
+        const existing = await db.select().from(officialPublic).where(and3(
+          eq3(officialPublic.source, source),
+          eq3(officialPublic.sourceMemberId, record.sourceMemberId)
         )).limit(1);
         const congressAddresses = ["Washington, DC 20515"];
         const insertData = {
@@ -1424,7 +1449,7 @@ async function refreshUSHouse() {
           await db.update(officialPublic).set({
             ...insertData,
             id: void 0
-          }).where(eq2(officialPublic.id, existing[0].id));
+          }).where(eq3(officialPublic.id, existing[0].id));
         } else {
           await db.insert(officialPublic).values(insertData);
         }
@@ -1436,9 +1461,9 @@ async function refreshUSHouse() {
       }
     }
     if (processedMemberIds.length > 0) {
-      const deactivated = await db.update(officialPublic).set({ active: false }).where(and2(
-        eq2(officialPublic.source, source),
-        eq2(officialPublic.active, true),
+      const deactivated = await db.update(officialPublic).set({ active: false }).where(and3(
+        eq3(officialPublic.source, source),
+        eq3(officialPublic.active, true),
         sql3`${officialPublic.sourceMemberId} NOT IN (${sql3.join(processedMemberIds.map((id) => sql3`${id}`), sql3`, `)})`
       )).returning();
       result.deactivatedCount = deactivated.length;
@@ -1452,9 +1477,9 @@ async function refreshUSHouse() {
 async function getLastSuccessfulRefreshCounts() {
   const counts = /* @__PURE__ */ new Map();
   for (const source of ["TX_HOUSE", "TX_SENATE", "US_HOUSE"]) {
-    const lastSuccess = await db.select().from(refreshJobLog).where(and2(
-      eq2(refreshJobLog.source, source),
-      eq2(refreshJobLog.status, "success")
+    const lastSuccess = await db.select().from(refreshJobLog).where(and3(
+      eq3(refreshJobLog.source, source),
+      eq3(refreshJobLog.status, "success")
     )).orderBy(sql3`${refreshJobLog.completedAt} DESC`).limit(1);
     if (lastSuccess.length > 0 && lastSuccess[0].upsertedCount) {
       counts.set(source, parseInt(lastSuccess[0].upsertedCount, 10));
@@ -1539,11 +1564,11 @@ async function refreshAllOfficials() {
   console.log(`[RefreshOfficials] Full refresh completed in ${totalDuration}ms`);
 }
 async function getLastRefreshTime() {
-  const latest = await db.select().from(refreshJobLog).where(eq2(refreshJobLog.status, "success")).orderBy(sql3`${refreshJobLog.completedAt} DESC`).limit(1);
+  const latest = await db.select().from(refreshJobLog).where(eq3(refreshJobLog.status, "success")).orderBy(sql3`${refreshJobLog.completedAt} DESC`).limit(1);
   return latest.length > 0 ? latest[0].completedAt : null;
 }
 async function shouldRunRefresh() {
-  const [{ count }] = await db.select({ count: sql3`count(*)::int` }).from(officialPublic).where(eq2(officialPublic.active, true));
+  const [{ count }] = await db.select({ count: sql3`count(*)::int` }).from(officialPublic).where(eq3(officialPublic.active, true));
   return count === 0;
 }
 function getIsRefreshing() {
@@ -1703,6 +1728,522 @@ var init_refreshOfficials = __esm({
   }
 });
 
+// server/jobs/refreshGeoJSON.ts
+import * as crypto2 from "crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { sql as sql4 } from "drizzle-orm";
+async function ensureGeoJSONRefreshTable() {
+  await db.execute(sql4`
+    CREATE TABLE IF NOT EXISTS geojson_refresh_state (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      source VARCHAR NOT NULL UNIQUE,
+      fingerprint TEXT,
+      last_checked_at TIMESTAMP,
+      last_changed_at TIMESTAMP,
+      last_refreshed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT now(),
+      updated_at TIMESTAMP DEFAULT now()
+    )
+  `);
+}
+function computeFingerprint2(data) {
+  return crypto2.createHash("sha256").update(data).digest("hex");
+}
+async function fetchWithRetry2(url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "TexasDistrictsApp/1.0 (GeoJSON Sync)",
+          "Accept": "application/json"
+        }
+      });
+      if (response.ok) return response;
+      if (response.status === 429) {
+        await new Promise((r) => setTimeout(r, 2e3 * (i + 1)));
+        continue;
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      await new Promise((r) => setTimeout(r, 1e3 * (i + 1)));
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+async function getGeoJSONRefreshState(source) {
+  await ensureGeoJSONRefreshTable();
+  const result = await db.execute(
+    sql4`SELECT * FROM geojson_refresh_state WHERE source = ${source} LIMIT 1`
+  );
+  if (!result.rows || result.rows.length === 0) return null;
+  const row = result.rows[0];
+  return {
+    fingerprint: row.fingerprint,
+    lastCheckedAt: row.last_checked_at,
+    lastChangedAt: row.last_changed_at
+  };
+}
+async function updateGeoJSONRefreshState(source, fingerprint2, changed) {
+  await ensureGeoJSONRefreshTable();
+  const now = /* @__PURE__ */ new Date();
+  const existing = await db.execute(
+    sql4`SELECT * FROM geojson_refresh_state WHERE source = ${source} LIMIT 1`
+  );
+  if (existing.rows && existing.rows.length > 0) {
+    const row = existing.rows[0];
+    await db.execute(sql4`
+      UPDATE geojson_refresh_state SET
+        fingerprint = ${fingerprint2},
+        last_checked_at = ${now},
+        last_changed_at = ${changed ? now : row.last_changed_at},
+        last_refreshed_at = ${changed ? now : row.last_refreshed_at},
+        updated_at = ${now}
+      WHERE id = ${row.id}
+    `);
+  } else {
+    await db.execute(sql4`
+      INSERT INTO geojson_refresh_state (source, fingerprint, last_checked_at, last_changed_at, last_refreshed_at)
+      VALUES (${source}, ${fingerprint2}, ${now}, ${changed ? now : null}, ${changed ? now : null})
+    `);
+  }
+}
+async function markGeoJSONCheckedOnly(source) {
+  await ensureGeoJSONRefreshTable();
+  const now = /* @__PURE__ */ new Date();
+  const existing = await db.execute(
+    sql4`SELECT * FROM geojson_refresh_state WHERE source = ${source} LIMIT 1`
+  );
+  if (existing.rows && existing.rows.length > 0) {
+    await db.execute(sql4`
+      UPDATE geojson_refresh_state SET
+        last_checked_at = ${now},
+        updated_at = ${now}
+      WHERE source = ${source}
+    `);
+  } else {
+    await db.execute(sql4`
+      INSERT INTO geojson_refresh_state (source, last_checked_at)
+      VALUES (${source}, ${now})
+    `);
+  }
+}
+function extractDistrictNumber(props, _source) {
+  const value = props.DIST_NBR ?? props.district;
+  if (value === void 0 || value === null) return null;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+function normalizeGeoJSON(raw, source) {
+  const sampleProps = raw.features[0]?.properties;
+  const samplePropertyKeys = sampleProps ? Object.keys(sampleProps) : [];
+  const features = [];
+  const districtsSeen = /* @__PURE__ */ new Set();
+  let fallbackCount = 0;
+  for (let idx = 0; idx < raw.features.length; idx++) {
+    const feature = raw.features[idx];
+    const props = feature.properties || {};
+    const district = extractDistrictNumber(props, source);
+    if (district === null) {
+      fallbackCount++;
+      console.error(`[RefreshGeoJSON] ${source}: Feature ${idx} has no valid district number. Props: ${JSON.stringify(Object.keys(props))}`);
+      continue;
+    }
+    if (districtsSeen.has(district)) {
+      console.warn(`[RefreshGeoJSON] ${source}: Duplicate district ${district} at feature ${idx}`);
+    }
+    districtsSeen.add(district);
+    let name;
+    if (source === "TX_HOUSE_GEOJSON_V2") {
+      name = String(props.REP_NM || props.name || `TX House District ${district}`);
+    } else if (source === "TX_SENATE_GEOJSON_V2") {
+      name = String(props.REP_NM || props.name || `TX Senate District ${district}`);
+    } else {
+      name = String(props.REP_NM || props.name || `US Congress District ${district}`);
+    }
+    features.push({
+      type: "Feature",
+      properties: { district, name },
+      geometry: feature.geometry
+    });
+  }
+  features.sort((a, b) => a.properties.district - b.properties.district);
+  const expectedCount = EXPECTED_COUNTS[source];
+  const actualCount = features.length;
+  if (fallbackCount > 0) {
+    return {
+      collection: null,
+      error: `${fallbackCount} features had no valid district number. Sample props: ${samplePropertyKeys.join(", ")}`,
+      samplePropertyKeys
+    };
+  }
+  if (actualCount === 0) {
+    return {
+      collection: null,
+      error: `No valid features extracted. Sample props: ${samplePropertyKeys.join(", ")}`,
+      samplePropertyKeys
+    };
+  }
+  if (actualCount !== expectedCount) {
+    console.warn(`[RefreshGeoJSON] ${source}: Expected ${expectedCount} districts but got ${actualCount}`);
+  }
+  const duplicateCount = raw.features.length - districtsSeen.size;
+  if (duplicateCount > 1) {
+    return {
+      collection: null,
+      error: `Too many duplicate districts (${duplicateCount}). Sample props: ${samplePropertyKeys.join(", ")}`,
+      samplePropertyKeys
+    };
+  }
+  return {
+    collection: {
+      type: "FeatureCollection",
+      features
+    },
+    samplePropertyKeys
+  };
+}
+function coordsEqual(a, b) {
+  return a[0] === b[0] && a[1] === b[1];
+}
+function isRingClosed(ring) {
+  if (ring.length < 2) return false;
+  return coordsEqual(ring[0], ring[ring.length - 1]);
+}
+function douglasPeuckerSimplify(coords, tolerance) {
+  if (coords.length <= 2) return coords;
+  let maxDist = 0;
+  let maxIdx = 0;
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  for (let i = 1; i < coords.length - 1; i++) {
+    const dist = perpendicularDistance(coords[i], first, last);
+    if (dist > maxDist) {
+      maxDist = dist;
+      maxIdx = i;
+    }
+  }
+  if (maxDist > tolerance) {
+    const left = douglasPeuckerSimplify(coords.slice(0, maxIdx + 1), tolerance);
+    const right = douglasPeuckerSimplify(coords.slice(maxIdx), tolerance);
+    return [...left.slice(0, -1), ...right];
+  }
+  return [first, last];
+}
+function simplifyRing(ring, tolerance) {
+  const wasClosed = isRingClosed(ring);
+  if (wasClosed) {
+    const openRing = ring.slice(0, -1);
+    if (openRing.length < 3) {
+      return ring;
+    }
+    const simplified = douglasPeuckerSimplify(openRing, tolerance);
+    if (simplified.length < 3) {
+      console.warn(`[RefreshGeoJSON] Ring simplified to ${simplified.length} points, using original`);
+      return ring;
+    }
+    const closedRing = [...simplified, simplified[0]];
+    if (closedRing.length < 4) {
+      console.warn(`[RefreshGeoJSON] Closed ring has ${closedRing.length} points, using original`);
+      return ring;
+    }
+    return closedRing;
+  } else {
+    return douglasPeuckerSimplify(ring, tolerance);
+  }
+}
+function perpendicularDistance(point2, lineStart, lineEnd) {
+  const dx = lineEnd[0] - lineStart[0];
+  const dy = lineEnd[1] - lineStart[1];
+  if (dx === 0 && dy === 0) {
+    return Math.sqrt(Math.pow(point2[0] - lineStart[0], 2) + Math.pow(point2[1] - lineStart[1], 2));
+  }
+  const t = ((point2[0] - lineStart[0]) * dx + (point2[1] - lineStart[1]) * dy) / (dx * dx + dy * dy);
+  const nearestX = lineStart[0] + t * dx;
+  const nearestY = lineStart[1] + t * dy;
+  return Math.sqrt(Math.pow(point2[0] - nearestX, 2) + Math.pow(point2[1] - nearestY, 2));
+}
+function validateGeometry(geometry, district) {
+  const errors = [];
+  const validateRing = (ring, ringType) => {
+    if (ring.length < 4) {
+      errors.push(`${ringType} has only ${ring.length} points (min 4)`);
+    }
+    if (!isRingClosed(ring)) {
+      errors.push(`${ringType} is not closed`);
+    }
+  };
+  if (geometry.type === "Polygon") {
+    const coords = geometry.coordinates;
+    coords.forEach((ring, i) => {
+      validateRing(ring, `District ${district} Polygon ring ${i}`);
+    });
+  } else if (geometry.type === "MultiPolygon") {
+    const coords = geometry.coordinates;
+    coords.forEach((polygon2, p) => {
+      polygon2.forEach((ring, r) => {
+        validateRing(ring, `District ${district} MultiPolygon[${p}] ring ${r}`);
+      });
+    });
+  }
+  return { valid: errors.length === 0, errors };
+}
+function simplifyGeometry(geometry, tolerance = 1e-3) {
+  if (geometry.type === "Polygon") {
+    const coords = geometry.coordinates;
+    return {
+      type: "Polygon",
+      coordinates: coords.map((ring) => simplifyRing(ring, tolerance))
+    };
+  } else if (geometry.type === "MultiPolygon") {
+    const coords = geometry.coordinates;
+    return {
+      type: "MultiPolygon",
+      coordinates: coords.map(
+        (polygon2) => polygon2.map((ring) => simplifyRing(ring, tolerance))
+      )
+    };
+  }
+  return geometry;
+}
+function createSimplifiedGeoJSON(geojson) {
+  const allErrors = [];
+  const features = geojson.features.map((feature) => {
+    const district = feature.properties.district;
+    const simplifiedGeometry = simplifyGeometry(feature.geometry);
+    const validation = validateGeometry(simplifiedGeometry, district);
+    if (!validation.valid) {
+      allErrors.push(...validation.errors);
+    }
+    return {
+      ...feature,
+      geometry: simplifiedGeometry
+    };
+  });
+  if (allErrors.length > 0) {
+    console.error(`[RefreshGeoJSON] Geometry validation errors: ${allErrors.slice(0, 5).join("; ")}${allErrors.length > 5 ? ` ... and ${allErrors.length - 5} more` : ""}`);
+    return {
+      collection: null,
+      errors: allErrors
+    };
+  }
+  return {
+    collection: {
+      type: "FeatureCollection",
+      features
+    },
+    errors: []
+  };
+}
+async function writeGeoJSONFile(filename, data) {
+  const filePath = path.join(GEOJSON_DIR, filename);
+  const tempPath = filePath + ".tmp";
+  await fs.promises.writeFile(tempPath, JSON.stringify(data), "utf8");
+  await fs.promises.rename(tempPath, filePath);
+}
+async function checkGeoJSONSourceForChanges(source) {
+  console.log(`[RefreshGeoJSON] Checking ${source} for changes...`);
+  try {
+    const config = GEOJSON_SOURCES[source];
+    const response = await fetchWithRetry2(config.url);
+    const rawText = await response.text();
+    const newFingerprint = computeFingerprint2(rawText);
+    const state = await getGeoJSONRefreshState(source);
+    const previousFingerprint = state?.fingerprint || null;
+    const changed = previousFingerprint !== newFingerprint;
+    let featureCount;
+    try {
+      const parsed = JSON.parse(rawText);
+      featureCount = parsed.features?.length;
+    } catch {
+      featureCount = void 0;
+    }
+    console.log(`[RefreshGeoJSON] ${source}: fingerprint=${newFingerprint.slice(0, 12)}... changed=${changed} features=${featureCount ?? "?"}`);
+    return {
+      source,
+      changed,
+      previousFingerprint,
+      newFingerprint,
+      featureCount
+    };
+  } catch (err) {
+    console.error(`[RefreshGeoJSON] Error checking ${source}:`, err);
+    return {
+      source,
+      changed: false,
+      previousFingerprint: null,
+      newFingerprint: "",
+      error: String(err)
+    };
+  }
+}
+async function refreshGeoJSONSource(source) {
+  console.log(`[RefreshGeoJSON] Refreshing ${source}...`);
+  try {
+    const config = GEOJSON_SOURCES[source];
+    const response = await fetchWithRetry2(config.url);
+    const rawText = await response.text();
+    const rawData = JSON.parse(rawText);
+    if (!rawData.features || rawData.features.length === 0) {
+      throw new Error("No features in response");
+    }
+    const normalizeResult = normalizeGeoJSON(rawData, source);
+    if (!normalizeResult.collection) {
+      console.error(`[RefreshGeoJSON] ${source}: Normalization failed - ${normalizeResult.error}`);
+      console.error(`[RefreshGeoJSON] ${source}: Sample property keys: ${normalizeResult.samplePropertyKeys?.join(", ")}`);
+      return {
+        source,
+        success: false,
+        featureCount: 0,
+        error: `Validation failed: ${normalizeResult.error}`
+      };
+    }
+    const normalized = normalizeResult.collection;
+    const simplifiedResult = createSimplifiedGeoJSON(normalized);
+    if (!simplifiedResult.collection) {
+      console.error(`[RefreshGeoJSON] ${source}: Simplified geometry validation failed`);
+      return {
+        source,
+        success: false,
+        featureCount: 0,
+        error: `Geometry validation failed: ${simplifiedResult.errors.slice(0, 3).join("; ")}`
+      };
+    }
+    await writeGeoJSONFile(config.localFile, normalized);
+    await writeGeoJSONFile(config.simplifiedFile, simplifiedResult.collection);
+    console.log(`[RefreshGeoJSON] ${source}: Wrote ${normalized.features.length} features to ${config.localFile} and ${config.simplifiedFile}`);
+    const newFingerprint = computeFingerprint2(rawText);
+    await updateGeoJSONRefreshState(source, newFingerprint, true);
+    return {
+      source,
+      success: true,
+      featureCount: normalized.features.length
+    };
+  } catch (err) {
+    console.error(`[RefreshGeoJSON] Error refreshing ${source}:`, err);
+    return {
+      source,
+      success: false,
+      featureCount: 0,
+      error: String(err)
+    };
+  }
+}
+function getIsRefreshingGeoJSON() {
+  return isRefreshingGeoJSON;
+}
+async function checkAndRefreshGeoJSONIfChanged(force = false) {
+  if (isRefreshingGeoJSON) {
+    console.log("[RefreshGeoJSON] Refresh already in progress, skipping");
+    return {
+      sourcesChecked: [],
+      sourcesChanged: [],
+      sourcesRefreshed: [],
+      errors: [{ source: "TX_HOUSE_GEOJSON_V2", error: "Refresh already in progress" }],
+      durationMs: 0
+    };
+  }
+  isRefreshingGeoJSON = true;
+  const startTime = Date.now();
+  const result = {
+    sourcesChecked: [],
+    sourcesChanged: [],
+    sourcesRefreshed: [],
+    errors: [],
+    durationMs: 0
+  };
+  console.log(`[RefreshGeoJSON] Starting smart check-and-refresh (force=${force})`);
+  try {
+    const sources = ["TX_HOUSE_GEOJSON_V2", "TX_SENATE_GEOJSON_V2", "US_HOUSE_TX_GEOJSON_V2"];
+    for (const source of sources) {
+      result.sourcesChecked.push(source);
+      const checkResult = await checkGeoJSONSourceForChanges(source);
+      if (checkResult.error) {
+        result.errors.push({ source, error: checkResult.error });
+        continue;
+      }
+      if (!checkResult.changed && !force) {
+        console.log(`[RefreshGeoJSON] ${source}: No changes detected, skipping refresh`);
+        await markGeoJSONCheckedOnly(source);
+        continue;
+      }
+      result.sourcesChanged.push(source);
+      console.log(`[RefreshGeoJSON] ${source}: Changes detected, running refresh...`);
+      const refreshResult = await refreshGeoJSONSource(source);
+      if (refreshResult.success) {
+        result.sourcesRefreshed.push(source);
+      } else if (refreshResult.error) {
+        result.errors.push({ source, error: refreshResult.error });
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  } finally {
+    isRefreshingGeoJSON = false;
+    result.durationMs = Date.now() - startTime;
+  }
+  console.log(`[RefreshGeoJSON] Smart refresh completed: checked=${result.sourcesChecked.length}, changed=${result.sourcesChanged.length}, refreshed=${result.sourcesRefreshed.length}, errors=${result.errors.length} in ${result.durationMs}ms`);
+  return result;
+}
+async function wasGeoJSONCheckedThisWeek() {
+  const sources = ["TX_HOUSE_GEOJSON_V2", "TX_SENATE_GEOJSON_V2", "US_HOUSE_TX_GEOJSON_V2"];
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
+  for (const source of sources) {
+    const state = await getGeoJSONRefreshState(source);
+    if (!state?.lastCheckedAt || state.lastCheckedAt < oneWeekAgo) {
+      return false;
+    }
+  }
+  return true;
+}
+async function getGeoJSONRefreshStates() {
+  await ensureGeoJSONRefreshTable();
+  const result = await db.execute(
+    sql4`SELECT * FROM geojson_refresh_state`
+  );
+  return (result.rows || []).map((row) => ({
+    source: row.source,
+    fingerprint: row.fingerprint,
+    lastCheckedAt: row.last_checked_at,
+    lastChangedAt: row.last_changed_at,
+    lastRefreshedAt: row.last_refreshed_at
+  }));
+}
+var __filename, __dirname, GEOJSON_SOURCES, GEOJSON_DIR, EXPECTED_COUNTS, isRefreshingGeoJSON;
+var init_refreshGeoJSON = __esm({
+  "server/jobs/refreshGeoJSON.ts"() {
+    "use strict";
+    init_db();
+    __filename = fileURLToPath(import.meta.url);
+    __dirname = path.dirname(__filename);
+    GEOJSON_SOURCES = {
+      TX_HOUSE_GEOJSON_V2: {
+        url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
+        localFile: "tx_house.geojson",
+        simplifiedFile: "tx_house_simplified.geojson"
+      },
+      TX_SENATE_GEOJSON_V2: {
+        url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_Senate_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
+        localFile: "tx_senate.geojson",
+        simplifiedFile: "tx_senate_simplified.geojson"
+      },
+      US_HOUSE_TX_GEOJSON_V2: {
+        url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_US_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
+        localFile: "us_congress.geojson",
+        simplifiedFile: "us_congress_simplified.geojson"
+      }
+    };
+    GEOJSON_DIR = path.join(__dirname, "..", "data", "geojson");
+    EXPECTED_COUNTS = {
+      TX_HOUSE_GEOJSON_V2: 150,
+      TX_SENATE_GEOJSON_V2: 31,
+      US_HOUSE_TX_GEOJSON_V2: 38
+    };
+    isRefreshingGeoJSON = false;
+  }
+});
+
 // server/lib/expoPush.ts
 async function sendChunk(messages) {
   try {
@@ -1773,7 +2314,7 @@ __export(refreshCommittees_exports, {
 });
 import * as cheerio2 from "cheerio";
 import * as crypto3 from "crypto";
-import { eq as eq3, and as and3, sql as sql5, isNotNull } from "drizzle-orm";
+import { eq as eq4, and as and4, sql as sql5, isNotNull } from "drizzle-orm";
 function getIsRefreshingCommittees() {
   return isRefreshing2;
 }
@@ -2021,9 +2562,9 @@ async function fetchAllCommitteesWithMembers(chamber) {
 }
 async function matchMemberToOfficial(memberName, legCode, chamber) {
   const source = chamber;
-  const officials = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, sourceMemberId: officialPublic.sourceMemberId }).from(officialPublic).where(and3(
-    eq3(officialPublic.source, source),
-    eq3(officialPublic.active, true)
+  const officials = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, sourceMemberId: officialPublic.sourceMemberId }).from(officialPublic).where(and4(
+    eq4(officialPublic.source, source),
+    eq4(officialPublic.active, true)
   ));
   const normalizedSearchName = normalizeName(memberName);
   for (const official of officials) {
@@ -2051,7 +2592,7 @@ async function matchMemberToOfficial(memberName, legCode, chamber) {
   return null;
 }
 async function getRefreshState2(source) {
-  const result = await db.select().from(committeeRefreshState).where(eq3(committeeRefreshState.source, source)).limit(1);
+  const result = await db.select().from(committeeRefreshState).where(eq4(committeeRefreshState.source, source)).limit(1);
   return result.length > 0 ? result[0] : null;
 }
 async function updateRefreshState2(source, fingerprint2, wasRefreshed) {
@@ -2064,7 +2605,7 @@ async function updateRefreshState2(source, fingerprint2, wasRefreshed) {
       lastChangedAt: wasRefreshed ? now : existing.lastChangedAt,
       lastRefreshedAt: wasRefreshed ? now : existing.lastRefreshedAt,
       updatedAt: now
-    }).where(eq3(committeeRefreshState.source, source));
+    }).where(eq4(committeeRefreshState.source, source));
   } else {
     await db.insert(committeeRefreshState).values({
       source,
@@ -2080,9 +2621,9 @@ async function refreshChamberCommittees(chamber, committeesWithMembers) {
   let membershipsCount = 0;
   const codeToId = /* @__PURE__ */ new Map();
   for (const { committee, members } of committeesWithMembers) {
-    const existing = await db.select().from(committees).where(and3(
-      eq3(committees.chamber, chamber),
-      eq3(committees.slug, committee.slug)
+    const existing = await db.select().from(committees).where(and4(
+      eq4(committees.chamber, chamber),
+      eq4(committees.slug, committee.slug)
     )).limit(1);
     let committeeId;
     if (existing.length > 0) {
@@ -2092,7 +2633,7 @@ async function refreshChamberCommittees(chamber, committeesWithMembers) {
         sourceUrl: committee.sourceUrl,
         sortOrder: String(committee.sortOrder),
         updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq3(committees.id, committeeId));
+      }).where(eq4(committees.id, committeeId));
     } else {
       const inserted = await db.insert(committees).values({
         chamber,
@@ -2106,10 +2647,19 @@ async function refreshChamberCommittees(chamber, committeesWithMembers) {
     codeToId.set(committee.code, committeeId);
     committeesCount++;
     if (members.length > 0) {
-      const existingRows = await db.select({ memberName: committeeMemberships.memberName, roleTitle: committeeMemberships.roleTitle }).from(committeeMemberships).where(eq3(committeeMemberships.committeeId, committeeId));
-      const existingSet = new Set(existingRows.map((r) => `${r.memberName}|${r.roleTitle}`));
-      const newSet = new Set(members.map((m) => `${m.memberName}|${m.roleTitle}`));
-      await db.delete(committeeMemberships).where(eq3(committeeMemberships.committeeId, committeeId));
+      const existingRows = await db.select({
+        memberName: committeeMemberships.memberName,
+        roleTitle: committeeMemberships.roleTitle,
+        legCode: committeeMemberships.legCode
+      }).from(committeeMemberships).where(eq4(committeeMemberships.committeeId, committeeId));
+      const makeKey = (name, role, code) => code ? `${code}|${role}` : `name:${name}|${role}`;
+      const existingSet = new Set(
+        existingRows.map((r) => makeKey(r.memberName, r.roleTitle ?? "", r.legCode))
+      );
+      const newSet = new Set(
+        members.map((m) => makeKey(m.memberName, m.roleTitle, m.legCode || null))
+      );
+      await db.delete(committeeMemberships).where(eq4(committeeMemberships.committeeId, committeeId));
       for (const member of members) {
         const officialId = await matchMemberToOfficial(member.memberName, member.legCode, chamber);
         await db.insert(committeeMemberships).values({
@@ -2117,16 +2667,23 @@ async function refreshChamberCommittees(chamber, committeesWithMembers) {
           officialPublicId: officialId,
           memberName: member.memberName,
           roleTitle: member.roleTitle,
-          sortOrder: String(member.sortOrder)
+          sortOrder: String(member.sortOrder),
+          legCode: member.legCode || null
         });
         membershipsCount++;
       }
-      const added = [...newSet].filter((k) => !existingSet.has(k)).length;
-      const removed = [...existingSet].filter((k) => !newSet.has(k)).length;
-      if (added > 0 || removed > 0) {
+      const addedKeys = [...newSet].filter((k) => !existingSet.has(k));
+      const removedKeys = [...existingSet].filter((k) => !newSet.has(k));
+      const addedPrefixes = new Set(addedKeys.map((k) => k.split("|")[0]));
+      const removedPrefixes = new Set(removedKeys.map((k) => k.split("|")[0]));
+      const roleChanges = [...addedPrefixes].filter((p) => removedPrefixes.has(p)).length;
+      const trueAdded = addedKeys.filter((k) => !removedPrefixes.has(k.split("|")[0])).length;
+      const trueRemoved = removedKeys.filter((k) => !addedPrefixes.has(k.split("|")[0])).length;
+      if (trueAdded > 0 || trueRemoved > 0 || roleChanges > 0) {
         const parts = [];
-        if (added > 0) parts.push(`${added} member${added > 1 ? "s" : ""} added`);
-        if (removed > 0) parts.push(`${removed} member${removed > 1 ? "s" : ""} removed`);
+        if (trueAdded > 0) parts.push(`${trueAdded} member${trueAdded > 1 ? "s" : ""} added`);
+        if (trueRemoved > 0) parts.push(`${trueRemoved} member${trueRemoved > 1 ? "s" : ""} removed`);
+        if (roleChanges > 0) parts.push(`${roleChanges} member${roleChanges > 1 ? "s'" : "'s"} role updated`);
         const alertTitle = `Committee Updated: ${committee.name}`;
         const alertBody = parts.join(", ");
         await db.insert(alerts).values({
@@ -2148,12 +2705,12 @@ async function refreshChamberCommittees(chamber, committeesWithMembers) {
       const parentId = codeToId.get(committee.parentCode);
       const childId = codeToId.get(committee.code);
       if (parentId && childId) {
-        await db.update(committees).set({ parentCommitteeId: parentId }).where(eq3(committees.id, childId));
+        await db.update(committees).set({ parentCommitteeId: parentId }).where(eq4(committees.id, childId));
       }
     } else {
       const childId = codeToId.get(committee.code);
       if (childId) {
-        await db.update(committees).set({ parentCommitteeId: null }).where(eq3(committees.id, childId));
+        await db.update(committees).set({ parentCommitteeId: null }).where(eq4(committees.id, childId));
       }
     }
   }
@@ -2276,7 +2833,7 @@ async function backfillMissingCommitteeMembers() {
     return { filled: 0, skipped: 0, errors: 0 };
   }
   const emptyCommittees = await db.select().from(committees).where(
-    and3(
+    and4(
       isNotNull(committees.sourceUrl),
       sql5`${committees.id} NOT IN (
           SELECT DISTINCT committee_id FROM ${committeeMemberships}
@@ -2325,7 +2882,8 @@ async function backfillMissingCommitteeMembers() {
               officialPublicId: officialId,
               memberName: member.memberName,
               roleTitle: member.roleTitle,
-              sortOrder: String(member.sortOrder)
+              sortOrder: String(member.sortOrder),
+              legCode: member.legCode || null
             });
           }
           filled++;
@@ -2927,10 +3485,10 @@ __export(identityResolver_exports, {
   resolvePersonId: () => resolvePersonId,
   setExplicitPersonLink: () => setExplicitPersonLink
 });
-import { eq as eq4, and as and4, isNull as isNull2, sql as sql6 } from "drizzle-orm";
+import { eq as eq5, and as and5, isNull as isNull2, sql as sql6 } from "drizzle-orm";
 import { createHash as createHash4 } from "crypto";
 async function getExplicitPersonLink(officialPublicId) {
-  const link = await db.select({ personId: personLinks.personId }).from(personLinks).where(eq4(personLinks.officialPublicId, officialPublicId)).limit(1);
+  const link = await db.select({ personId: personLinks.personId }).from(personLinks).where(eq5(personLinks.officialPublicId, officialPublicId)).limit(1);
   return link.length > 0 ? link[0].personId : null;
 }
 async function setExplicitPersonLink(officialPublicId, personId) {
@@ -2947,7 +3505,7 @@ async function setExplicitPersonLink(officialPublicId, personId) {
       updatedAt: now
     }
   });
-  await db.update(officialPublic).set({ personId }).where(eq4(officialPublic.id, officialPublicId));
+  await db.update(officialPublic).set({ personId }).where(eq5(officialPublic.id, officialPublicId));
   console.log(`[Identity] Set explicit person link: official ${officialPublicId} -> person ${personId}`);
   return { officialPublicId, personId };
 }
@@ -2988,7 +3546,7 @@ async function resolvePersonId(fullName, displayName, officialPublicId) {
   }
   const canonicalName = normalizeName2(fullName);
   const display = displayName || fullName;
-  const existing = await db.select().from(persons).where(eq4(persons.fullNameCanonical, canonicalName)).limit(1);
+  const existing = await db.select().from(persons).where(eq5(persons.fullNameCanonical, canonicalName)).limit(1);
   if (existing.length > 0) {
     return existing[0].id;
   }
@@ -3036,14 +3594,14 @@ async function batchResolvePersonIds(officials) {
   return results;
 }
 async function linkOfficialToPerson(officialId, personId) {
-  await db.update(officialPublic).set({ personId }).where(eq4(officialPublic.id, officialId));
+  await db.update(officialPublic).set({ personId }).where(eq5(officialPublic.id, officialId));
 }
 async function getOfficialsByPersonId(personId) {
-  return await db.select().from(officialPublic).where(eq4(officialPublic.personId, personId));
+  return await db.select().from(officialPublic).where(eq5(officialPublic.personId, personId));
 }
 async function getIdentityStats() {
   const [totalPersonsResult] = await db.select({ count: sql6`count(*)::int` }).from(persons);
-  const [activeOfficialsResult] = await db.select({ count: sql6`count(*)::int` }).from(officialPublic).where(eq4(officialPublic.active, true));
+  const [activeOfficialsResult] = await db.select({ count: sql6`count(*)::int` }).from(officialPublic).where(eq5(officialPublic.active, true));
   const [explicitLinksResult] = await db.select({ count: sql6`count(*)::int` }).from(personLinks);
   const archivedPersonsResult = await db.execute(sql6`
     SELECT COUNT(*)::int as count FROM persons p
@@ -3073,8 +3631,8 @@ async function getArchivedPersons() {
 }
 async function resolveAllMissingPersonIds() {
   console.log("[Identity] Resolving missing personIds for active officials...");
-  const officialsWithoutPerson = await db.select().from(officialPublic).where(and4(
-    eq4(officialPublic.active, true),
+  const officialsWithoutPerson = await db.select().from(officialPublic).where(and5(
+    eq5(officialPublic.active, true),
     isNull2(officialPublic.personId)
   ));
   if (officialsWithoutPerson.length === 0) {
@@ -3090,9 +3648,9 @@ async function resolveAllMissingPersonIds() {
       official.fullName,
       official.id
     );
-    await db.update(officialPublic).set({ personId }).where(eq4(officialPublic.id, official.id));
+    await db.update(officialPublic).set({ personId }).where(eq5(officialPublic.id, official.id));
     resolved++;
-    const isNew = await db.select().from(persons).where(eq4(persons.id, personId));
+    const isNew = await db.select().from(persons).where(eq5(persons.id, personId));
     if (isNew.length > 0) {
       created++;
     }
@@ -3116,20 +3674,20 @@ __export(refreshOtherTexasOfficials_exports, {
   refreshOtherTexasOfficials: () => refreshOtherTexasOfficials,
   wasOtherTxCheckedThisWeek: () => wasOtherTxCheckedThisWeek
 });
-import { eq as eq5, and as and5, sql as sql7 } from "drizzle-orm";
+import { eq as eq6, and as and6, sql as sql7 } from "drizzle-orm";
 async function getStoredFingerprint() {
-  const result = await db.select().from(refreshState).where(eq5(refreshState.source, SOURCE_VALUE)).limit(1);
+  const result = await db.select().from(refreshState).where(eq6(refreshState.source, SOURCE_VALUE)).limit(1);
   return result[0]?.fingerprint || null;
 }
 async function updateStoredFingerprint(fingerprint2, changed) {
   const now = /* @__PURE__ */ new Date();
-  const existing = await db.select().from(refreshState).where(eq5(refreshState.source, SOURCE_VALUE)).limit(1);
+  const existing = await db.select().from(refreshState).where(eq6(refreshState.source, SOURCE_VALUE)).limit(1);
   if (existing.length > 0) {
     await db.update(refreshState).set({
       fingerprint: fingerprint2,
       lastCheckedAt: now,
       ...changed ? { lastChangedAt: now } : {}
-    }).where(eq5(refreshState.source, SOURCE_VALUE));
+    }).where(eq6(refreshState.source, SOURCE_VALUE));
   } else {
     await db.insert(refreshState).values({
       source: SOURCE_VALUE,
@@ -3157,7 +3715,7 @@ async function refreshOtherTexasOfficials(options = {}) {
     if (!fingerprintChanged && !options.force) {
       console.log("[RefreshOtherTX] No changes detected (fingerprint match)");
       await updateStoredFingerprint(fingerprint2, false);
-      const existing = await db.select().from(officialPublic).where(and5(eq5(officialPublic.source, "OTHER_TX"), eq5(officialPublic.active, true)));
+      const existing = await db.select().from(officialPublic).where(and6(eq6(officialPublic.source, "OTHER_TX"), eq6(officialPublic.active, true)));
       for (const o of existing) {
         if (o.roleTitle?.includes("Supreme Court")) breakdown.supremeCourt++;
         else if (o.roleTitle?.includes("Criminal Appeals")) breakdown.criminalAppeals++;
@@ -3177,7 +3735,7 @@ async function refreshOtherTexasOfficials(options = {}) {
       };
     }
     console.log(`[RefreshOtherTX] Changes detected, processing ${officials.length} officials...`);
-    const existingOfficials = await db.select().from(officialPublic).where(eq5(officialPublic.source, "OTHER_TX"));
+    const existingOfficials = await db.select().from(officialPublic).where(eq6(officialPublic.source, "OTHER_TX"));
     const existingBySourceId = new Map(
       existingOfficials.map((o) => [o.sourceMemberId, o])
     );
@@ -3222,7 +3780,7 @@ async function refreshOtherTexasOfficials(options = {}) {
           email: official.email,
           active: true,
           lastRefreshedAt: /* @__PURE__ */ new Date()
-        }).where(eq5(officialPublic.id, existing.id));
+        }).where(eq6(officialPublic.id, existing.id));
       } else {
         await db.insert(officialPublic).values({
           personId,
@@ -3247,7 +3805,7 @@ async function refreshOtherTexasOfficials(options = {}) {
     let deactivatedCount = 0;
     for (const [sourceMemberId, existing] of existingBySourceId) {
       if (!processedSourceIds.has(sourceMemberId) && existing.active) {
-        await db.update(officialPublic).set({ active: false }).where(eq5(officialPublic.id, existing.id));
+        await db.update(officialPublic).set({ active: false }).where(eq6(officialPublic.id, existing.id));
         deactivatedCount++;
         console.log(`[RefreshOtherTX] Deactivated: ${existing.fullName} (${existing.roleTitle})`);
       }
@@ -3291,7 +3849,7 @@ async function refreshOtherTexasOfficials(options = {}) {
   }
 }
 async function wasOtherTxCheckedThisWeek() {
-  const [{ count }] = await db.select({ count: sql7`count(*)::int` }).from(officialPublic).where(and5(eq5(officialPublic.source, "OTHER_TX"), eq5(officialPublic.active, true)));
+  const [{ count }] = await db.select({ count: sql7`count(*)::int` }).from(officialPublic).where(and6(eq6(officialPublic.source, "OTHER_TX"), eq6(officialPublic.active, true)));
   return count > 0;
 }
 async function maybeRunOtherTxRefresh() {
@@ -3304,7 +3862,7 @@ async function maybeRunOtherTxRefresh() {
   await refreshOtherTexasOfficials({ force: true });
 }
 async function getOtherTxRefreshState() {
-  const result = await db.select().from(refreshState).where(eq5(refreshState.source, SOURCE_VALUE)).limit(1);
+  const result = await db.select().from(refreshState).where(eq6(refreshState.source, SOURCE_VALUE)).limit(1);
   if (!result[0]) {
     return {
       lastCheckedAt: null,
@@ -3330,1460 +3888,10 @@ var init_refreshOtherTexasOfficials = __esm({
   }
 });
 
-// server/scripts/bulkFillHometowns.ts
-var bulkFillHometowns_exports = {};
-__export(bulkFillHometowns_exports, {
-  bulkFillHometowns: () => bulkFillHometowns
-});
-import { eq as eq8 } from "drizzle-orm";
-async function delay(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
-}
-async function dbQuery(fn, label) {
-  const maxRetries = 3;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (attempt < maxRetries && (msg.includes("timed out") || msg.includes("socket") || msg.includes("Authentication") || msg.includes("terminated") || msg.includes("TLS"))) {
-        console.log(`[BulkFill] DB retry ${attempt}/${maxRetries} (${label}): ${msg}`);
-        await delay(3e3 * attempt);
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw new Error("Unreachable");
-}
-async function bulkFillHometowns() {
-  console.log("[BulkFill] Starting bulk hometown fill...");
-  const result = {
-    total: 0,
-    filled: 0,
-    skipped: 0,
-    notFound: 0,
-    errors: 0,
-    details: []
-  };
-  const allPrivate = await dbQuery(() => db.select({
-    officialPublicId: officialPrivate.officialPublicId,
-    personId: officialPrivate.personId
-  }).from(officialPrivate), "fetch existing private records");
-  const coveredOfficialIds = new Set(allPrivate.map((p) => p.officialPublicId).filter(Boolean));
-  const coveredPersonIds = new Set(allPrivate.map((p) => p.personId).filter(Boolean));
-  const allOfficials = await dbQuery(() => db.select({
-    id: officialPublic.id,
-    fullName: officialPublic.fullName,
-    personId: officialPublic.personId,
-    source: officialPublic.source,
-    active: officialPublic.active
-  }).from(officialPublic).where(eq8(officialPublic.active, true)), "fetch officials");
-  const uncheckedOfficials = allOfficials.filter((o) => {
-    if (coveredOfficialIds.has(o.id)) return false;
-    if (o.personId && coveredPersonIds.has(o.personId)) return false;
-    return true;
-  });
-  const sourceOrder = { "TX_SENATE": 0, "TX_HOUSE": 1, "US_HOUSE": 2, "OTHER_TX": 3 };
-  const officials = uncheckedOfficials.sort((a, b) => (sourceOrder[a.source] ?? 9) - (sourceOrder[b.source] ?? 9));
-  result.total = officials.length;
-  if (officials.length === 0) {
-    console.log(`[BulkFill] All ${allOfficials.length} officials already have private records. Nothing to do.`);
-    return result;
-  }
-  console.log(`[BulkFill] Found ${officials.length} unchecked officials (of ${allOfficials.length} total)`);
-  const CONCURRENCY = 3;
-  const PROGRESS_LOG_EVERY = 15;
-  async function processOne(official, index2) {
-    await delay(Math.floor(index2 % CONCURRENCY) * 400);
-    try {
-      const lookup = await lookupHometownFromTexasTribune(official.fullName);
-      if (!lookup.success || !lookup.hometown) {
-        await dbQuery(() => db.insert(officialPrivate).values({
-          personId: official.personId,
-          officialPublicId: official.id,
-          personalAddress: null,
-          addressSource: "tribune_not_found"
-        }), `mark-not-found ${official.fullName}`);
-        console.log(`[BulkFill] Not found, marked checked: ${official.fullName}`);
-        result.notFound++;
-        result.details.push({
-          name: official.fullName,
-          status: "not_found",
-          reason: "Not found in Texas Tribune directory (marked so it won't be re-checked)"
-        });
-        return;
-      }
-      await dbQuery(() => db.insert(officialPrivate).values({
-        personId: official.personId,
-        officialPublicId: official.id,
-        personalAddress: lookup.hometown,
-        addressSource: "tribune"
-      }), `insert ${official.fullName}`);
-      console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
-      result.filled++;
-      result.details.push({
-        name: official.fullName,
-        status: "filled",
-        hometown: lookup.hometown
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      console.error(`[BulkFill] Failed ${official.fullName}: ${msg}`);
-      result.errors++;
-      result.details.push({
-        name: official.fullName,
-        status: "error",
-        reason: msg
-      });
-    }
-  }
-  for (let i = 0; i < officials.length; i += CONCURRENCY) {
-    const chunk = officials.slice(i, i + CONCURRENCY);
-    await Promise.all(chunk.map((official, j) => processOne(official, j)));
-    const processed = Math.min(i + CONCURRENCY, officials.length);
-    if (processed % PROGRESS_LOG_EVERY === 0 || processed === officials.length) {
-      console.log(`[BulkFill] Progress: ${processed}/${officials.length} (filled=${result.filled}, notFound=${result.notFound})`);
-    }
-    if (i + CONCURRENCY < officials.length) {
-      await delay(1200);
-    }
-  }
-  console.log(`[BulkFill] Complete! Filled: ${result.filled}, Skipped: ${result.skipped}, Not Found: ${result.notFound}, Errors: ${result.errors}`);
-  return result;
-}
-var init_bulkFillHometowns = __esm({
-  "server/scripts/bulkFillHometowns.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    init_texasTribuneLookup();
-  }
-});
-
-// server/lib/backfillUtils.ts
-var backfillUtils_exports = {};
-__export(backfillUtils_exports, {
-  isEffectivelyEmpty: () => isEffectivelyEmpty,
-  normalizeAddress: () => normalizeAddress
-});
-function isEffectivelyEmpty(value) {
-  if (!value) return true;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return true;
-  if (EMPTY_PLACEHOLDERS.includes(trimmed.toLowerCase())) return true;
-  return false;
-}
-function normalizeAddress(value) {
-  if (isEffectivelyEmpty(value)) return null;
-  return value.trim();
-}
-var EMPTY_PLACEHOLDERS;
-var init_backfillUtils = __esm({
-  "server/lib/backfillUtils.ts"() {
-    "use strict";
-    EMPTY_PLACEHOLDERS = [
-      "n/a",
-      "na",
-      "unknown",
-      "tbd",
-      "not available",
-      "none",
-      "\u2014",
-      "-",
-      ".",
-      "pending"
-    ];
-  }
-});
-
-// server/index.ts
-import express from "express";
-
-// server/routes.ts
-import { createServer } from "node:http";
-
-// server/data/geojson.ts
-import * as fs from "node:fs";
-import * as path from "node:path";
-var EMPTY = { type: "FeatureCollection", features: [] };
-function findGeoJSONPath(filename) {
-  const candidates = [
-    path.join(process.cwd(), "server", "data", "geojson", filename),
-    path.join(process.cwd(), "data", "geojson", filename),
-    path.resolve("server", "data", "geojson", filename)
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
-}
-async function loadGeoJSONAsync(filename) {
-  try {
-    const filePath = findGeoJSONPath(filename);
-    if (!filePath) {
-      console.error(`[GeoJSON] File not found: ${filename} (cwd=${process.cwd()})`);
-      return EMPTY;
-    }
-    console.log(`[GeoJSON] Loading ${filename} from: ${filePath}`);
-    const data = await fs.promises.readFile(filePath, "utf8");
-    const parsed = JSON.parse(data);
-    console.log(`[GeoJSON] Successfully loaded ${filename}: ${parsed.features.length} features`);
-    return parsed;
-  } catch (err) {
-    console.error(`[GeoJSON] Error loading ${filename}:`, err);
-    return EMPTY;
-  }
-}
-var txSenateGeoJSON = EMPTY;
-var txHouseGeoJSON = EMPTY;
-var usCongressGeoJSON = EMPTY;
-var txSenateGeoJSONFull = EMPTY;
-var txHouseGeoJSONFull = EMPTY;
-var usCongressGeoJSONFull = EMPTY;
-(async () => {
-  const [senate, house, congress, senateFull, houseFull, congressFull] = await Promise.all([
-    loadGeoJSONAsync("tx_senate_simplified.geojson"),
-    loadGeoJSONAsync("tx_house_simplified.geojson"),
-    loadGeoJSONAsync("us_congress_simplified.geojson"),
-    loadGeoJSONAsync("tx_senate.geojson"),
-    loadGeoJSONAsync("tx_house.geojson"),
-    loadGeoJSONAsync("us_congress.geojson")
-  ]);
-  txSenateGeoJSON = senate;
-  txHouseGeoJSON = house;
-  usCongressGeoJSON = congress;
-  txSenateGeoJSONFull = senateFull;
-  txHouseGeoJSONFull = houseFull;
-  usCongressGeoJSONFull = congressFull;
-})();
-
-// server/routes.ts
-init_db();
-
-// server/routes/prayerRoutes.ts
-init_db();
-init_schema();
-import { eq, and, sql as sql2, or, ilike, inArray, desc, asc, isNull, lte, gte, not } from "drizzle-orm";
-function getTodayDateKey() {
-  const now = /* @__PURE__ */ new Date();
-  const chicagoStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
-  const chicagoDate = new Date(chicagoStr);
-  const y = chicagoDate.getFullYear();
-  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
-  const d = String(chicagoDate.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-function getYesterdayDateKey() {
-  const now = /* @__PURE__ */ new Date();
-  const chicagoStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
-  const chicagoDate = new Date(chicagoStr);
-  chicagoDate.setDate(chicagoDate.getDate() - 1);
-  const y = chicagoDate.getFullYear();
-  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
-  const d = String(chicagoDate.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-function getDateKeyNDaysAgo(n) {
-  const now = /* @__PURE__ */ new Date();
-  const chicagoStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
-  const chicagoDate = new Date(chicagoStr);
-  chicagoDate.setDate(chicagoDate.getDate() - n);
-  const y = chicagoDate.getFullYear();
-  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
-  const d = String(chicagoDate.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-async function getAutoArchiveEnabled() {
-  const row = await db.select().from(appSettings).where(eq(appSettings.key, "autoArchiveEnabled")).limit(1);
-  if (row.length > 0) return row[0].value === "true";
-  return true;
-}
-async function getAutoArchiveDays() {
-  const row = await db.select().from(appSettings).where(eq(appSettings.key, "autoArchiveDays")).limit(1);
-  if (row.length > 0) return parseInt(row[0].value, 10) || 90;
-  return 90;
-}
-async function autoArchiveAnswered() {
-  const enabled = await getAutoArchiveEnabled();
-  if (!enabled) return;
-  const days = await getAutoArchiveDays();
-  const cutoff = /* @__PURE__ */ new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  await db.update(prayers).set({ status: "ARCHIVED", archivedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(
-    eq(prayers.status, "ANSWERED"),
-    lte(prayers.answeredAt, cutoff)
-  ));
-}
-async function processEventDateActions() {
-  try {
-    const now = /* @__PURE__ */ new Date();
-    const openWithEvents = await db.select().from(prayers).where(and(
-      eq(prayers.status, "OPEN"),
-      not(eq(prayers.autoAfterEventAction, "none"))
-    ));
-    for (const prayer of openWithEvents) {
-      if (!prayer.eventDate) continue;
-      const triggerDate = new Date(prayer.eventDate);
-      triggerDate.setDate(triggerDate.getDate() + (prayer.autoAfterEventDaysOffset || 0));
-      if (now >= triggerDate) {
-        if (prayer.autoAfterEventAction === "markAnswered") {
-          await db.update(prayers).set({
-            status: "ANSWERED",
-            answeredAt: now,
-            answerNote: "Auto-marked answered after event date",
-            updatedAt: now
-          }).where(eq(prayers.id, prayer.id));
-        } else if (prayer.autoAfterEventAction === "archive") {
-          await db.update(prayers).set({
-            status: "ARCHIVED",
-            archivedAt: now,
-            updatedAt: now
-          }).where(eq(prayers.id, prayer.id));
-        }
-      }
-    }
-  } catch (_) {
-  }
-}
-async function ensureStreakRow() {
-  const rows = await db.select().from(prayerStreak).limit(1);
-  if (rows.length === 0) {
-    await db.insert(prayerStreak).values({
-      currentStreak: 0,
-      longestStreak: 0,
-      lastCompletedDateKey: null
-    });
-  }
-}
-function registerPrayerRoutes(app2) {
-  app2.get("/api/prayer-categories", async (_req, res) => {
-    try {
-      const cats = await db.select().from(prayerCategories).orderBy(asc(prayerCategories.sortOrder), asc(prayerCategories.name));
-      res.json(cats);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.post("/api/prayer-categories", async (req, res) => {
-    try {
-      const { name, sortOrder } = req.body;
-      if (!name || typeof name !== "string" || !name.trim()) {
-        return res.status(400).json({ error: "Category name is required" });
-      }
-      const existing = await db.select().from(prayerCategories).where(sql2`LOWER(${prayerCategories.name}) = LOWER(${name.trim()})`);
-      if (existing.length > 0) {
-        return res.status(409).json({ error: "A category with this name already exists" });
-      }
-      const [cat] = await db.insert(prayerCategories).values({
-        name: name.trim(),
-        sortOrder: sortOrder ?? 0
-      }).returning();
-      res.status(201).json(cat);
-    } catch (err) {
-      if (err.message?.includes("unique")) {
-        return res.status(409).json({ error: "A category with this name already exists" });
-      }
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.patch("/api/prayer-categories/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const updates = { updatedAt: /* @__PURE__ */ new Date() };
-      if (req.body.name !== void 0) updates.name = req.body.name.trim();
-      if (req.body.sortOrder !== void 0) updates.sortOrder = req.body.sortOrder;
-      const [cat] = await db.update(prayerCategories).set(updates).where(eq(prayerCategories.id, id)).returning();
-      if (!cat) return res.status(404).json({ error: "Category not found" });
-      res.json(cat);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.delete("/api/prayer-categories/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      await db.update(prayers).set({ categoryId: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(prayers.categoryId, id));
-      const [cat] = await db.delete(prayerCategories).where(eq(prayerCategories.id, id)).returning();
-      if (!cat) return res.status(404).json({ error: "Category not found" });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/prayers", async (req, res) => {
-    try {
-      autoArchiveAnswered().catch(() => {
-      });
-      processEventDateActions().catch(() => {
-      });
-      const { status, categoryId, officialId, q, limit: lim, offset: off, sort } = req.query;
-      const conditions = [];
-      if (status && status !== "ALL") {
-        conditions.push(eq(prayers.status, status));
-      }
-      if (categoryId === "uncategorized") {
-        conditions.push(isNull(prayers.categoryId));
-      } else if (categoryId) {
-        conditions.push(eq(prayers.categoryId, categoryId));
-      }
-      if (q && typeof q === "string" && q.trim()) {
-        const search = `%${q.trim()}%`;
-        conditions.push(or(ilike(prayers.title, search), ilike(prayers.body, search)));
-      }
-      if (officialId && typeof officialId === "string") {
-        conditions.push(sql2`${prayers.officialIds}::jsonb @> ${JSON.stringify([officialId])}::jsonb`);
-      }
-      const orderBy = sort === "needsAttention" ? [asc(prayers.lastPrayedAt), desc(prayers.priority), desc(prayers.createdAt)] : [desc(prayers.createdAt)];
-      let query = db.select().from(prayers).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(...orderBy);
-      const limitVal = Math.min(parseInt(lim) || 50, 200);
-      const offsetVal = parseInt(off) || 0;
-      const results = await query.limit(limitVal).offset(offsetVal);
-      res.json(results);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.post("/api/prayers", async (req, res) => {
-    try {
-      const parsed = insertPrayerSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: parsed.error.issues });
-      }
-      const { title, body, categoryId, officialIds, pinnedDaily, priority, eventDate, autoAfterEventAction, autoAfterEventDaysOffset } = parsed.data;
-      const [prayer] = await db.insert(prayers).values({
-        title,
-        body,
-        categoryId: categoryId ?? null,
-        officialIds: officialIds ?? [],
-        pinnedDaily: pinnedDaily ?? false,
-        priority: priority ?? 0,
-        eventDate: eventDate ? new Date(eventDate) : null,
-        autoAfterEventAction: autoAfterEventAction ?? "none",
-        autoAfterEventDaysOffset: autoAfterEventDaysOffset ?? 0
-      }).returning();
-      res.status(201).json(prayer);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/prayers/export", async (req, res) => {
-    try {
-      await autoArchiveAnswered();
-      const { status, dateFrom, dateTo, includeBody } = req.query;
-      const conditions = [];
-      if (status && status !== "ALL") {
-        conditions.push(eq(prayers.status, status));
-      }
-      if (dateFrom && typeof dateFrom === "string") {
-        const from = /* @__PURE__ */ new Date(dateFrom + "T00:00:00.000Z");
-        if (!isNaN(from.getTime())) {
-          conditions.push(gte(prayers.createdAt, from));
-        }
-      }
-      if (dateTo && typeof dateTo === "string") {
-        const to = /* @__PURE__ */ new Date(dateTo + "T23:59:59.999Z");
-        if (!isNaN(to.getTime())) {
-          conditions.push(lte(prayers.createdAt, to));
-        }
-      }
-      const allPrayers = await db.select().from(prayers).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(desc(prayers.createdAt));
-      const cats = await db.select().from(prayerCategories);
-      const catMap = new Map(cats.map((c) => [c.id, c.name]));
-      const showBody = includeBody !== "false";
-      const headerCols = ["title"];
-      if (showBody) headerCols.push("body");
-      headerCols.push("status", "categoryName", "createdAt", "answeredAt", "archivedAt", "answerNote", "officialIds");
-      const header = headerCols.join(",");
-      const csvEscape = (s) => {
-        if (s == null) return "";
-        const str = String(s).replace(/"/g, '""');
-        return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str}"` : str;
-      };
-      const rows = allPrayers.map((p) => {
-        const cols = [csvEscape(p.title)];
-        if (showBody) cols.push(csvEscape(p.body));
-        cols.push(
-          p.status,
-          csvEscape(catMap.get(p.categoryId ?? "") ?? ""),
-          p.createdAt?.toISOString() ?? "",
-          p.answeredAt?.toISOString() ?? "",
-          p.archivedAt?.toISOString() ?? "",
-          csvEscape(p.answerNote),
-          csvEscape((p.officialIds || []).join(";"))
-        );
-        return cols.join(",");
-      });
-      const csv = [header, ...rows].join("\n");
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", "attachment; filename=prayers-export.csv");
-      res.send(csv);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/prayers/needs-attention", async (req, res) => {
-    try {
-      const fourteenDaysAgo = /* @__PURE__ */ new Date();
-      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-      const allOpen = await db.select().from(prayers).where(eq(prayers.status, "OPEN"));
-      const needsAttention = allOpen.filter(
-        (p) => p.lastPrayedAt === null || p.lastPrayedAt < fourteenDaysAgo
-      );
-      const sorted = needsAttention.sort((a, b) => {
-        const aTime = a.lastPrayedAt?.getTime() ?? 0;
-        const bTime = b.lastPrayedAt?.getTime() ?? 0;
-        if (aTime !== bTime) return aTime - bTime;
-        return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
-      });
-      const result = sorted.slice(0, 5);
-      res.json(result);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/prayers/recently-answered", async (req, res) => {
-    try {
-      const result = await db.select().from(prayers).where(eq(prayers.status, "ANSWERED")).orderBy(desc(prayers.answeredAt)).limit(5);
-      res.json(result);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/prayers/grouped", async (req, res) => {
-    try {
-      const { status, groupBy } = req.query;
-      const conditions = [];
-      if (status && status !== "ALL") {
-        conditions.push(eq(prayers.status, status));
-      }
-      const allPrayers = await db.select().from(prayers).where(conditions.length > 0 ? and(...conditions) : void 0);
-      if (groupBy === "officials") {
-        const officialCounts = /* @__PURE__ */ new Map();
-        for (const p of allPrayers) {
-          const ids = p.officialIds || [];
-          if (ids.length === 0) {
-            officialCounts.set("__none__", (officialCounts.get("__none__") || 0) + 1);
-          } else {
-            for (const oid of ids) {
-              officialCounts.set(oid, (officialCounts.get(oid) || 0) + 1);
-            }
-          }
-        }
-        const groups = Array.from(officialCounts.entries()).map(([id, count]) => ({
-          id,
-          name: id === "__none__" ? "No Official" : id,
-          count
-        }));
-        groups.sort((a, b) => b.count - a.count);
-        return res.json({ groupBy: "officials", groups });
-      }
-      if (groupBy === "categories") {
-        const cats = await db.select().from(prayerCategories);
-        const catMap = new Map(cats.map((c) => [c.id, c.name]));
-        const categoryCounts = /* @__PURE__ */ new Map();
-        for (const p of allPrayers) {
-          const key = p.categoryId || "__uncategorized__";
-          categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
-        }
-        const groups = Array.from(categoryCounts.entries()).map(([id, count]) => ({
-          id,
-          name: id === "__uncategorized__" ? "Uncategorized" : catMap.get(id) || id,
-          count
-        }));
-        groups.sort((a, b) => b.count - a.count);
-        return res.json({ groupBy: "categories", groups });
-      }
-      res.status(400).json({ error: "groupBy must be 'officials' or 'categories'" });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/prayers/upcoming", async (req, res) => {
-    try {
-      const result = await db.select().from(prayers).where(and(
-        eq(prayers.status, "OPEN"),
-        not(isNull(prayers.eventDate))
-      )).orderBy(asc(prayers.eventDate)).limit(10);
-      res.json(result);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/prayers/:id", async (req, res) => {
-    try {
-      const [prayer] = await db.select().from(prayers).where(eq(prayers.id, req.params.id)).limit(1);
-      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
-      res.json(prayer);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.patch("/api/prayers/:id", async (req, res) => {
-    try {
-      const parsed = updatePrayerSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: parsed.error.issues });
-      }
-      const updates = { ...parsed.data, updatedAt: /* @__PURE__ */ new Date() };
-      if (updates.lastPrayedAt && typeof updates.lastPrayedAt === "string") {
-        updates.lastPrayedAt = new Date(updates.lastPrayedAt);
-      }
-      if (updates.eventDate !== void 0) {
-        updates.eventDate = updates.eventDate ? new Date(updates.eventDate) : null;
-      }
-      const [prayer] = await db.update(prayers).set(updates).where(eq(prayers.id, req.params.id)).returning();
-      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
-      res.json(prayer);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.delete("/api/prayers/:id", async (req, res) => {
-    try {
-      const [prayer] = await db.delete(prayers).where(eq(prayers.id, req.params.id)).returning();
-      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.post("/api/prayers/:id/answer", async (req, res) => {
-    try {
-      const { answerNote } = req.body || {};
-      const [prayer] = await db.update(prayers).set({
-        status: "ANSWERED",
-        answeredAt: /* @__PURE__ */ new Date(),
-        answerNote: answerNote ?? null,
-        archivedAt: null,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq(prayers.id, req.params.id)).returning();
-      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
-      res.json(prayer);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.post("/api/prayers/:id/reopen", async (req, res) => {
-    try {
-      const [prayer] = await db.update(prayers).set({
-        status: "OPEN",
-        answeredAt: null,
-        archivedAt: null,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq(prayers.id, req.params.id)).returning();
-      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
-      res.json(prayer);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.post("/api/prayers/:id/archive", async (req, res) => {
-    try {
-      const [prayer] = await db.update(prayers).set({
-        status: "ARCHIVED",
-        archivedAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq(prayers.id, req.params.id)).returning();
-      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
-      res.json(prayer);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.post("/api/prayers/:id/unarchive", async (req, res) => {
-    try {
-      const [prayer] = await db.update(prayers).set({
-        status: "OPEN",
-        archivedAt: null,
-        answeredAt: null,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq(prayers.id, req.params.id)).returning();
-      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
-      res.json(prayer);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.post("/api/prayers/bulk", async (req, res) => {
-    try {
-      const { action, prayerIds, answerNote } = req.body;
-      if (!action || !Array.isArray(prayerIds) || prayerIds.length === 0) {
-        return res.status(400).json({ error: "action and prayerIds[] required" });
-      }
-      const validActions = ["answer", "archive", "reopen", "unarchive"];
-      if (!validActions.includes(action)) {
-        return res.status(400).json({ error: `Invalid action. Must be one of: ${validActions.join(", ")}` });
-      }
-      const now = /* @__PURE__ */ new Date();
-      let updates;
-      switch (action) {
-        case "answer":
-          updates = { status: "ANSWERED", answeredAt: now, answerNote: answerNote ?? null, archivedAt: null, updatedAt: now };
-          break;
-        case "archive":
-          updates = { status: "ARCHIVED", archivedAt: now, updatedAt: now };
-          break;
-        case "reopen":
-          updates = { status: "OPEN", answeredAt: null, archivedAt: null, updatedAt: now };
-          break;
-        case "unarchive":
-          updates = { status: "OPEN", archivedAt: null, answeredAt: null, updatedAt: now };
-          break;
-      }
-      const result = await db.update(prayers).set(updates).where(inArray(prayers.id, prayerIds)).returning();
-      res.json({ updated: result.length, prayers: result });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/daily-prayer-picks", async (req, res) => {
-    try {
-      const todayKey = getTodayDateKey();
-      const forceRegenerate = req.query.forceRegenerate === "true";
-      if (forceRegenerate) {
-        await db.delete(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, todayKey));
-      }
-      if (!forceRegenerate) {
-        const existing = await db.select().from(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, todayKey)).limit(1);
-        if (existing.length > 0) {
-          const ids = existing[0].prayerIds;
-          const prayerList = ids.length > 0 ? await db.select().from(prayers).where(inArray(prayers.id, ids)) : [];
-          const ordered = ids.map((id) => prayerList.find((p) => p.id === id)).filter(Boolean);
-          return res.json({ dateKey: todayKey, prayers: ordered, generatedAt: existing[0].generatedAt });
-        }
-      }
-      const yesterdayKey = getDateKeyNDaysAgo(1);
-      const twoDaysAgoKey = getDateKeyNDaysAgo(2);
-      const recentPickRows = await db.select().from(dailyPrayerPicks).where(inArray(dailyPrayerPicks.dateKey, [yesterdayKey, twoDaysAgoKey]));
-      const yesterdayIds = [];
-      const twoDaysAgoIds = [];
-      for (const row of recentPickRows) {
-        if (row.dateKey === yesterdayKey) yesterdayIds.push(...row.prayerIds);
-        if (row.dateKey === twoDaysAgoKey) twoDaysAgoIds.push(...row.prayerIds);
-      }
-      const recentIds = /* @__PURE__ */ new Set([...yesterdayIds, ...twoDaysAgoIds]);
-      const openPrayers = await db.select().from(prayers).where(eq(prayers.status, "OPEN")).orderBy(asc(prayers.lastShownAt));
-      const picks = [];
-      const pinned = openPrayers.filter((p) => p.pinnedDaily);
-      const pinnedSorted = pinned.sort((a, b) => {
-        const aTime = a.lastShownAt?.getTime() ?? 0;
-        const bTime = b.lastShownAt?.getTime() ?? 0;
-        return aTime - bTime;
-      });
-      for (const p of pinnedSorted) {
-        if (picks.length >= 3) break;
-        picks.push(p);
-      }
-      if (picks.length < 3) {
-        const pickedIds = new Set(picks.map((p) => p.id));
-        const strictEligible = openPrayers.filter((p) => !pickedIds.has(p.id) && !recentIds.has(p.id));
-        const yesterdayOnlyEligible = openPrayers.filter(
-          (p) => !pickedIds.has(p.id) && !yesterdayIds.includes(p.id)
-        );
-        const allEligible = openPrayers.filter((p) => !pickedIds.has(p.id));
-        let pool2;
-        const needed = 3 - picks.length;
-        if (strictEligible.length >= needed) {
-          pool2 = strictEligible;
-        } else if (yesterdayOnlyEligible.length >= needed) {
-          pool2 = yesterdayOnlyEligible;
-        } else {
-          pool2 = allEligible;
-        }
-        if (pool2.length > 0) {
-          const weighted = pool2.map((p) => {
-            let weight = 1;
-            if (p.lastShownAt === null) weight += 5;
-            else {
-              const daysSince = (Date.now() - p.lastShownAt.getTime()) / (1e3 * 60 * 60 * 24);
-              weight += Math.min(daysSince, 10);
-            }
-            if (p.priority === 1) weight *= 2;
-            if (recentIds.has(p.id)) weight *= 0.3;
-            weight += Math.random() * 2;
-            return { prayer: p, weight };
-          });
-          weighted.sort((a, b) => b.weight - a.weight);
-          for (const w of weighted) {
-            if (picks.length >= 3) break;
-            picks.push(w.prayer);
-          }
-        }
-      }
-      const pickIds = picks.map((p) => p.id);
-      if (pickIds.length > 0) {
-        await db.update(prayers).set({ lastShownAt: /* @__PURE__ */ new Date() }).where(inArray(prayers.id, pickIds));
-      }
-      await db.insert(dailyPrayerPicks).values({
-        dateKey: todayKey,
-        prayerIds: pickIds
-      }).onConflictDoNothing();
-      res.json({ dateKey: todayKey, prayers: picks, generatedAt: /* @__PURE__ */ new Date() });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/prayer-streak", async (req, res) => {
-    try {
-      await ensureStreakRow();
-      const [streak] = await db.select().from(prayerStreak).limit(1);
-      res.json(streak);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.post("/api/prayer-streak/complete-today", async (req, res) => {
-    try {
-      await ensureStreakRow();
-      const todayKey = getTodayDateKey();
-      const yesterdayKey = getYesterdayDateKey();
-      const [streak] = await db.select().from(prayerStreak).limit(1);
-      if (streak.lastCompletedDateKey === todayKey) {
-        return res.json(streak);
-      }
-      let newStreak;
-      if (streak.lastCompletedDateKey === yesterdayKey) {
-        newStreak = streak.currentStreak + 1;
-      } else {
-        newStreak = 1;
-      }
-      const newLongest = Math.max(streak.longestStreak, newStreak);
-      const [updated] = await db.update(prayerStreak).set({
-        currentStreak: newStreak,
-        lastCompletedDateKey: todayKey,
-        longestStreak: newLongest
-      }).where(eq(prayerStreak.id, streak.id)).returning();
-      try {
-        const todayPicks = await db.select().from(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, todayKey)).limit(1);
-        if (todayPicks.length > 0) {
-          const pickIds = todayPicks[0].prayerIds;
-          if (pickIds.length > 0) {
-            const todayStart = /* @__PURE__ */ new Date();
-            todayStart.setHours(0, 0, 0, 0);
-            await db.update(prayers).set({ lastPrayedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(
-              inArray(prayers.id, pickIds),
-              or(
-                isNull(prayers.lastPrayedAt),
-                lte(prayers.lastPrayedAt, todayStart)
-              )
-            ));
-          }
-        }
-      } catch (_) {
-      }
-      res.json(updated);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/settings/auto-archive", async (_req, res) => {
-    try {
-      const rows = await db.select().from(appSettings).where(inArray(appSettings.key, ["autoArchiveEnabled", "autoArchiveDays"]));
-      let enabled = true;
-      let days = 90;
-      for (const row of rows) {
-        if (row.key === "autoArchiveEnabled") enabled = row.value === "true";
-        if (row.key === "autoArchiveDays") days = parseInt(row.value, 10) || 90;
-      }
-      res.json({ enabled, days });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.put("/api/settings/auto-archive", async (req, res) => {
-    try {
-      const { enabled, days } = req.body;
-      const now = /* @__PURE__ */ new Date();
-      await db.insert(appSettings).values({
-        key: "autoArchiveEnabled",
-        value: String(enabled ?? true),
-        updatedAt: now
-      }).onConflictDoUpdate({
-        target: appSettings.key,
-        set: { value: String(enabled ?? true), updatedAt: now }
-      });
-      await db.insert(appSettings).values({
-        key: "autoArchiveDays",
-        value: String(days ?? 90),
-        updatedAt: now
-      }).onConflictDoUpdate({
-        target: appSettings.key,
-        set: { value: String(days ?? 90), updatedAt: now }
-      });
-      res.json({ enabled: enabled ?? true, days: days ?? 90 });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app2.get("/api/officials/:id/prayer-counts", async (req, res) => {
-    try {
-      const { id: officialId } = req.params;
-      const allPrayers = await db.select().from(prayers);
-      let open = 0;
-      let answered = 0;
-      let archived = 0;
-      for (const prayer of allPrayers) {
-        const officialIds = prayer.officialIds;
-        if (!officialIds || !officialIds.includes(officialId)) continue;
-        switch (prayer.status) {
-          case "OPEN":
-            open++;
-            break;
-          case "ANSWERED":
-            answered++;
-            break;
-          case "ARCHIVED":
-            archived++;
-            break;
-        }
-      }
-      res.json({ open, answered, archived });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-}
-
-// server/routes/legislativeRoutes.ts
-init_db();
-init_schema();
-import { eq as eq9, and as and8, isNull as isNull4, desc as desc2, asc as asc2, gte as gte3, lte as lte2, sql as sql12, inArray as inArray3 } from "drizzle-orm";
-
-// server/jobs/scheduler.ts
-init_refreshOfficials();
-
-// server/jobs/refreshGeoJSON.ts
-init_db();
-import * as crypto2 from "crypto";
-import * as fs2 from "node:fs";
-import * as path2 from "node:path";
-import { fileURLToPath } from "node:url";
-import { sql as sql4 } from "drizzle-orm";
-var __filename = fileURLToPath(import.meta.url);
-var __dirname = path2.dirname(__filename);
-var GEOJSON_SOURCES = {
-  TX_HOUSE_GEOJSON_V2: {
-    url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
-    localFile: "tx_house.geojson",
-    simplifiedFile: "tx_house_simplified.geojson"
-  },
-  TX_SENATE_GEOJSON_V2: {
-    url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_State_Senate_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
-    localFile: "tx_senate.geojson",
-    simplifiedFile: "tx_senate_simplified.geojson"
-  },
-  US_HOUSE_TX_GEOJSON_V2: {
-    url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_US_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
-    localFile: "us_congress.geojson",
-    simplifiedFile: "us_congress_simplified.geojson"
-  }
-};
-var GEOJSON_DIR = path2.join(__dirname, "..", "data", "geojson");
-async function ensureGeoJSONRefreshTable() {
-  await db.execute(sql4`
-    CREATE TABLE IF NOT EXISTS geojson_refresh_state (
-      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-      source VARCHAR NOT NULL UNIQUE,
-      fingerprint TEXT,
-      last_checked_at TIMESTAMP,
-      last_changed_at TIMESTAMP,
-      last_refreshed_at TIMESTAMP,
-      created_at TIMESTAMP DEFAULT now(),
-      updated_at TIMESTAMP DEFAULT now()
-    )
-  `);
-}
-function computeFingerprint2(data) {
-  return crypto2.createHash("sha256").update(data).digest("hex");
-}
-async function fetchWithRetry2(url, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "TexasDistrictsApp/1.0 (GeoJSON Sync)",
-          "Accept": "application/json"
-        }
-      });
-      if (response.ok) return response;
-      if (response.status === 429) {
-        await new Promise((r) => setTimeout(r, 2e3 * (i + 1)));
-        continue;
-      }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      await new Promise((r) => setTimeout(r, 1e3 * (i + 1)));
-    }
-  }
-  throw new Error("Max retries exceeded");
-}
-async function getGeoJSONRefreshState(source) {
-  await ensureGeoJSONRefreshTable();
-  const result = await db.execute(
-    sql4`SELECT * FROM geojson_refresh_state WHERE source = ${source} LIMIT 1`
-  );
-  if (!result.rows || result.rows.length === 0) return null;
-  const row = result.rows[0];
-  return {
-    fingerprint: row.fingerprint,
-    lastCheckedAt: row.last_checked_at,
-    lastChangedAt: row.last_changed_at
-  };
-}
-async function updateGeoJSONRefreshState(source, fingerprint2, changed) {
-  await ensureGeoJSONRefreshTable();
-  const now = /* @__PURE__ */ new Date();
-  const existing = await db.execute(
-    sql4`SELECT * FROM geojson_refresh_state WHERE source = ${source} LIMIT 1`
-  );
-  if (existing.rows && existing.rows.length > 0) {
-    const row = existing.rows[0];
-    await db.execute(sql4`
-      UPDATE geojson_refresh_state SET
-        fingerprint = ${fingerprint2},
-        last_checked_at = ${now},
-        last_changed_at = ${changed ? now : row.last_changed_at},
-        last_refreshed_at = ${changed ? now : row.last_refreshed_at},
-        updated_at = ${now}
-      WHERE id = ${row.id}
-    `);
-  } else {
-    await db.execute(sql4`
-      INSERT INTO geojson_refresh_state (source, fingerprint, last_checked_at, last_changed_at, last_refreshed_at)
-      VALUES (${source}, ${fingerprint2}, ${now}, ${changed ? now : null}, ${changed ? now : null})
-    `);
-  }
-}
-async function markGeoJSONCheckedOnly(source) {
-  await ensureGeoJSONRefreshTable();
-  const now = /* @__PURE__ */ new Date();
-  const existing = await db.execute(
-    sql4`SELECT * FROM geojson_refresh_state WHERE source = ${source} LIMIT 1`
-  );
-  if (existing.rows && existing.rows.length > 0) {
-    await db.execute(sql4`
-      UPDATE geojson_refresh_state SET
-        last_checked_at = ${now},
-        updated_at = ${now}
-      WHERE source = ${source}
-    `);
-  } else {
-    await db.execute(sql4`
-      INSERT INTO geojson_refresh_state (source, last_checked_at)
-      VALUES (${source}, ${now})
-    `);
-  }
-}
-var EXPECTED_COUNTS = {
-  TX_HOUSE_GEOJSON_V2: 150,
-  TX_SENATE_GEOJSON_V2: 31,
-  US_HOUSE_TX_GEOJSON_V2: 38
-};
-function extractDistrictNumber(props, _source) {
-  const value = props.DIST_NBR ?? props.district;
-  if (value === void 0 || value === null) return null;
-  const num = Number(value);
-  return Number.isFinite(num) && num > 0 ? num : null;
-}
-function normalizeGeoJSON(raw, source) {
-  const sampleProps = raw.features[0]?.properties;
-  const samplePropertyKeys = sampleProps ? Object.keys(sampleProps) : [];
-  const features = [];
-  const districtsSeen = /* @__PURE__ */ new Set();
-  let fallbackCount = 0;
-  for (let idx = 0; idx < raw.features.length; idx++) {
-    const feature = raw.features[idx];
-    const props = feature.properties || {};
-    const district = extractDistrictNumber(props, source);
-    if (district === null) {
-      fallbackCount++;
-      console.error(`[RefreshGeoJSON] ${source}: Feature ${idx} has no valid district number. Props: ${JSON.stringify(Object.keys(props))}`);
-      continue;
-    }
-    if (districtsSeen.has(district)) {
-      console.warn(`[RefreshGeoJSON] ${source}: Duplicate district ${district} at feature ${idx}`);
-    }
-    districtsSeen.add(district);
-    let name;
-    if (source === "TX_HOUSE_GEOJSON_V2") {
-      name = String(props.REP_NM || props.name || `TX House District ${district}`);
-    } else if (source === "TX_SENATE_GEOJSON_V2") {
-      name = String(props.REP_NM || props.name || `TX Senate District ${district}`);
-    } else {
-      name = String(props.REP_NM || props.name || `US Congress District ${district}`);
-    }
-    features.push({
-      type: "Feature",
-      properties: { district, name },
-      geometry: feature.geometry
-    });
-  }
-  features.sort((a, b) => a.properties.district - b.properties.district);
-  const expectedCount = EXPECTED_COUNTS[source];
-  const actualCount = features.length;
-  if (fallbackCount > 0) {
-    return {
-      collection: null,
-      error: `${fallbackCount} features had no valid district number. Sample props: ${samplePropertyKeys.join(", ")}`,
-      samplePropertyKeys
-    };
-  }
-  if (actualCount === 0) {
-    return {
-      collection: null,
-      error: `No valid features extracted. Sample props: ${samplePropertyKeys.join(", ")}`,
-      samplePropertyKeys
-    };
-  }
-  if (actualCount !== expectedCount) {
-    console.warn(`[RefreshGeoJSON] ${source}: Expected ${expectedCount} districts but got ${actualCount}`);
-  }
-  const duplicateCount = raw.features.length - districtsSeen.size;
-  if (duplicateCount > 1) {
-    return {
-      collection: null,
-      error: `Too many duplicate districts (${duplicateCount}). Sample props: ${samplePropertyKeys.join(", ")}`,
-      samplePropertyKeys
-    };
-  }
-  return {
-    collection: {
-      type: "FeatureCollection",
-      features
-    },
-    samplePropertyKeys
-  };
-}
-function coordsEqual(a, b) {
-  return a[0] === b[0] && a[1] === b[1];
-}
-function isRingClosed(ring) {
-  if (ring.length < 2) return false;
-  return coordsEqual(ring[0], ring[ring.length - 1]);
-}
-function douglasPeuckerSimplify(coords, tolerance) {
-  if (coords.length <= 2) return coords;
-  let maxDist = 0;
-  let maxIdx = 0;
-  const first = coords[0];
-  const last = coords[coords.length - 1];
-  for (let i = 1; i < coords.length - 1; i++) {
-    const dist = perpendicularDistance(coords[i], first, last);
-    if (dist > maxDist) {
-      maxDist = dist;
-      maxIdx = i;
-    }
-  }
-  if (maxDist > tolerance) {
-    const left = douglasPeuckerSimplify(coords.slice(0, maxIdx + 1), tolerance);
-    const right = douglasPeuckerSimplify(coords.slice(maxIdx), tolerance);
-    return [...left.slice(0, -1), ...right];
-  }
-  return [first, last];
-}
-function simplifyRing(ring, tolerance) {
-  const wasClosed = isRingClosed(ring);
-  if (wasClosed) {
-    const openRing = ring.slice(0, -1);
-    if (openRing.length < 3) {
-      return ring;
-    }
-    const simplified = douglasPeuckerSimplify(openRing, tolerance);
-    if (simplified.length < 3) {
-      console.warn(`[RefreshGeoJSON] Ring simplified to ${simplified.length} points, using original`);
-      return ring;
-    }
-    const closedRing = [...simplified, simplified[0]];
-    if (closedRing.length < 4) {
-      console.warn(`[RefreshGeoJSON] Closed ring has ${closedRing.length} points, using original`);
-      return ring;
-    }
-    return closedRing;
-  } else {
-    return douglasPeuckerSimplify(ring, tolerance);
-  }
-}
-function perpendicularDistance(point2, lineStart, lineEnd) {
-  const dx = lineEnd[0] - lineStart[0];
-  const dy = lineEnd[1] - lineStart[1];
-  if (dx === 0 && dy === 0) {
-    return Math.sqrt(Math.pow(point2[0] - lineStart[0], 2) + Math.pow(point2[1] - lineStart[1], 2));
-  }
-  const t = ((point2[0] - lineStart[0]) * dx + (point2[1] - lineStart[1]) * dy) / (dx * dx + dy * dy);
-  const nearestX = lineStart[0] + t * dx;
-  const nearestY = lineStart[1] + t * dy;
-  return Math.sqrt(Math.pow(point2[0] - nearestX, 2) + Math.pow(point2[1] - nearestY, 2));
-}
-function validateGeometry(geometry, district) {
-  const errors = [];
-  const validateRing = (ring, ringType) => {
-    if (ring.length < 4) {
-      errors.push(`${ringType} has only ${ring.length} points (min 4)`);
-    }
-    if (!isRingClosed(ring)) {
-      errors.push(`${ringType} is not closed`);
-    }
-  };
-  if (geometry.type === "Polygon") {
-    const coords = geometry.coordinates;
-    coords.forEach((ring, i) => {
-      validateRing(ring, `District ${district} Polygon ring ${i}`);
-    });
-  } else if (geometry.type === "MultiPolygon") {
-    const coords = geometry.coordinates;
-    coords.forEach((polygon2, p) => {
-      polygon2.forEach((ring, r) => {
-        validateRing(ring, `District ${district} MultiPolygon[${p}] ring ${r}`);
-      });
-    });
-  }
-  return { valid: errors.length === 0, errors };
-}
-function simplifyGeometry(geometry, tolerance = 1e-3) {
-  if (geometry.type === "Polygon") {
-    const coords = geometry.coordinates;
-    return {
-      type: "Polygon",
-      coordinates: coords.map((ring) => simplifyRing(ring, tolerance))
-    };
-  } else if (geometry.type === "MultiPolygon") {
-    const coords = geometry.coordinates;
-    return {
-      type: "MultiPolygon",
-      coordinates: coords.map(
-        (polygon2) => polygon2.map((ring) => simplifyRing(ring, tolerance))
-      )
-    };
-  }
-  return geometry;
-}
-function createSimplifiedGeoJSON(geojson) {
-  const allErrors = [];
-  const features = geojson.features.map((feature) => {
-    const district = feature.properties.district;
-    const simplifiedGeometry = simplifyGeometry(feature.geometry);
-    const validation = validateGeometry(simplifiedGeometry, district);
-    if (!validation.valid) {
-      allErrors.push(...validation.errors);
-    }
-    return {
-      ...feature,
-      geometry: simplifiedGeometry
-    };
-  });
-  if (allErrors.length > 0) {
-    console.error(`[RefreshGeoJSON] Geometry validation errors: ${allErrors.slice(0, 5).join("; ")}${allErrors.length > 5 ? ` ... and ${allErrors.length - 5} more` : ""}`);
-    return {
-      collection: null,
-      errors: allErrors
-    };
-  }
-  return {
-    collection: {
-      type: "FeatureCollection",
-      features
-    },
-    errors: []
-  };
-}
-async function writeGeoJSONFile(filename, data) {
-  const filePath = path2.join(GEOJSON_DIR, filename);
-  const tempPath = filePath + ".tmp";
-  await fs2.promises.writeFile(tempPath, JSON.stringify(data), "utf8");
-  await fs2.promises.rename(tempPath, filePath);
-}
-async function checkGeoJSONSourceForChanges(source) {
-  console.log(`[RefreshGeoJSON] Checking ${source} for changes...`);
-  try {
-    const config = GEOJSON_SOURCES[source];
-    const response = await fetchWithRetry2(config.url);
-    const rawText = await response.text();
-    const newFingerprint = computeFingerprint2(rawText);
-    const state = await getGeoJSONRefreshState(source);
-    const previousFingerprint = state?.fingerprint || null;
-    const changed = previousFingerprint !== newFingerprint;
-    let featureCount;
-    try {
-      const parsed = JSON.parse(rawText);
-      featureCount = parsed.features?.length;
-    } catch {
-      featureCount = void 0;
-    }
-    console.log(`[RefreshGeoJSON] ${source}: fingerprint=${newFingerprint.slice(0, 12)}... changed=${changed} features=${featureCount ?? "?"}`);
-    return {
-      source,
-      changed,
-      previousFingerprint,
-      newFingerprint,
-      featureCount
-    };
-  } catch (err) {
-    console.error(`[RefreshGeoJSON] Error checking ${source}:`, err);
-    return {
-      source,
-      changed: false,
-      previousFingerprint: null,
-      newFingerprint: "",
-      error: String(err)
-    };
-  }
-}
-async function refreshGeoJSONSource(source) {
-  console.log(`[RefreshGeoJSON] Refreshing ${source}...`);
-  try {
-    const config = GEOJSON_SOURCES[source];
-    const response = await fetchWithRetry2(config.url);
-    const rawText = await response.text();
-    const rawData = JSON.parse(rawText);
-    if (!rawData.features || rawData.features.length === 0) {
-      throw new Error("No features in response");
-    }
-    const normalizeResult = normalizeGeoJSON(rawData, source);
-    if (!normalizeResult.collection) {
-      console.error(`[RefreshGeoJSON] ${source}: Normalization failed - ${normalizeResult.error}`);
-      console.error(`[RefreshGeoJSON] ${source}: Sample property keys: ${normalizeResult.samplePropertyKeys?.join(", ")}`);
-      return {
-        source,
-        success: false,
-        featureCount: 0,
-        error: `Validation failed: ${normalizeResult.error}`
-      };
-    }
-    const normalized = normalizeResult.collection;
-    const simplifiedResult = createSimplifiedGeoJSON(normalized);
-    if (!simplifiedResult.collection) {
-      console.error(`[RefreshGeoJSON] ${source}: Simplified geometry validation failed`);
-      return {
-        source,
-        success: false,
-        featureCount: 0,
-        error: `Geometry validation failed: ${simplifiedResult.errors.slice(0, 3).join("; ")}`
-      };
-    }
-    await writeGeoJSONFile(config.localFile, normalized);
-    await writeGeoJSONFile(config.simplifiedFile, simplifiedResult.collection);
-    console.log(`[RefreshGeoJSON] ${source}: Wrote ${normalized.features.length} features to ${config.localFile} and ${config.simplifiedFile}`);
-    const newFingerprint = computeFingerprint2(rawText);
-    await updateGeoJSONRefreshState(source, newFingerprint, true);
-    return {
-      source,
-      success: true,
-      featureCount: normalized.features.length
-    };
-  } catch (err) {
-    console.error(`[RefreshGeoJSON] Error refreshing ${source}:`, err);
-    return {
-      source,
-      success: false,
-      featureCount: 0,
-      error: String(err)
-    };
-  }
-}
-var isRefreshingGeoJSON = false;
-function getIsRefreshingGeoJSON() {
-  return isRefreshingGeoJSON;
-}
-async function checkAndRefreshGeoJSONIfChanged(force = false) {
-  if (isRefreshingGeoJSON) {
-    console.log("[RefreshGeoJSON] Refresh already in progress, skipping");
-    return {
-      sourcesChecked: [],
-      sourcesChanged: [],
-      sourcesRefreshed: [],
-      errors: [{ source: "TX_HOUSE_GEOJSON_V2", error: "Refresh already in progress" }],
-      durationMs: 0
-    };
-  }
-  isRefreshingGeoJSON = true;
-  const startTime = Date.now();
-  const result = {
-    sourcesChecked: [],
-    sourcesChanged: [],
-    sourcesRefreshed: [],
-    errors: [],
-    durationMs: 0
-  };
-  console.log(`[RefreshGeoJSON] Starting smart check-and-refresh (force=${force})`);
-  try {
-    const sources = ["TX_HOUSE_GEOJSON_V2", "TX_SENATE_GEOJSON_V2", "US_HOUSE_TX_GEOJSON_V2"];
-    for (const source of sources) {
-      result.sourcesChecked.push(source);
-      const checkResult = await checkGeoJSONSourceForChanges(source);
-      if (checkResult.error) {
-        result.errors.push({ source, error: checkResult.error });
-        continue;
-      }
-      if (!checkResult.changed && !force) {
-        console.log(`[RefreshGeoJSON] ${source}: No changes detected, skipping refresh`);
-        await markGeoJSONCheckedOnly(source);
-        continue;
-      }
-      result.sourcesChanged.push(source);
-      console.log(`[RefreshGeoJSON] ${source}: Changes detected, running refresh...`);
-      const refreshResult = await refreshGeoJSONSource(source);
-      if (refreshResult.success) {
-        result.sourcesRefreshed.push(source);
-      } else if (refreshResult.error) {
-        result.errors.push({ source, error: refreshResult.error });
-      }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-  } finally {
-    isRefreshingGeoJSON = false;
-    result.durationMs = Date.now() - startTime;
-  }
-  console.log(`[RefreshGeoJSON] Smart refresh completed: checked=${result.sourcesChecked.length}, changed=${result.sourcesChanged.length}, refreshed=${result.sourcesRefreshed.length}, errors=${result.errors.length} in ${result.durationMs}ms`);
-  return result;
-}
-async function wasGeoJSONCheckedThisWeek() {
-  const sources = ["TX_HOUSE_GEOJSON_V2", "TX_SENATE_GEOJSON_V2", "US_HOUSE_TX_GEOJSON_V2"];
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
-  for (const source of sources) {
-    const state = await getGeoJSONRefreshState(source);
-    if (!state?.lastCheckedAt || state.lastCheckedAt < oneWeekAgo) {
-      return false;
-    }
-  }
-  return true;
-}
-async function getGeoJSONRefreshStates() {
-  await ensureGeoJSONRefreshTable();
-  const result = await db.execute(
-    sql4`SELECT * FROM geojson_refresh_state`
-  );
-  return (result.rows || []).map((row) => ({
-    source: row.source,
-    fingerprint: row.fingerprint,
-    lastCheckedAt: row.last_checked_at,
-    lastChangedAt: row.last_changed_at,
-    lastRefreshedAt: row.last_refreshed_at
-  }));
-}
-
-// server/jobs/scheduler.ts
-init_refreshCommittees();
-init_refreshOtherTexasOfficials();
-init_identityResolver();
-
-// server/jobs/pollRssFeeds.ts
-init_db();
-init_schema();
-import * as cheerio4 from "cheerio";
-import * as crypto5 from "crypto";
-import { eq as eq7, and as and7 } from "drizzle-orm";
-
 // server/jobs/targetedRefresh.ts
-init_db();
-init_schema();
-init_expoPush();
 import * as cheerio3 from "cheerio";
 import * as crypto4 from "crypto";
-import { eq as eq6, and as and6 } from "drizzle-orm";
-var TLO_BASE = "https://capitol.texas.gov";
-var LEG_SESSION = "89R";
+import { eq as eq7, and as and7 } from "drizzle-orm";
 async function fetchWithRetry4(url, options = {}, retries = 3) {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
@@ -4895,6 +4003,95 @@ function parseUpcomingDateTime(dateStr, timeStr) {
     return null;
   }
 }
+function parseWitnessesFromHtml($) {
+  const results = [];
+  $("table").each((_, table) => {
+    const rows = $(table).find("tr");
+    if (rows.length < 2) return;
+    let hasPositionCell = false;
+    rows.each((_2, row) => {
+      if (hasPositionCell) return;
+      $(row).find("td").each((_3, td) => {
+        if (WITNESS_POSITION_RE.test($(td).text().trim())) hasPositionCell = true;
+      });
+    });
+    if (!hasPositionCell) return;
+    let posCol = -1, nameCol = -1, orgCol = -1, billCol = -1;
+    const headerCells = $(rows[0]).find("th");
+    if (headerCells.length > 0) {
+      headerCells.each((idx, th) => {
+        const t = $(th).text().trim().toLowerCase();
+        if (/position|stance/.test(t)) posCol = idx;
+        else if (/witness|name/.test(t)) nameCol = idx;
+        else if (/organ|represent|behalf|group/.test(t)) orgCol = idx;
+        else if (/bill/.test(t)) billCol = idx;
+      });
+    }
+    rows.each((_2, row) => {
+      const cells = $(row).find("td");
+      if (cells.length < 2) return;
+      const texts = cells.map((_3, td) => $(td).text().trim()).get();
+      const posIdx = posCol >= 0 ? posCol : texts.findIndex((t) => WITNESS_POSITION_RE.test(t));
+      if (posIdx < 0 || posIdx >= texts.length) return;
+      const rawPosition = texts[posIdx].toUpperCase();
+      const position = ["FOR", "AGAINST", "ON"].includes(rawPosition) ? rawPosition : null;
+      const rest = texts.filter((_3, i) => i !== posIdx);
+      let fullName = null;
+      let organization = null;
+      let billNumber = null;
+      if (nameCol >= 0 && orgCol >= 0) {
+        fullName = texts[nameCol] || null;
+        organization = texts[orgCol] || null;
+        billNumber = billCol >= 0 ? texts[billCol] || null : null;
+      } else {
+        for (const t of rest) {
+          const bm = t.match(WITNESS_BILL_RE);
+          if (bm && !billNumber) {
+            billNumber = bm[1].replace(/\s+/g, "").toUpperCase();
+            continue;
+          }
+          if (!fullName && t.length >= 2) {
+            fullName = t;
+            continue;
+          }
+          if (!organization && t.length >= 2) {
+            organization = t;
+          }
+        }
+      }
+      if (!fullName || fullName.length < 2) return;
+      if (billNumber) billNumber = billNumber.replace(/\s+/g, "").toUpperCase();
+      results.push({ fullName, organization: organization || null, position, billNumber: billNumber || null });
+    });
+  });
+  if (results.length > 0) return results;
+  const fullText = $("body").text();
+  const sectionMatch = fullText.match(/WITNESS(?:ES)?(?:\s+LIST)?\s*[:\n]([\s\S]{1,4000})/i);
+  if (!sectionMatch) return results;
+  const lines = sectionMatch[1].split(/[\n\r]+/).map((l) => l.trim()).filter(Boolean);
+  let currentPosition = null;
+  for (const line of lines) {
+    const posMatch = line.match(/^(FOR|AGAINST|ON(?:\s+THE\s+BILL)?)[:\s]*$/i);
+    if (posMatch) {
+      const raw = posMatch[1].replace(/\s+THE\s+BILL$/i, "").toUpperCase();
+      currentPosition = ["FOR", "AGAINST", "ON"].includes(raw) ? raw : null;
+      continue;
+    }
+    if (line.length < 3 || line.length > 200) continue;
+    const parts = line.split(/,\s*|-\s+/);
+    const fullName = parts[0]?.trim() || null;
+    if (!fullName) continue;
+    const organization = parts[1]?.trim() || null;
+    const billMatch = line.match(WITNESS_BILL_RE);
+    results.push({
+      fullName,
+      organization: organization || null,
+      position: currentPosition,
+      billNumber: billMatch ? billMatch[1].replace(/\s+/g, "").toUpperCase() : null
+    });
+  }
+  return results;
+}
 function parseHearingNoticePage(html) {
   const $ = cheerio3.load(html);
   const fullText = $("body").text().replace(/\s+/g, " ").trim();
@@ -4928,6 +4125,7 @@ function parseHearingNoticePage(html) {
     agendaItems.push({ billNumber, itemText: context, sortOrder: sortOrder++ });
   }
   const title = committeeName ? `${committeeName} Hearing` : "Committee Hearing";
+  const witnesses2 = parseWitnessesFromHtml($);
   return {
     title,
     committeeName,
@@ -4935,7 +4133,8 @@ function parseHearingNoticePage(html) {
     location,
     noticeText: fullText.slice(0, 4e3),
     agendaItems,
-    meetingType
+    meetingType,
+    witnesses: witnesses2
   };
 }
 async function refreshChamberUpcomingHearings(chamber, windowDays = 30) {
@@ -4970,7 +4169,7 @@ async function refreshChamberUpcomingHearings(chamber, windowDays = 30) {
   for (const meeting of windowed) {
     const committeeId = meeting.cmteCode ? codeToId.get(meeting.cmteCode) : void 0;
     const fp = fingerprint(JSON.stringify({ externalId: meeting.externalId, sourceUrl: meeting.sourceUrl }));
-    const existing = await db.select({ id: legislativeEvents.id, fingerprint: legislativeEvents.fingerprint }).from(legislativeEvents).where(eq6(legislativeEvents.externalId, meeting.externalId)).limit(1);
+    const existing = await db.select({ id: legislativeEvents.id, fingerprint: legislativeEvents.fingerprint }).from(legislativeEvents).where(eq7(legislativeEvents.externalId, meeting.externalId)).limit(1);
     if (existing.length === 0) {
       const [inserted] = await db.insert(legislativeEvents).values({
         eventType: "COMMITTEE_HEARING",
@@ -4990,8 +4189,8 @@ async function refreshChamberUpcomingHearings(chamber, windowDays = 30) {
       newEvents++;
     } else {
       if (existing[0].fingerprint !== fp) {
-        await db.update(legislativeEvents).set({ fingerprint: fp, lastSeenAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq6(legislativeEvents.id, existing[0].id));
-        const [ev] = await db.select({ title: legislativeEvents.title, startsAt: legislativeEvents.startsAt }).from(legislativeEvents).where(eq6(legislativeEvents.id, existing[0].id)).limit(1);
+        await db.update(legislativeEvents).set({ fingerprint: fp, lastSeenAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq7(legislativeEvents.id, existing[0].id));
+        const [ev] = await db.select({ title: legislativeEvents.title, startsAt: legislativeEvents.startsAt }).from(legislativeEvents).where(eq7(legislativeEvents.id, existing[0].id)).limit(1);
         if (ev) {
           const dateLabel = ev.startsAt ? ev.startsAt.toLocaleDateString("en-US", {
             timeZone: "America/Chicago",
@@ -5015,7 +4214,7 @@ async function refreshChamberUpcomingHearings(chamber, windowDays = 30) {
         }
         updatedEvents++;
       } else {
-        await db.update(legislativeEvents).set({ lastSeenAt: /* @__PURE__ */ new Date() }).where(eq6(legislativeEvents.id, existing[0].id));
+        await db.update(legislativeEvents).set({ lastSeenAt: /* @__PURE__ */ new Date() }).where(eq7(legislativeEvents.id, existing[0].id));
       }
     }
   }
@@ -5023,7 +4222,7 @@ async function refreshChamberUpcomingHearings(chamber, windowDays = 30) {
   return { newEvents, updatedEvents };
 }
 async function refreshCommitteeHearings(committeeId, _windowDays = 14) {
-  const [committee] = await db.select({ chamber: committees.chamber }).from(committees).where(eq6(committees.id, committeeId)).limit(1);
+  const [committee] = await db.select({ chamber: committees.chamber }).from(committees).where(eq7(committees.id, committeeId)).limit(1);
   if (!committee) {
     console.warn(`[targetedRefresh.hearings] Committee ${committeeId} not found`);
     return { newEvents: 0, updatedEvents: 0 };
@@ -5033,7 +4232,7 @@ async function refreshCommitteeHearings(committeeId, _windowDays = 14) {
 }
 async function refreshHearingDetail(eventId) {
   const tag = "[targetedRefresh.hearingDetail]";
-  const [event] = await db.select().from(legislativeEvents).where(eq6(legislativeEvents.id, eventId)).limit(1);
+  const [event] = await db.select().from(legislativeEvents).where(eq7(legislativeEvents.id, eventId)).limit(1);
   if (!event) {
     console.warn(`${tag} Event ${eventId} not found`);
     return false;
@@ -5057,7 +4256,7 @@ async function refreshHearingDetail(eventId) {
     return false;
   }
   const fp = fingerprint(html);
-  const [existing] = await db.select({ fingerprint: legislativeEvents.fingerprint }).from(legislativeEvents).where(eq6(legislativeEvents.id, eventId)).limit(1);
+  const [existing] = await db.select({ fingerprint: legislativeEvents.fingerprint }).from(legislativeEvents).where(eq7(legislativeEvents.id, eventId)).limit(1);
   if (existing?.fingerprint === fp) {
     console.log(`${tag} No change for event ${eventId}`);
     return false;
@@ -5070,21 +4269,8 @@ async function refreshHearingDetail(eventId) {
     location: event.location ?? parsed.location ?? void 0,
     fingerprint: fp,
     updatedAt: /* @__PURE__ */ new Date()
-  }).where(eq6(legislativeEvents.id, eventId));
-  await db.insert(hearingDetails).values({
-    eventId,
-    noticeText: parsed.noticeText,
-    meetingType: parsed.meetingType ?? void 0,
-    witnessCount: 0
-  }).onConflictDoUpdate({
-    target: hearingDetails.eventId,
-    set: {
-      noticeText: parsed.noticeText,
-      meetingType: parsed.meetingType ?? void 0,
-      updatedDate: /* @__PURE__ */ new Date()
-    }
-  });
-  await db.delete(hearingAgendaItems).where(eq6(hearingAgendaItems.eventId, eventId));
+  }).where(eq7(legislativeEvents.id, eventId));
+  await db.delete(hearingAgendaItems).where(eq7(hearingAgendaItems.eventId, eventId));
   for (const item of parsed.agendaItems) {
     let billId = null;
     if (item.billNumber) {
@@ -5098,14 +4284,45 @@ async function refreshHearingDetail(eventId) {
       sortOrder: item.sortOrder
     });
   }
+  await db.delete(witnesses).where(eq7(witnesses.eventId, eventId));
+  let insertedWitnessCount = 0;
+  for (const [idx, w] of parsed.witnesses.entries()) {
+    let billId = null;
+    if (w.billNumber) {
+      billId = await findOrCreateBill(w.billNumber);
+    }
+    await db.insert(witnesses).values({
+      eventId,
+      fullName: w.fullName,
+      organization: w.organization ?? void 0,
+      position: w.position ?? void 0,
+      billId: billId ?? void 0,
+      sortOrder: idx
+    });
+    insertedWitnessCount++;
+  }
+  await db.insert(hearingDetails).values({
+    eventId,
+    noticeText: parsed.noticeText,
+    meetingType: parsed.meetingType ?? void 0,
+    witnessCount: insertedWitnessCount
+  }).onConflictDoUpdate({
+    target: hearingDetails.eventId,
+    set: {
+      noticeText: parsed.noticeText,
+      meetingType: parsed.meetingType ?? void 0,
+      witnessCount: insertedWitnessCount,
+      updatedDate: /* @__PURE__ */ new Date()
+    }
+  });
   console.log(
-    `${tag} Event ${eventId} updated: ${parsed.agendaItems.length} agenda items`
+    `${tag} Event ${eventId} updated: ${parsed.agendaItems.length} agenda items, ${insertedWitnessCount} witnesses`
   );
   return true;
 }
 async function findOrCreateBill(billNumber) {
   const clean = billNumber.trim().toUpperCase();
-  const existing = await db.select({ id: bills.id }).from(bills).where(and6(eq6(bills.billNumber, clean), eq6(bills.legSession, LEG_SESSION))).limit(1);
+  const existing = await db.select({ id: bills.id }).from(bills).where(and7(eq7(bills.billNumber, clean), eq7(bills.legSession, LEG_SESSION))).limit(1);
   if (existing.length > 0) return existing[0].id;
   const [inserted] = await db.insert(bills).values({
     billNumber: clean,
@@ -5114,10 +4331,24 @@ async function findOrCreateBill(billNumber) {
   }).onConflictDoNothing().returning({ id: bills.id });
   return inserted?.id ?? null;
 }
+var TLO_BASE, LEG_SESSION, WITNESS_POSITION_RE, WITNESS_BILL_RE;
+var init_targetedRefresh = __esm({
+  "server/jobs/targetedRefresh.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_expoPush();
+    TLO_BASE = "https://capitol.texas.gov";
+    LEG_SESSION = "89R";
+    WITNESS_POSITION_RE = /^(FOR|AGAINST|ON)$/i;
+    WITNESS_BILL_RE = /\b([HS][BJR]{1,2}\s*\d+)\b/i;
+  }
+});
 
 // server/jobs/pollRssFeeds.ts
-var MAX_CONCURRENT = 5;
-var isPolling = false;
+import * as cheerio4 from "cheerio";
+import * as crypto5 from "crypto";
+import { eq as eq8, and as and8 } from "drizzle-orm";
 function getIsPollingRss() {
   return isPolling;
 }
@@ -5205,12 +4436,12 @@ async function processFeed(feed, stats) {
     updatedAt: /* @__PURE__ */ new Date()
   };
   if (result.status === 304) {
-    await db.update(rssFeeds).set(headerUpdate).where(eq7(rssFeeds.id, feed.id));
+    await db.update(rssFeeds).set(headerUpdate).where(eq8(rssFeeds.id, feed.id));
     stats.feeds304++;
     return;
   }
   if (!result.body) {
-    await db.update(rssFeeds).set(headerUpdate).where(eq7(rssFeeds.id, feed.id));
+    await db.update(rssFeeds).set(headerUpdate).where(eq8(rssFeeds.id, feed.id));
     return;
   }
   let entries = [];
@@ -5220,15 +4451,15 @@ async function processFeed(feed, stats) {
     const entry = parseHtmlPageAsItem(result.body, feed.url);
     if (entry) entries = [entry];
   }
-  await db.update(rssFeeds).set(headerUpdate).where(eq7(rssFeeds.id, feed.id));
-  const existingCount = await db.select({ id: rssItems.id }).from(rssItems).where(eq7(rssItems.feedId, feed.id)).limit(1);
+  await db.update(rssFeeds).set(headerUpdate).where(eq8(rssFeeds.id, feed.id));
+  const existingCount = await db.select({ id: rssItems.id }).from(rssItems).where(eq8(rssItems.feedId, feed.id)).limit(1);
   const isFirstPoll = existingCount.length === 0;
   for (const entry of entries) {
     const fp = itemFingerprint([entry.title, entry.link, entry.summary, entry.publishedAt?.toISOString()]);
-    const existing = await db.select({ id: rssItems.id, fingerprint: rssItems.fingerprint }).from(rssItems).where(and7(eq7(rssItems.feedId, feed.id), eq7(rssItems.guid, entry.guid))).limit(1);
+    const existing = await db.select({ id: rssItems.id, fingerprint: rssItems.fingerprint }).from(rssItems).where(and8(eq8(rssItems.feedId, feed.id), eq8(rssItems.guid, entry.guid))).limit(1);
     if (existing.length > 0) {
       if (existing[0].fingerprint !== fp) {
-        await db.update(rssItems).set({ fingerprint: fp, summary: entry.summary ?? void 0 }).where(eq7(rssItems.id, existing[0].id));
+        await db.update(rssItems).set({ fingerprint: fp, summary: entry.summary ?? void 0 }).where(eq8(rssItems.id, existing[0].id));
       }
       continue;
     }
@@ -5276,7 +4507,7 @@ async function pollAllFeeds() {
   console.log("[pollRss] BEGIN hourly RSS/HTML poll");
   const stats = { feeds304: 0, feedsNew: 0, items: 0 };
   try {
-    const feeds = await db.select().from(rssFeeds).where(eq7(rssFeeds.enabled, true));
+    const feeds = await db.select().from(rssFeeds).where(eq8(rssFeeds.enabled, true));
     console.log(`[pollRss] Polling ${feeds.length} enabled feeds`);
     await limitedMap(
       feeds,
@@ -5303,13 +4534,20 @@ async function pollAllFeeds() {
 function sleep3(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
+var MAX_CONCURRENT, isPolling;
+var init_pollRssFeeds = __esm({
+  "server/jobs/pollRssFeeds.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_targetedRefresh();
+    MAX_CONCURRENT = 5;
+    isPolling = false;
+  }
+});
 
 // server/jobs/refreshDailyLegislative.ts
-init_db();
-init_schema();
 import { sql as sql9, gte as gte2 } from "drizzle-orm";
-init_expoPush();
-var isDailyRefreshing = false;
 function getIsDailyRefreshing() {
   return isDailyRefreshing;
 }
@@ -5426,12 +4664,19 @@ function msUntilNext5amChicago() {
   if (secondsUntil <= 0) secondsUntil += 24 * 3600;
   return secondsUntil * 1e3;
 }
+var isDailyRefreshing;
+var init_refreshDailyLegislative = __esm({
+  "server/jobs/refreshDailyLegislative.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_targetedRefresh();
+    init_expoPush();
+    isDailyRefreshing = false;
+  }
+});
 
 // server/jobs/seedLegislativeFeeds.ts
-init_db();
-init_schema();
-var TLO_BASE2 = "https://capitol.texas.gov";
-var LEG_SESSION2 = "89R";
 async function seedLegislativeFeeds() {
   const tag = "[seedFeeds]";
   console.log(`${tag} Seeding RSS/polling feeds for all committees...`);
@@ -5477,20 +4722,161 @@ async function seedLegislativeFeeds() {
   console.log(`${tag} Done: ${inserted} feeds inserted, ${skipped} skipped`);
   return { inserted, skipped };
 }
+var TLO_BASE2, LEG_SESSION2;
+var init_seedLegislativeFeeds = __esm({
+  "server/jobs/seedLegislativeFeeds.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    TLO_BASE2 = "https://capitol.texas.gov";
+    LEG_SESSION2 = "89R";
+  }
+});
+
+// server/scripts/bulkFillHometowns.ts
+var bulkFillHometowns_exports = {};
+__export(bulkFillHometowns_exports, {
+  bulkFillHometowns: () => bulkFillHometowns
+});
+import { eq as eq9 } from "drizzle-orm";
+async function delay(ms) {
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
+}
+async function dbQuery(fn, label) {
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (attempt < maxRetries && (msg.includes("timed out") || msg.includes("socket") || msg.includes("Authentication") || msg.includes("terminated") || msg.includes("TLS"))) {
+        console.log(`[BulkFill] DB retry ${attempt}/${maxRetries} (${label}): ${msg}`);
+        await delay(3e3 * attempt);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Unreachable");
+}
+async function bulkFillHometowns() {
+  console.log("[BulkFill] Starting bulk hometown fill...");
+  const result = {
+    total: 0,
+    filled: 0,
+    skipped: 0,
+    notFound: 0,
+    errors: 0,
+    details: []
+  };
+  const allPrivate = await dbQuery(() => db.select({
+    officialPublicId: officialPrivate.officialPublicId,
+    personId: officialPrivate.personId
+  }).from(officialPrivate), "fetch existing private records");
+  const coveredOfficialIds = new Set(allPrivate.map((p) => p.officialPublicId).filter(Boolean));
+  const coveredPersonIds = new Set(allPrivate.map((p) => p.personId).filter(Boolean));
+  const allOfficials = await dbQuery(() => db.select({
+    id: officialPublic.id,
+    fullName: officialPublic.fullName,
+    personId: officialPublic.personId,
+    source: officialPublic.source,
+    active: officialPublic.active
+  }).from(officialPublic).where(eq9(officialPublic.active, true)), "fetch officials");
+  const uncheckedOfficials = allOfficials.filter((o) => {
+    if (coveredOfficialIds.has(o.id)) return false;
+    if (o.personId && coveredPersonIds.has(o.personId)) return false;
+    return true;
+  });
+  const sourceOrder = { "TX_SENATE": 0, "TX_HOUSE": 1, "US_HOUSE": 2, "OTHER_TX": 3 };
+  const officials = uncheckedOfficials.sort((a, b) => (sourceOrder[a.source] ?? 9) - (sourceOrder[b.source] ?? 9));
+  result.total = officials.length;
+  if (officials.length === 0) {
+    console.log(`[BulkFill] All ${allOfficials.length} officials already have private records. Nothing to do.`);
+    return result;
+  }
+  console.log(`[BulkFill] Found ${officials.length} unchecked officials (of ${allOfficials.length} total)`);
+  const CONCURRENCY = 3;
+  const PROGRESS_LOG_EVERY = 15;
+  async function processOne(official, index2) {
+    await delay(Math.floor(index2 % CONCURRENCY) * 400);
+    try {
+      const lookup = await lookupHometownFromTexasTribune(official.fullName);
+      if (!lookup.success || !lookup.hometown) {
+        await dbQuery(() => db.insert(officialPrivate).values({
+          personId: official.personId,
+          officialPublicId: official.id,
+          personalAddress: null,
+          addressSource: "tribune_not_found"
+        }), `mark-not-found ${official.fullName}`);
+        console.log(`[BulkFill] Not found, marked checked: ${official.fullName}`);
+        result.notFound++;
+        result.details.push({
+          name: official.fullName,
+          status: "not_found",
+          reason: "Not found in Texas Tribune directory (marked so it won't be re-checked)"
+        });
+        return;
+      }
+      await dbQuery(() => db.insert(officialPrivate).values({
+        personId: official.personId,
+        officialPublicId: official.id,
+        personalAddress: lookup.hometown,
+        addressSource: "tribune"
+      }), `insert ${official.fullName}`);
+      console.log(`[BulkFill] Created ${official.fullName}: ${lookup.hometown}`);
+      result.filled++;
+      result.details.push({
+        name: official.fullName,
+        status: "filled",
+        hometown: lookup.hometown
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[BulkFill] Failed ${official.fullName}: ${msg}`);
+      result.errors++;
+      result.details.push({
+        name: official.fullName,
+        status: "error",
+        reason: msg
+      });
+    }
+  }
+  for (let i = 0; i < officials.length; i += CONCURRENCY) {
+    const chunk = officials.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map((official, j) => processOne(official, j)));
+    const processed = Math.min(i + CONCURRENCY, officials.length);
+    if (processed % PROGRESS_LOG_EVERY === 0 || processed === officials.length) {
+      console.log(`[BulkFill] Progress: ${processed}/${officials.length} (filled=${result.filled}, notFound=${result.notFound})`);
+    }
+    if (i + CONCURRENCY < officials.length) {
+      await delay(1200);
+    }
+  }
+  console.log(`[BulkFill] Complete! Filled: ${result.filled}, Skipped: ${result.skipped}, Not Found: ${result.notFound}, Errors: ${result.errors}`);
+  return result;
+}
+var init_bulkFillHometowns = __esm({
+  "server/scripts/bulkFillHometowns.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_texasTribuneLookup();
+  }
+});
 
 // server/jobs/scheduler.ts
-init_db();
-init_schema();
+var scheduler_exports = {};
+__export(scheduler_exports, {
+  getRefreshCycleInProgress: () => getRefreshCycleInProgress,
+  getSchedulerStatus: () => getSchedulerStatus,
+  startOfficialsRefreshScheduler: () => startOfficialsRefreshScheduler,
+  stopOfficialsRefreshScheduler: () => stopOfficialsRefreshScheduler,
+  triggerDailyRefresh: () => triggerDailyRefresh,
+  triggerFullLegislativeBootstrap: () => triggerFullLegislativeBootstrap,
+  triggerFullRefreshCycle: () => triggerFullRefreshCycle,
+  triggerRssPoll: () => triggerRssPoll
+});
 import { sql as sql11 } from "drizzle-orm";
-var schedulerInterval = null;
-var lastCheckWindowRun = null;
-var refreshCycleInProgress = false;
-var CHECK_INTERVAL_MS = 10 * 60 * 1e3;
-var rssInterval = null;
-var dailyTimer = null;
-var lastRssPollAt = null;
-var lastDailyRefreshAt = null;
-var RSS_POLL_INTERVAL_MS = 60 * 60 * 1e3;
 async function runRefreshCycle() {
   if (refreshCycleInProgress) {
     console.log("[Scheduler] Refresh cycle already in progress, skipping");
@@ -5567,6 +4953,20 @@ async function schedulerTick() {
     console.error("[Scheduler] Error during tick:", err);
   }
 }
+async function triggerFullRefreshCycle() {
+  try {
+    await runRefreshCycle();
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error"
+    };
+  }
+}
+function getRefreshCycleInProgress() {
+  return refreshCycleInProgress;
+}
 function startOfficialsRefreshScheduler() {
   if (schedulerInterval) {
     console.log("[Scheduler] Already running");
@@ -5576,29 +4976,25 @@ function startOfficialsRefreshScheduler() {
   schedulerInterval = setInterval(schedulerTick, CHECK_INTERVAL_MS);
   setTimeout(async () => {
     try {
-      const { officialPublic: officialPublic2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const [{ count }] = await db.select({ count: sql11`count(*)::int` }).from(officialPublic2);
+      const { officialPublic: officialPublic3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const [{ count }] = await db.select({ count: sql11`count(*)::int` }).from(officialPublic3);
       if (count === 0) {
-        const [{ acquired }] = await db.execute(
-          sql11`SELECT pg_try_advisory_lock(8675309) AS acquired`
-        );
-        if (!acquired) {
-          console.log("[Scheduler] Officials table empty but another instance holds the startup lock \u2014 skipping duplicate seed refresh");
-          return;
-        }
         console.log("[Scheduler] Officials table is empty \u2014 running immediate full refresh cycle");
-        try {
-          await runRefreshCycle();
-        } finally {
-          await db.execute(sql11`SELECT pg_advisory_unlock(8675309)`).catch(() => {
-          });
-        }
+        await runRefreshCycle();
       }
     } catch (err) {
       console.error("[Scheduler] Startup check failed:", err);
     }
   }, 5e3);
   startLegislativeSchedulers();
+}
+function stopOfficialsRefreshScheduler() {
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+    console.log("[Scheduler] Stopped");
+  }
+  stopLegislativeSchedulers();
 }
 function getSchedulerStatus() {
   const now = /* @__PURE__ */ new Date();
@@ -5711,6 +5107,17 @@ function startLegislativeSchedulers() {
   }, 10 * 1e3);
   scheduleNextDailyRefresh();
 }
+function stopLegislativeSchedulers() {
+  if (rssInterval) {
+    clearInterval(rssInterval);
+    rssInterval = null;
+  }
+  if (dailyTimer) {
+    clearTimeout(dailyTimer);
+    dailyTimer = null;
+  }
+  console.log("[Scheduler/legislative] Stopped");
+}
 async function triggerRssPoll() {
   try {
     const result = await pollAllFeeds();
@@ -5749,8 +5156,735 @@ async function triggerFullLegislativeBootstrap() {
     return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
+var schedulerInterval, lastCheckWindowRun, refreshCycleInProgress, CHECK_INTERVAL_MS, rssInterval, dailyTimer, lastRssPollAt, lastDailyRefreshAt, RSS_POLL_INTERVAL_MS;
+var init_scheduler = __esm({
+  "server/jobs/scheduler.ts"() {
+    "use strict";
+    init_refreshOfficials();
+    init_refreshGeoJSON();
+    init_refreshCommittees();
+    init_refreshOtherTexasOfficials();
+    init_identityResolver();
+    init_pollRssFeeds();
+    init_refreshDailyLegislative();
+    init_prayerUtils();
+    init_seedLegislativeFeeds();
+    init_db();
+    init_schema();
+    schedulerInterval = null;
+    lastCheckWindowRun = null;
+    refreshCycleInProgress = false;
+    CHECK_INTERVAL_MS = 10 * 60 * 1e3;
+    rssInterval = null;
+    dailyTimer = null;
+    lastRssPollAt = null;
+    lastDailyRefreshAt = null;
+    RSS_POLL_INTERVAL_MS = 60 * 60 * 1e3;
+  }
+});
+
+// server/lib/backfillUtils.ts
+var backfillUtils_exports = {};
+__export(backfillUtils_exports, {
+  isEffectivelyEmpty: () => isEffectivelyEmpty,
+  normalizeAddress: () => normalizeAddress
+});
+function isEffectivelyEmpty(value) {
+  if (!value) return true;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return true;
+  if (EMPTY_PLACEHOLDERS.includes(trimmed.toLowerCase())) return true;
+  return false;
+}
+function normalizeAddress(value) {
+  if (isEffectivelyEmpty(value)) return null;
+  return value.trim();
+}
+var EMPTY_PLACEHOLDERS;
+var init_backfillUtils = __esm({
+  "server/lib/backfillUtils.ts"() {
+    "use strict";
+    EMPTY_PLACEHOLDERS = [
+      "n/a",
+      "na",
+      "unknown",
+      "tbd",
+      "not available",
+      "none",
+      "\u2014",
+      "-",
+      ".",
+      "pending"
+    ];
+  }
+});
+
+// server/index.ts
+import express from "express";
+
+// server/routes.ts
+init_db();
+import { createServer } from "node:http";
+
+// server/routes/prayerRoutes.ts
+init_db();
+init_schema();
+init_prayerUtils();
+import { eq as eq2, and as and2, sql as sql2, or, ilike, inArray, desc, asc, isNull, lte, gte, not as not2 } from "drizzle-orm";
+function getTodayDateKey() {
+  const now = /* @__PURE__ */ new Date();
+  const chicagoStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
+  const chicagoDate = new Date(chicagoStr);
+  const y = chicagoDate.getFullYear();
+  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
+  const d = String(chicagoDate.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+function getYesterdayDateKey() {
+  const now = /* @__PURE__ */ new Date();
+  const chicagoStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
+  const chicagoDate = new Date(chicagoStr);
+  chicagoDate.setDate(chicagoDate.getDate() - 1);
+  const y = chicagoDate.getFullYear();
+  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
+  const d = String(chicagoDate.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+function getDateKeyNDaysAgo(n) {
+  const now = /* @__PURE__ */ new Date();
+  const chicagoStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
+  const chicagoDate = new Date(chicagoStr);
+  chicagoDate.setDate(chicagoDate.getDate() - n);
+  const y = chicagoDate.getFullYear();
+  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
+  const d = String(chicagoDate.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+async function getAutoArchiveEnabled() {
+  const row = await db.select().from(appSettings).where(eq2(appSettings.key, "autoArchiveEnabled")).limit(1);
+  if (row.length > 0) return row[0].value === "true";
+  return true;
+}
+async function getAutoArchiveDays() {
+  const row = await db.select().from(appSettings).where(eq2(appSettings.key, "autoArchiveDays")).limit(1);
+  if (row.length > 0) return parseInt(row[0].value, 10) || 90;
+  return 90;
+}
+async function autoArchiveAnswered() {
+  const enabled = await getAutoArchiveEnabled();
+  if (!enabled) return;
+  const days = await getAutoArchiveDays();
+  const cutoff = /* @__PURE__ */ new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  await db.update(prayers).set({ status: "ARCHIVED", archivedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and2(
+    eq2(prayers.status, "ANSWERED"),
+    lte(prayers.answeredAt, cutoff)
+  ));
+}
+async function ensureStreakRow() {
+  const rows = await db.select().from(prayerStreak).limit(1);
+  if (rows.length === 0) {
+    await db.insert(prayerStreak).values({
+      currentStreak: 0,
+      longestStreak: 0,
+      lastCompletedDateKey: null
+    });
+  }
+}
+function registerPrayerRoutes(app2) {
+  app2.get("/api/prayer-categories", async (_req, res) => {
+    try {
+      const cats = await db.select().from(prayerCategories).orderBy(asc(prayerCategories.sortOrder), asc(prayerCategories.name));
+      res.json(cats);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.post("/api/prayer-categories", async (req, res) => {
+    try {
+      const { name, sortOrder } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "Category name is required" });
+      }
+      const existing = await db.select().from(prayerCategories).where(sql2`LOWER(${prayerCategories.name}) = LOWER(${name.trim()})`);
+      if (existing.length > 0) {
+        return res.status(409).json({ error: "A category with this name already exists" });
+      }
+      const [cat] = await db.insert(prayerCategories).values({
+        name: name.trim(),
+        sortOrder: sortOrder ?? 0
+      }).returning();
+      res.status(201).json(cat);
+    } catch (err) {
+      if (err.message?.includes("unique")) {
+        return res.status(409).json({ error: "A category with this name already exists" });
+      }
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.patch("/api/prayer-categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = { updatedAt: /* @__PURE__ */ new Date() };
+      if (req.body.name !== void 0) updates.name = req.body.name.trim();
+      if (req.body.sortOrder !== void 0) updates.sortOrder = req.body.sortOrder;
+      const [cat] = await db.update(prayerCategories).set(updates).where(eq2(prayerCategories.id, id)).returning();
+      if (!cat) return res.status(404).json({ error: "Category not found" });
+      res.json(cat);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.delete("/api/prayer-categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.update(prayers).set({ categoryId: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(prayers.categoryId, id));
+      const [cat] = await db.delete(prayerCategories).where(eq2(prayerCategories.id, id)).returning();
+      if (!cat) return res.status(404).json({ error: "Category not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/prayers", async (req, res) => {
+    try {
+      autoArchiveAnswered().catch(() => {
+      });
+      processEventDateActions().catch(() => {
+      });
+      const { status, categoryId, officialId, q, limit: lim, offset: off, sort } = req.query;
+      const conditions = [];
+      if (status && status !== "ALL") {
+        conditions.push(eq2(prayers.status, status));
+      }
+      if (categoryId === "uncategorized") {
+        conditions.push(isNull(prayers.categoryId));
+      } else if (categoryId) {
+        conditions.push(eq2(prayers.categoryId, categoryId));
+      }
+      if (q && typeof q === "string" && q.trim()) {
+        const search = `%${q.trim()}%`;
+        conditions.push(or(ilike(prayers.title, search), ilike(prayers.body, search)));
+      }
+      if (officialId && typeof officialId === "string") {
+        conditions.push(sql2`${prayers.officialIds}::jsonb @> ${JSON.stringify([officialId])}::jsonb`);
+      }
+      const orderBy = sort === "needsAttention" ? [asc(prayers.lastPrayedAt), desc(prayers.priority), desc(prayers.createdAt)] : [desc(prayers.createdAt)];
+      let query = db.select().from(prayers).where(conditions.length > 0 ? and2(...conditions) : void 0).orderBy(...orderBy);
+      const limitVal = Math.min(parseInt(lim) || 50, 200);
+      const offsetVal = parseInt(off) || 0;
+      const results = await query.limit(limitVal).offset(offsetVal);
+      res.json(results);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.post("/api/prayers", async (req, res) => {
+    try {
+      const parsed = insertPrayerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues });
+      }
+      const { title, body, categoryId, officialIds, pinnedDaily, priority, eventDate, autoAfterEventAction, autoAfterEventDaysOffset } = parsed.data;
+      const [prayer] = await db.insert(prayers).values({
+        title,
+        body,
+        categoryId: categoryId ?? null,
+        officialIds: officialIds ?? [],
+        pinnedDaily: pinnedDaily ?? false,
+        priority: priority ?? 0,
+        eventDate: eventDate ? new Date(eventDate) : null,
+        autoAfterEventAction: autoAfterEventAction ?? "none",
+        autoAfterEventDaysOffset: autoAfterEventDaysOffset ?? 0
+      }).returning();
+      res.status(201).json(prayer);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/prayers/export", async (req, res) => {
+    try {
+      await autoArchiveAnswered();
+      const { status, dateFrom, dateTo, includeBody } = req.query;
+      const conditions = [];
+      if (status && status !== "ALL") {
+        conditions.push(eq2(prayers.status, status));
+      }
+      if (dateFrom && typeof dateFrom === "string") {
+        const from = /* @__PURE__ */ new Date(dateFrom + "T00:00:00.000Z");
+        if (!isNaN(from.getTime())) {
+          conditions.push(gte(prayers.createdAt, from));
+        }
+      }
+      if (dateTo && typeof dateTo === "string") {
+        const to = /* @__PURE__ */ new Date(dateTo + "T23:59:59.999Z");
+        if (!isNaN(to.getTime())) {
+          conditions.push(lte(prayers.createdAt, to));
+        }
+      }
+      const allPrayers = await db.select().from(prayers).where(conditions.length > 0 ? and2(...conditions) : void 0).orderBy(desc(prayers.createdAt));
+      const cats = await db.select().from(prayerCategories);
+      const catMap = new Map(cats.map((c) => [c.id, c.name]));
+      const showBody = includeBody !== "false";
+      const headerCols = ["title"];
+      if (showBody) headerCols.push("body");
+      headerCols.push("status", "categoryName", "createdAt", "answeredAt", "archivedAt", "answerNote", "officialIds");
+      const header = headerCols.join(",");
+      const csvEscape = (s) => {
+        if (s == null) return "";
+        const str = String(s).replace(/"/g, '""');
+        return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str}"` : str;
+      };
+      const rows = allPrayers.map((p) => {
+        const cols = [csvEscape(p.title)];
+        if (showBody) cols.push(csvEscape(p.body));
+        cols.push(
+          p.status,
+          csvEscape(catMap.get(p.categoryId ?? "") ?? ""),
+          p.createdAt?.toISOString() ?? "",
+          p.answeredAt?.toISOString() ?? "",
+          p.archivedAt?.toISOString() ?? "",
+          csvEscape(p.answerNote),
+          csvEscape((p.officialIds || []).join(";"))
+        );
+        return cols.join(",");
+      });
+      const csv = [header, ...rows].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=prayers-export.csv");
+      res.send(csv);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/prayers/needs-attention", async (req, res) => {
+    try {
+      const fourteenDaysAgo = /* @__PURE__ */ new Date();
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+      const allOpen = await db.select().from(prayers).where(eq2(prayers.status, "OPEN"));
+      const needsAttention = allOpen.filter(
+        (p) => p.lastPrayedAt === null || p.lastPrayedAt < fourteenDaysAgo
+      );
+      const sorted = needsAttention.sort((a, b) => {
+        const aTime = a.lastPrayedAt?.getTime() ?? 0;
+        const bTime = b.lastPrayedAt?.getTime() ?? 0;
+        if (aTime !== bTime) return aTime - bTime;
+        return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0);
+      });
+      const result = sorted.slice(0, 5);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/prayers/recently-answered", async (req, res) => {
+    try {
+      const result = await db.select().from(prayers).where(eq2(prayers.status, "ANSWERED")).orderBy(desc(prayers.answeredAt)).limit(5);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/prayers/grouped", async (req, res) => {
+    try {
+      const { status, groupBy } = req.query;
+      const conditions = [];
+      if (status && status !== "ALL") {
+        conditions.push(eq2(prayers.status, status));
+      }
+      const allPrayers = await db.select().from(prayers).where(conditions.length > 0 ? and2(...conditions) : void 0);
+      if (groupBy === "officials") {
+        const officialCounts = /* @__PURE__ */ new Map();
+        for (const p of allPrayers) {
+          const ids = p.officialIds || [];
+          if (ids.length === 0) {
+            officialCounts.set("__none__", (officialCounts.get("__none__") || 0) + 1);
+          } else {
+            for (const oid of ids) {
+              officialCounts.set(oid, (officialCounts.get(oid) || 0) + 1);
+            }
+          }
+        }
+        const groups = Array.from(officialCounts.entries()).map(([id, count]) => ({
+          id,
+          name: id === "__none__" ? "No Official" : id,
+          count
+        }));
+        groups.sort((a, b) => b.count - a.count);
+        return res.json({ groupBy: "officials", groups });
+      }
+      if (groupBy === "categories") {
+        const cats = await db.select().from(prayerCategories);
+        const catMap = new Map(cats.map((c) => [c.id, c.name]));
+        const categoryCounts = /* @__PURE__ */ new Map();
+        for (const p of allPrayers) {
+          const key = p.categoryId || "__uncategorized__";
+          categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
+        }
+        const groups = Array.from(categoryCounts.entries()).map(([id, count]) => ({
+          id,
+          name: id === "__uncategorized__" ? "Uncategorized" : catMap.get(id) || id,
+          count
+        }));
+        groups.sort((a, b) => b.count - a.count);
+        return res.json({ groupBy: "categories", groups });
+      }
+      res.status(400).json({ error: "groupBy must be 'officials' or 'categories'" });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/prayers/upcoming", async (req, res) => {
+    try {
+      const result = await db.select().from(prayers).where(and2(
+        eq2(prayers.status, "OPEN"),
+        not2(isNull(prayers.eventDate))
+      )).orderBy(asc(prayers.eventDate)).limit(10);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/prayers/:id", async (req, res) => {
+    try {
+      const [prayer] = await db.select().from(prayers).where(eq2(prayers.id, req.params.id)).limit(1);
+      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
+      res.json(prayer);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.patch("/api/prayers/:id", async (req, res) => {
+    try {
+      const parsed = updatePrayerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues });
+      }
+      const updates = { ...parsed.data, updatedAt: /* @__PURE__ */ new Date() };
+      if (updates.lastPrayedAt && typeof updates.lastPrayedAt === "string") {
+        updates.lastPrayedAt = new Date(updates.lastPrayedAt);
+      }
+      if (updates.eventDate !== void 0) {
+        updates.eventDate = updates.eventDate ? new Date(updates.eventDate) : null;
+      }
+      const [prayer] = await db.update(prayers).set(updates).where(eq2(prayers.id, req.params.id)).returning();
+      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
+      res.json(prayer);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.delete("/api/prayers/:id", async (req, res) => {
+    try {
+      const [prayer] = await db.delete(prayers).where(eq2(prayers.id, req.params.id)).returning();
+      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.post("/api/prayers/:id/answer", async (req, res) => {
+    try {
+      const { answerNote } = req.body || {};
+      const [prayer] = await db.update(prayers).set({
+        status: "ANSWERED",
+        answeredAt: /* @__PURE__ */ new Date(),
+        answerNote: answerNote ?? null,
+        archivedAt: null,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq2(prayers.id, req.params.id)).returning();
+      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
+      res.json(prayer);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.post("/api/prayers/:id/reopen", async (req, res) => {
+    try {
+      const [prayer] = await db.update(prayers).set({
+        status: "OPEN",
+        answeredAt: null,
+        archivedAt: null,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq2(prayers.id, req.params.id)).returning();
+      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
+      res.json(prayer);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.post("/api/prayers/:id/archive", async (req, res) => {
+    try {
+      const [prayer] = await db.update(prayers).set({
+        status: "ARCHIVED",
+        archivedAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq2(prayers.id, req.params.id)).returning();
+      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
+      res.json(prayer);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.post("/api/prayers/:id/unarchive", async (req, res) => {
+    try {
+      const [prayer] = await db.update(prayers).set({
+        status: "OPEN",
+        archivedAt: null,
+        answeredAt: null,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq2(prayers.id, req.params.id)).returning();
+      if (!prayer) return res.status(404).json({ error: "Prayer not found" });
+      res.json(prayer);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.post("/api/prayers/bulk", async (req, res) => {
+    try {
+      const { action, prayerIds, answerNote } = req.body;
+      if (!action || !Array.isArray(prayerIds) || prayerIds.length === 0) {
+        return res.status(400).json({ error: "action and prayerIds[] required" });
+      }
+      const validActions = ["answer", "archive", "reopen", "unarchive"];
+      if (!validActions.includes(action)) {
+        return res.status(400).json({ error: `Invalid action. Must be one of: ${validActions.join(", ")}` });
+      }
+      const now = /* @__PURE__ */ new Date();
+      let updates;
+      switch (action) {
+        case "answer":
+          updates = { status: "ANSWERED", answeredAt: now, answerNote: answerNote ?? null, archivedAt: null, updatedAt: now };
+          break;
+        case "archive":
+          updates = { status: "ARCHIVED", archivedAt: now, updatedAt: now };
+          break;
+        case "reopen":
+          updates = { status: "OPEN", answeredAt: null, archivedAt: null, updatedAt: now };
+          break;
+        case "unarchive":
+          updates = { status: "OPEN", archivedAt: null, answeredAt: null, updatedAt: now };
+          break;
+      }
+      const result = await db.update(prayers).set(updates).where(inArray(prayers.id, prayerIds)).returning();
+      res.json({ updated: result.length, prayers: result });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/daily-prayer-picks", async (req, res) => {
+    try {
+      const todayKey = getTodayDateKey();
+      const forceRegenerate = req.query.forceRegenerate === "true";
+      if (forceRegenerate) {
+        await db.delete(dailyPrayerPicks).where(eq2(dailyPrayerPicks.dateKey, todayKey));
+      }
+      if (!forceRegenerate) {
+        const existing = await db.select().from(dailyPrayerPicks).where(eq2(dailyPrayerPicks.dateKey, todayKey)).limit(1);
+        if (existing.length > 0) {
+          const ids = existing[0].prayerIds;
+          const prayerList = ids.length > 0 ? await db.select().from(prayers).where(inArray(prayers.id, ids)) : [];
+          const ordered = ids.map((id) => prayerList.find((p) => p.id === id)).filter(Boolean);
+          return res.json({ dateKey: todayKey, prayers: ordered, generatedAt: existing[0].generatedAt });
+        }
+      }
+      const yesterdayKey = getDateKeyNDaysAgo(1);
+      const twoDaysAgoKey = getDateKeyNDaysAgo(2);
+      const recentPickRows = await db.select().from(dailyPrayerPicks).where(inArray(dailyPrayerPicks.dateKey, [yesterdayKey, twoDaysAgoKey]));
+      const yesterdayIds = [];
+      const twoDaysAgoIds = [];
+      for (const row of recentPickRows) {
+        if (row.dateKey === yesterdayKey) yesterdayIds.push(...row.prayerIds);
+        if (row.dateKey === twoDaysAgoKey) twoDaysAgoIds.push(...row.prayerIds);
+      }
+      const recentIds = /* @__PURE__ */ new Set([...yesterdayIds, ...twoDaysAgoIds]);
+      const openPrayers = await db.select().from(prayers).where(eq2(prayers.status, "OPEN")).orderBy(asc(prayers.lastShownAt));
+      const picks = [];
+      const pinned = openPrayers.filter((p) => p.pinnedDaily);
+      const pinnedSorted = pinned.sort((a, b) => {
+        const aTime = a.lastShownAt?.getTime() ?? 0;
+        const bTime = b.lastShownAt?.getTime() ?? 0;
+        return aTime - bTime;
+      });
+      for (const p of pinnedSorted) {
+        if (picks.length >= 3) break;
+        picks.push(p);
+      }
+      if (picks.length < 3) {
+        const pickedIds = new Set(picks.map((p) => p.id));
+        const strictEligible = openPrayers.filter((p) => !pickedIds.has(p.id) && !recentIds.has(p.id));
+        const yesterdayOnlyEligible = openPrayers.filter(
+          (p) => !pickedIds.has(p.id) && !yesterdayIds.includes(p.id)
+        );
+        const allEligible = openPrayers.filter((p) => !pickedIds.has(p.id));
+        let pool2;
+        const needed = 3 - picks.length;
+        if (strictEligible.length >= needed) {
+          pool2 = strictEligible;
+        } else if (yesterdayOnlyEligible.length >= needed) {
+          pool2 = yesterdayOnlyEligible;
+        } else {
+          pool2 = allEligible;
+        }
+        if (pool2.length > 0) {
+          const weighted = pool2.map((p) => {
+            let weight = 1;
+            if (p.lastShownAt === null) weight += 5;
+            else {
+              const daysSince = (Date.now() - p.lastShownAt.getTime()) / (1e3 * 60 * 60 * 24);
+              weight += Math.min(daysSince, 10);
+            }
+            if (p.priority === 1) weight *= 2;
+            if (recentIds.has(p.id)) weight *= 0.3;
+            weight += Math.random() * 2;
+            return { prayer: p, weight };
+          });
+          weighted.sort((a, b) => b.weight - a.weight);
+          for (const w of weighted) {
+            if (picks.length >= 3) break;
+            picks.push(w.prayer);
+          }
+        }
+      }
+      const pickIds = picks.map((p) => p.id);
+      if (pickIds.length > 0) {
+        await db.update(prayers).set({ lastShownAt: /* @__PURE__ */ new Date() }).where(inArray(prayers.id, pickIds));
+      }
+      await db.insert(dailyPrayerPicks).values({
+        dateKey: todayKey,
+        prayerIds: pickIds
+      }).onConflictDoNothing();
+      res.json({ dateKey: todayKey, prayers: picks, generatedAt: /* @__PURE__ */ new Date() });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/prayer-streak", async (req, res) => {
+    try {
+      await ensureStreakRow();
+      const [streak] = await db.select().from(prayerStreak).limit(1);
+      res.json(streak);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.post("/api/prayer-streak/complete-today", async (req, res) => {
+    try {
+      await ensureStreakRow();
+      const todayKey = getTodayDateKey();
+      const yesterdayKey = getYesterdayDateKey();
+      const [streak] = await db.select().from(prayerStreak).limit(1);
+      if (streak.lastCompletedDateKey === todayKey) {
+        return res.json(streak);
+      }
+      let newStreak;
+      if (streak.lastCompletedDateKey === yesterdayKey) {
+        newStreak = streak.currentStreak + 1;
+      } else {
+        newStreak = 1;
+      }
+      const newLongest = Math.max(streak.longestStreak, newStreak);
+      const [updated] = await db.update(prayerStreak).set({
+        currentStreak: newStreak,
+        lastCompletedDateKey: todayKey,
+        longestStreak: newLongest
+      }).where(eq2(prayerStreak.id, streak.id)).returning();
+      try {
+        const todayPicks = await db.select().from(dailyPrayerPicks).where(eq2(dailyPrayerPicks.dateKey, todayKey)).limit(1);
+        if (todayPicks.length > 0) {
+          const pickIds = todayPicks[0].prayerIds;
+          if (pickIds.length > 0) {
+            const todayStart = /* @__PURE__ */ new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            await db.update(prayers).set({ lastPrayedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and2(
+              inArray(prayers.id, pickIds),
+              or(
+                isNull(prayers.lastPrayedAt),
+                lte(prayers.lastPrayedAt, todayStart)
+              )
+            ));
+          }
+        }
+      } catch (_) {
+      }
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/settings/auto-archive", async (_req, res) => {
+    try {
+      const rows = await db.select().from(appSettings).where(inArray(appSettings.key, ["autoArchiveEnabled", "autoArchiveDays"]));
+      let enabled = true;
+      let days = 90;
+      for (const row of rows) {
+        if (row.key === "autoArchiveEnabled") enabled = row.value === "true";
+        if (row.key === "autoArchiveDays") days = parseInt(row.value, 10) || 90;
+      }
+      res.json({ enabled, days });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.put("/api/settings/auto-archive", async (req, res) => {
+    try {
+      const { enabled, days } = req.body;
+      const now = /* @__PURE__ */ new Date();
+      await db.insert(appSettings).values({
+        key: "autoArchiveEnabled",
+        value: String(enabled ?? true),
+        updatedAt: now
+      }).onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value: String(enabled ?? true), updatedAt: now }
+      });
+      await db.insert(appSettings).values({
+        key: "autoArchiveDays",
+        value: String(days ?? 90),
+        updatedAt: now
+      }).onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value: String(days ?? 90), updatedAt: now }
+      });
+      res.json({ enabled: enabled ?? true, days: days ?? 90 });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app2.get("/api/officials/:id/prayer-counts", async (req, res) => {
+    try {
+      const { id: officialId } = req.params;
+      const allPrayers = await db.select().from(prayers);
+      let open = 0;
+      let answered = 0;
+      let archived = 0;
+      for (const prayer of allPrayers) {
+        const officialIds = prayer.officialIds;
+        if (!officialIds || !officialIds.includes(officialId)) continue;
+        switch (prayer.status) {
+          case "OPEN":
+            open++;
+            break;
+          case "ANSWERED":
+            answered++;
+            break;
+          case "ARCHIVED":
+            archived++;
+            break;
+        }
+      }
+      res.json({ open, answered, archived });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+}
 
 // server/routes/legislativeRoutes.ts
+init_db();
+init_schema();
+init_scheduler();
+import { eq as eq10, and as and9, isNull as isNull4, desc as desc2, asc as asc2, gte as gte3, lte as lte2, sql as sql12, inArray as inArray3 } from "drizzle-orm";
 function requireAdminSecret(req, res) {
   const secret = process.env.ADMIN_CRON_SECRET;
   if (!secret) return true;
@@ -5765,10 +5899,10 @@ function registerLegislativeRoutes(app2) {
   app2.get("/api/alerts", async (req, res) => {
     try {
       const unreadOnly = req.query.unreadOnly === "true";
-      const conditions = [eq9(alerts.userId, "default")];
+      const conditions = [eq10(alerts.userId, "default")];
       if (unreadOnly) conditions.push(isNull4(alerts.readAt));
-      const rows = await db.select().from(alerts).where(and8(...conditions)).orderBy(desc2(alerts.createdAt)).limit(100);
-      const unreadCount = await db.select({ count: sql12`count(*)` }).from(alerts).where(and8(eq9(alerts.userId, "default"), isNull4(alerts.readAt)));
+      const rows = await db.select().from(alerts).where(and9(...conditions)).orderBy(desc2(alerts.createdAt)).limit(100);
+      const unreadCount = await db.select({ count: sql12`count(*)` }).from(alerts).where(and9(eq10(alerts.userId, "default"), isNull4(alerts.readAt)));
       res.json({ alerts: rows, unreadCount: Number(unreadCount[0]?.count ?? 0) });
     } catch (err) {
       console.error("[api/alerts] Error:", err);
@@ -5778,7 +5912,7 @@ function registerLegislativeRoutes(app2) {
   app2.post("/api/alerts/:id/read", async (req, res) => {
     try {
       const { id } = req.params;
-      const [updated] = await db.update(alerts).set({ readAt: /* @__PURE__ */ new Date() }).where(and8(eq9(alerts.id, id), isNull4(alerts.readAt))).returning({ id: alerts.id });
+      const [updated] = await db.update(alerts).set({ readAt: /* @__PURE__ */ new Date() }).where(and9(eq10(alerts.id, id), isNull4(alerts.readAt))).returning({ id: alerts.id });
       if (!updated) {
         return res.status(404).json({ error: "Alert not found or already read" });
       }
@@ -5793,9 +5927,9 @@ function registerLegislativeRoutes(app2) {
       const { ids } = req.body;
       const now = /* @__PURE__ */ new Date();
       if (Array.isArray(ids) && ids.length > 0) {
-        await db.update(alerts).set({ readAt: now }).where(and8(eq9(alerts.userId, "default"), isNull4(alerts.readAt), inArray3(alerts.id, ids)));
+        await db.update(alerts).set({ readAt: now }).where(and9(eq10(alerts.userId, "default"), isNull4(alerts.readAt), inArray3(alerts.id, ids)));
       } else {
-        await db.update(alerts).set({ readAt: now }).where(and8(eq9(alerts.userId, "default"), isNull4(alerts.readAt)));
+        await db.update(alerts).set({ readAt: now }).where(and9(eq10(alerts.userId, "default"), isNull4(alerts.readAt)));
       }
       res.json({ success: true });
     } catch (err) {
@@ -5807,9 +5941,9 @@ function registerLegislativeRoutes(app2) {
     try {
       const { ids } = req.body;
       if (Array.isArray(ids) && ids.length > 0) {
-        await db.delete(alerts).where(and8(eq9(alerts.userId, "default"), inArray3(alerts.id, ids)));
+        await db.delete(alerts).where(and9(eq10(alerts.userId, "default"), inArray3(alerts.id, ids)));
       } else {
-        await db.delete(alerts).where(eq9(alerts.userId, "default"));
+        await db.delete(alerts).where(eq10(alerts.userId, "default"));
       }
       res.json({ success: true });
     } catch (err) {
@@ -5820,7 +5954,7 @@ function registerLegislativeRoutes(app2) {
   app2.delete("/api/alerts/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      await db.delete(alerts).where(and8(eq9(alerts.id, id), eq9(alerts.userId, "default")));
+      await db.delete(alerts).where(and9(eq10(alerts.id, id), eq10(alerts.userId, "default")));
       res.json({ success: true });
     } catch (err) {
       console.error("[api/alerts/:id] Error:", err);
@@ -5848,8 +5982,8 @@ function registerLegislativeRoutes(app2) {
         committeeName: committees.name,
         committeeChamber: committees.chamber,
         witnessCount: hearingDetails.witnessCount
-      }).from(legislativeEvents).leftJoin(committees, eq9(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq9(hearingDetails.eventId, legislativeEvents.id)).where(
-        and8(
+      }).from(legislativeEvents).leftJoin(committees, eq10(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq10(hearingDetails.eventId, legislativeEvents.id)).where(
+        and9(
           gte3(legislativeEvents.startsAt, now),
           lte2(legislativeEvents.startsAt, cutoff)
         )
@@ -5888,10 +6022,10 @@ function registerLegislativeRoutes(app2) {
         externalId: legislativeEvents.externalId,
         witnessCount: hearingDetails.witnessCount,
         noticeText: hearingDetails.noticeText
-      }).from(legislativeEvents).leftJoin(hearingDetails, eq9(hearingDetails.eventId, legislativeEvents.id)).where(
-        and8(
-          eq9(legislativeEvents.committeeId, id),
-          eq9(legislativeEvents.eventType, "COMMITTEE_HEARING"),
+      }).from(legislativeEvents).leftJoin(hearingDetails, eq10(hearingDetails.eventId, legislativeEvents.id)).where(
+        and9(
+          eq10(legislativeEvents.committeeId, id),
+          eq10(legislativeEvents.eventType, "COMMITTEE_HEARING"),
           range === "upcoming" ? gte3(legislativeEvents.startsAt, now) : lte2(legislativeEvents.startsAt, now)
         )
       ).orderBy(
@@ -5935,7 +6069,7 @@ function registerLegislativeRoutes(app2) {
         postingDate: hearingDetails.postingDate,
         videoUrl: hearingDetails.videoUrl,
         witnessCount: hearingDetails.witnessCount
-      }).from(legislativeEvents).leftJoin(committees, eq9(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq9(hearingDetails.eventId, legislativeEvents.id)).where(eq9(legislativeEvents.id, eventId)).limit(1);
+      }).from(legislativeEvents).leftJoin(committees, eq10(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq10(hearingDetails.eventId, legislativeEvents.id)).where(eq10(legislativeEvents.id, eventId)).limit(1);
       if (!event) {
         return res.status(404).json({ error: "Hearing not found" });
       }
@@ -5944,7 +6078,7 @@ function registerLegislativeRoutes(app2) {
         billNumber: hearingAgendaItems.billNumber,
         itemText: hearingAgendaItems.itemText,
         sortOrder: hearingAgendaItems.sortOrder
-      }).from(hearingAgendaItems).where(eq9(hearingAgendaItems.eventId, eventId)).orderBy(asc2(hearingAgendaItems.sortOrder)).limit(100);
+      }).from(hearingAgendaItems).where(eq10(hearingAgendaItems.eventId, eventId)).orderBy(asc2(hearingAgendaItems.sortOrder)).limit(100);
       res.json({ hearing: event, agenda });
     } catch (err) {
       console.error("[api/hearings/:eventId] Error:", err);
@@ -5956,7 +6090,7 @@ function registerLegislativeRoutes(app2) {
     async (req, res) => {
       try {
         const { eventId } = req.params;
-        const rows = await db.select().from(witnesses).where(eq9(witnesses.eventId, eventId)).orderBy(asc2(witnesses.sortOrder)).limit(500);
+        const rows = await db.select().from(witnesses).where(eq10(witnesses.eventId, eventId)).orderBy(asc2(witnesses.sortOrder)).limit(500);
         res.json({ witnesses: rows, total: rows.length });
       } catch (err) {
         console.error("[api/hearings/:eventId/witnesses] Error:", err);
@@ -5987,7 +6121,7 @@ function registerLegislativeRoutes(app2) {
   app2.delete("/api/subscriptions/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const [deleted] = await db.delete(userSubscriptions).where(and8(eq9(userSubscriptions.id, id), eq9(userSubscriptions.userId, "default"))).returning({ id: userSubscriptions.id });
+      const [deleted] = await db.delete(userSubscriptions).where(and9(eq10(userSubscriptions.id, id), eq10(userSubscriptions.userId, "default"))).returning({ id: userSubscriptions.id });
       if (!deleted) {
         return res.status(404).json({ error: "Subscription not found" });
       }
@@ -5999,7 +6133,7 @@ function registerLegislativeRoutes(app2) {
   });
   app2.get("/api/subscriptions", async (_req, res) => {
     try {
-      const rows = await db.select().from(userSubscriptions).where(eq9(userSubscriptions.userId, "default")).orderBy(desc2(userSubscriptions.createdAt));
+      const rows = await db.select().from(userSubscriptions).where(eq10(userSubscriptions.userId, "default")).orderBy(desc2(userSubscriptions.createdAt));
       res.json({ subscriptions: rows });
     } catch (err) {
       console.error("[api/subscriptions GET] Error:", err);
@@ -6057,7 +6191,7 @@ function registerLegislativeRoutes(app2) {
   app2.delete("/api/push-tokens/:token", async (req, res) => {
     try {
       const { token } = req.params;
-      await db.delete(pushTokens).where(eq9(pushTokens.token, token));
+      await db.delete(pushTokens).where(eq10(pushTokens.token, token));
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -6109,23 +6243,31 @@ async function classifyIntent(question) {
     messages: [
       {
         role: "system",
-        content: `Classify questions about Texas and US legislators and legislation.
+        content: `You classify questions about Texas state government, its legislators, and legislation.
 Return ONLY valid JSON with:
 - intent: "officials" | "legislation" | "hearings" | "committees" | "general"
 - entities: object with optional keys:
-  - names: string[] (person name fragments mentioned)
-  - billNumbers: string[] (bill numbers like "HB 1234", "SB 5")
-  - committeeKeywords: string[] (committee name fragments)
-  - party: "Republican" | "Democrat" | "Independent" (if mentioned)
-  - chamber: "TX House" | "TX Senate" | "US House" (if mentioned)
-  - keywords: string[] (other relevant search terms)
-Use "officials" for questions about legislators/people, "committees" for committee membership/chairs, "legislation" for bills/laws, "hearings" for upcoming hearings/calendars, "general" for stats or mixed questions.`
+  - names: string[] (person name fragments)
+  - billNumbers: string[] (e.g. "HB 1234", "SB 5", "HJR 20")
+  - committeeKeywords: string[] (committee name fragments, e.g. "business" from "Business & Commerce")
+  - party: "Republican" | "Democrat" (if filtering by party)
+  - chamber: "TX House" | "TX Senate" | "US House" (if filtering by chamber)
+  - keywords: string[] (city names, area names, topic keywords like "high profile", "important". IMPORTANT: for questions about cities/areas like "who represents Austin" or "officials from Dallas", put the city name in keywords and use "officials" intent)
+
+Intent rules:
+- "committees" \u2014 who is ON a committee, who chairs it, committee membership questions. Also use when asking about party members on a specific committee (e.g. "which Republicans are on X committee" \u2192 committees intent with party + committeeKeywords).
+- "officials" \u2014 questions about specific legislators by name, district, city/area, or party WITHOUT a committee context. Use for "who represents [city]", "officials from [area]", "legislators in [city]". Put city/area names in keywords.
+- "legislation" \u2014 questions about specific bills (HB/SB numbers), what a bill does, bill status, or bill topics. Use when user says "describe bill X" or "tell me about HB X".
+- "hearings" \u2014 questions about upcoming hearings, scheduled meetings, what's on the calendar. Use for "upcoming hearings", "what's being heard this week", "highest profile hearings", or "tell me about the upcoming X committee hearing".
+- "general" \u2014 broad stats, overview questions, or questions that don't fit the above.
+
+Be precise with committeeKeywords \u2014 extract the distinguishing part of committee names (e.g. "Business & Commerce" \u2192 ["business", "commerce"], "State Affairs" \u2192 ["state affairs"], "Education" \u2192 ["education"]).`
       },
       { role: "user", content: question }
     ],
     response_format: { type: "json_object" },
     temperature: 0,
-    max_tokens: 200
+    max_tokens: 250
   });
   try {
     const parsed = JSON.parse(completion.choices[0].message.content ?? "{}");
@@ -6137,24 +6279,64 @@ Use "officials" for questions about legislators/people, "committees" for committ
     return { intent: "general", entities: {} };
   }
 }
-async function answerQuestion(question, dataContext) {
+async function searchWeb(query) {
+  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
+  const cx = process.env.GOOGLE_SEARCH_CX;
+  if (!apiKey || !cx) return "";
+  try {
+    const params = new URLSearchParams({
+      key: apiKey,
+      cx,
+      q: query,
+      num: "5"
+    });
+    const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
+    if (!res.ok) return "";
+    const data = await res.json();
+    const items = (data.items ?? []).slice(0, 5);
+    if (items.length === 0) return "";
+    const lines = items.map(
+      (item, i) => `${i + 1}. ${item.title}
+   ${item.snippet ?? ""}
+   Source: ${item.link}`
+    );
+    return `Web search results for "${query}":
+${lines.join("\n\n")}`;
+  } catch {
+    return "";
+  }
+}
+async function answerQuestion(question, dataContext, webContext) {
+  const hasWeb = webContext && webContext.length > 0;
+  const systemPrompt = `You are a knowledgeable Texas legislative aide embedded in TXDistrictNavigator, an app for tracking Texas state government. Your audience understands how Texas government works (House, Senate, committees, the legislative process) but relies on you to stay current on who's where and what's happening.
+
+Guidelines:
+- Answer primarily from the provided app data context. For names, districts, bill numbers, dates, and official facts, rely strictly on the app data \u2014 never fabricate these.
+- ${hasWeb ? "Web search results are also provided. Use them to supplement your answer with additional background, news context, or explanations the app data doesn't cover. Clearly distinguish app data (authoritative) from web context (supplementary)." : "If the data doesn't contain enough to answer, say so clearly and suggest what the user could ask instead."}
+- Be direct and well-organized. Use bullet points for lists of people or hearings.
+- For committee membership questions: list members with their party, district, and role (highlight Chair and Vice-Chair at the top).
+- For hearing questions: lead with date/time, location, and committee, then summarize the agenda. Note bill count and witness count as indicators of significance.
+- For bill questions: explain what the bill does in plain English, note its current status and any upcoming hearings.
+- Keep responses concise but complete \u2014 don't truncate lists of members or agenda items unless there are many.
+- Use "R" and "D" shorthand for party when listing multiple members.
+- When asked about "high profile" or "important" hearings, assess based on: number of bills on the agenda, witness count, and committee prominence.`;
+  const userContent = hasWeb ? `App data:
+${dataContext}
+
+${webContext}
+
+Question: ${question}` : `Data context:
+${dataContext}
+
+Question: ${question}`;
   const completion = await getClient().chat.completions.create({
     model: "llama-3.3-70b-versatile",
     messages: [
-      {
-        role: "system",
-        content: "You are a knowledgeable assistant for TXDistrictNavigator, an app tracking Texas and US legislators and legislation. Answer the user's question using only the provided data context. Be concise and factual. If the data context doesn't contain enough information to answer, say so clearly. Do not make up names, numbers, or facts."
-      },
-      {
-        role: "user",
-        content: `Data context:
-${dataContext}
-
-Question: ${question}`
-      }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent }
     ],
     temperature: 0.3,
-    max_tokens: 400
+    max_tokens: 800
   });
   return completion.choices[0].message.content?.trim() ?? "I couldn't generate an answer. Please try again.";
 }
@@ -6184,7 +6366,7 @@ ${witnessLine}`;
 // server/routes/aiRoutes.ts
 init_db();
 init_schema();
-import { eq as eq10, ilike as ilike3, or as or3, and as and9, gte as gte4, asc as asc3, desc as desc3, inArray as inArray4 } from "drizzle-orm";
+import { eq as eq11, ilike as ilike3, or as or3, and as and10, gte as gte4, lte as lte3, asc as asc3, desc as desc3, inArray as inArray4, sql as sql13 } from "drizzle-orm";
 function registerAiRoutes(app2) {
   app2.post("/api/ai/parse-search", async (req, res) => {
     const { query } = req.body ?? {};
@@ -6220,58 +6402,73 @@ function registerAiRoutes(app2) {
       const classification = await classifyIntent(question);
       const { intent, entities } = classification;
       let dataContext = "";
+      const partyCode = entities.party ? entities.party.toLowerCase().startsWith("r") ? "R" : entities.party.toLowerCase().startsWith("d") ? "D" : null : null;
+      const sourceMap = {
+        "TX House": "TX_HOUSE",
+        "TX Senate": "TX_SENATE",
+        "US House": "US_HOUSE"
+      };
+      const sourceCode = entities.chamber ? sourceMap[entities.chamber] ?? null : null;
       if (intent === "officials" || intent === "committees") {
-        const conditions = [eq10(officialPublic.active, true)];
-        if (entities.party) {
-          const partyCode = entities.party.toLowerCase().startsWith("r") ? "R" : entities.party.toLowerCase().startsWith("d") ? "D" : null;
-          if (partyCode) conditions.push(eq10(officialPublic.party, partyCode));
-        }
-        if (entities.chamber) {
-          const sourceMap = {
-            "TX House": "TX_HOUSE",
-            "TX Senate": "TX_SENATE",
-            "US House": "US_HOUSE"
-          };
-          const src = sourceMap[entities.chamber];
-          if (src) conditions.push(eq10(officialPublic.source, src));
-        }
+        const conditions = [eq11(officialPublic.active, true)];
+        if (partyCode) conditions.push(eq11(officialPublic.party, partyCode));
+        if (sourceCode) conditions.push(eq11(officialPublic.source, sourceCode));
         if (entities.names?.length) {
           const nameConditions = entities.names.map((n) => ilike3(officialPublic.fullName, `%${n}%`));
           conditions.push(or3(...nameConditions));
         }
+        if (entities.keywords?.length) {
+          const cityConditions = entities.keywords.map((kw) => ilike3(officialPublic.searchCities, `%${kw}%`));
+          conditions.push(or3(...cityConditions));
+        }
         if (entities.committeeKeywords?.length) {
           const cmteConditions = entities.committeeKeywords.map((kw) => ilike3(committees.name, `%${kw}%`));
-          const matchingCommittees = await db.select({ id: committees.id, name: committees.name }).from(committees).where(or3(...cmteConditions)).limit(5);
+          const matchingCommittees = await db.select({ id: committees.id, name: committees.name, chamber: committees.chamber }).from(committees).where(or3(...cmteConditions)).limit(5);
           if (matchingCommittees.length > 0) {
             const cmteIds = matchingCommittees.map((c) => c.id);
             const memberships = await db.select({
               officialId: committeeMemberships.officialPublicId,
-              role: committeeMemberships.role,
+              roleTitle: committeeMemberships.roleTitle,
+              memberName: committeeMemberships.memberName,
               committeeName: committees.name
-            }).from(committeeMemberships).innerJoin(committees, eq10(committeeMemberships.committeeId, committees.id)).where(inArray4(committeeMemberships.committeeId, cmteIds)).limit(60);
+            }).from(committeeMemberships).innerJoin(committees, eq11(committeeMemberships.committeeId, committees.id)).where(inArray4(committeeMemberships.committeeId, cmteIds)).limit(80);
             if (memberships.length > 0) {
               const memberIds = [...new Set(memberships.map((m) => m.officialId).filter(Boolean))];
-              const officialsData = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, party: officialPublic.party, source: officialPublic.source, district: officialPublic.district, roleTitle: officialPublic.roleTitle }).from(officialPublic).where(inArray4(officialPublic.id, memberIds.slice(0, 40))).limit(40);
-              const memberMap = new Map(memberships.map((m) => [m.officialId, { role: m.role, committee: m.committeeName }]));
+              const officialConditions = [inArray4(officialPublic.id, memberIds.slice(0, 60))];
+              if (partyCode) officialConditions.push(eq11(officialPublic.party, partyCode));
+              if (sourceCode) officialConditions.push(eq11(officialPublic.source, sourceCode));
+              const officialsData = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, party: officialPublic.party, source: officialPublic.source, district: officialPublic.district }).from(officialPublic).where(and10(...officialConditions)).limit(60);
+              const memberMap = new Map(memberships.map((m) => [m.officialId, { roleTitle: m.roleTitle, committee: m.committeeName, memberName: m.memberName }]));
               const lines = officialsData.map((o) => {
                 const membership = memberMap.get(o.id);
                 const party = o.party === "R" ? "Republican" : o.party === "D" ? "Democrat" : o.party ?? "Unknown";
-                return `${o.fullName} (${party}, ${o.source.replace("_", " ")}, District ${o.district})${membership ? ` \u2014 ${membership.committee}, ${membership.role}` : ""}`;
+                const role = membership?.roleTitle ? ` [${membership.roleTitle}]` : "";
+                return `${o.fullName} (${party}, ${o.source.replace(/_/g, " ")}, District ${o.district}) \u2014 ${membership?.committee ?? ""}${role}`;
               });
-              dataContext = `Committee members:
-${lines.join("\n")}`;
+              const linkedIds = new Set(officialsData.map((o) => o.id));
+              const unlinkedMembers = memberships.filter((m) => !m.officialId || !linkedIds.has(m.officialId));
+              if (unlinkedMembers.length > 0 && !partyCode && !sourceCode) {
+                for (const m of unlinkedMembers) {
+                  const role = m.roleTitle ? ` [${m.roleTitle}]` : "";
+                  lines.push(`${m.memberName} \u2014 ${m.committeeName}${role}`);
+                }
+              }
+              const cmteNames = matchingCommittees.map((c) => c.name).join(", ");
+              const partyLabel = partyCode ? partyCode === "R" ? "Republican " : "Democrat " : "";
+              dataContext = lines.length > 0 ? `${partyLabel}members of ${cmteNames} (${lines.length} found):
+${lines.join("\n")}` : `No ${partyLabel.toLowerCase()}members found for ${cmteNames}.`;
             }
           }
         }
         if (!dataContext) {
-          const officials = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, party: officialPublic.party, source: officialPublic.source, district: officialPublic.district, roleTitle: officialPublic.roleTitle, searchCities: officialPublic.searchCities }).from(officialPublic).where(and9(...conditions)).orderBy(asc3(officialPublic.source), asc3(officialPublic.district)).limit(40);
+          const officials = await db.select({ id: officialPublic.id, fullName: officialPublic.fullName, party: officialPublic.party, source: officialPublic.source, district: officialPublic.district, roleTitle: officialPublic.roleTitle, searchCities: officialPublic.searchCities }).from(officialPublic).where(and10(...conditions)).orderBy(asc3(officialPublic.source), asc3(officialPublic.district)).limit(50);
           const lines = officials.map((o) => {
             const party = o.party === "R" ? "Republican" : o.party === "D" ? "Democrat" : o.party ?? "Unknown";
             const role = o.roleTitle ? ` (${o.roleTitle})` : "";
             const cities = o.searchCities ? ` [cities: ${o.searchCities}]` : "";
-            return `${o.fullName}${role} \u2014 ${party}, ${o.source.replace("_", " ")}, District ${o.district}${cities}`;
+            return `${o.fullName}${role} \u2014 ${party}, ${o.source.replace(/_/g, " ")}, District ${o.district}${cities}`;
           });
-          dataContext = officials.length > 0 ? `Legislators (${officials.length} total):
+          dataContext = officials.length > 0 ? `Legislators (${officials.length} found):
 ${lines.join("\n")}` : "No matching legislators found.";
         }
       } else if (intent === "legislation") {
@@ -6281,7 +6478,7 @@ ${lines.join("\n")}` : "No matching legislators found.";
         } else if (entities.keywords?.length) {
           billConditions.push(or3(...entities.keywords.map((kw) => ilike3(bills.caption, `%${kw}%`))));
         }
-        const billsData = await db.select({ id: bills.id, billNumber: bills.billNumber, legSession: bills.legSession, caption: bills.caption }).from(bills).where(billConditions.length > 0 ? and9(...billConditions) : void 0).orderBy(desc3(bills.updatedAt)).limit(15);
+        const billsData = await db.select({ id: bills.id, billNumber: bills.billNumber, legSession: bills.legSession, caption: bills.caption }).from(bills).where(billConditions.length > 0 ? and10(...billConditions) : void 0).orderBy(desc3(bills.updatedAt)).limit(15);
         if (billsData.length > 0) {
           const billIds = billsData.map((b) => b.id);
           const actionsData = await db.select({ billId: billActions.billId, actionText: billActions.actionText, actionAt: billActions.actionAt }).from(billActions).where(inArray4(billActions.billId, billIds)).orderBy(desc3(billActions.actionAt)).limit(75);
@@ -6293,75 +6490,132 @@ ${lines.join("\n")}` : "No matching legislators found.";
               actionsByBill.set(a.billId, existing);
             }
           }
+          const upcomingAgenda = await db.select({
+            billNumber: hearingAgendaItems.billNumber,
+            hearingTitle: legislativeEvents.title,
+            hearingDate: legislativeEvents.startsAt
+          }).from(hearingAgendaItems).innerJoin(legislativeEvents, eq11(hearingAgendaItems.eventId, legislativeEvents.id)).where(and10(
+            inArray4(hearingAgendaItems.billId, billIds),
+            gte4(legislativeEvents.startsAt, /* @__PURE__ */ new Date())
+          )).limit(20);
+          const hearingByBill = /* @__PURE__ */ new Map();
+          for (const a of upcomingAgenda) {
+            if (a.billNumber && !hearingByBill.has(a.billNumber)) {
+              const dateStr = a.hearingDate ? a.hearingDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" }) : "TBD";
+              hearingByBill.set(a.billNumber, `${a.hearingTitle} on ${dateStr}`);
+            }
+          }
           const lines = billsData.map((b) => {
             const actions = actionsByBill.get(b.id) ?? [];
             const actionStr = actions.length > 0 ? `
   Recent actions: ${actions.slice(0, 3).join("; ")}` : "";
-            return `${b.billNumber} (Session ${b.legSession}): ${b.caption ?? "No caption"}${actionStr}`;
+            const hearingStr = hearingByBill.has(b.billNumber) ? `
+  Upcoming hearing: ${hearingByBill.get(b.billNumber)}` : "";
+            return `${b.billNumber} (Session ${b.legSession}): ${b.caption ?? "No caption"}${actionStr}${hearingStr}`;
           });
           dataContext = `Bills:
 ${lines.join("\n\n")}`;
         } else {
-          dataContext = "No matching bills found.";
+          dataContext = "No matching bills found in the database.";
         }
       } else if (intent === "hearings") {
         const now = /* @__PURE__ */ new Date();
         const twoWeeksOut = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1e3);
+        const hearingConditions = [
+          eq11(legislativeEvents.eventType, "COMMITTEE_HEARING"),
+          gte4(legislativeEvents.startsAt, now),
+          lte3(legislativeEvents.startsAt, twoWeeksOut)
+        ];
+        let committeeFilter = null;
+        if (entities.committeeKeywords?.length) {
+          const cmteConditions = entities.committeeKeywords.map((kw) => ilike3(committees.name, `%${kw}%`));
+          const matchingCmtes = await db.select({ id: committees.id, name: committees.name }).from(committees).where(or3(...cmteConditions)).limit(5);
+          if (matchingCmtes.length > 0) {
+            committeeFilter = matchingCmtes.map((c) => c.id);
+            hearingConditions.push(inArray4(legislativeEvents.committeeId, committeeFilter));
+          }
+        }
+        if (sourceCode) {
+          hearingConditions.push(eq11(legislativeEvents.chamber, sourceCode));
+        }
         const events = await db.select({
           id: legislativeEvents.id,
           title: legislativeEvents.title,
           startsAt: legislativeEvents.startsAt,
           location: legislativeEvents.location,
-          chamber: legislativeEvents.chamber
-        }).from(legislativeEvents).where(and9(
-          eq10(legislativeEvents.eventType, "HEARING"),
-          gte4(legislativeEvents.startsAt, now),
-          gte4(twoWeeksOut, legislativeEvents.startsAt)
-        )).orderBy(asc3(legislativeEvents.startsAt)).limit(10);
+          chamber: legislativeEvents.chamber,
+          status: legislativeEvents.status,
+          committeeName: committees.name,
+          witnessCount: hearingDetails.witnessCount,
+          meetingType: hearingDetails.meetingType
+        }).from(legislativeEvents).leftJoin(committees, eq11(committees.id, legislativeEvents.committeeId)).leftJoin(hearingDetails, eq11(hearingDetails.eventId, legislativeEvents.id)).where(and10(...hearingConditions)).orderBy(asc3(legislativeEvents.startsAt)).limit(20);
         if (events.length > 0) {
           const eventIds = events.map((e) => e.id);
-          const agendaItems = await db.select({ eventId: hearingAgendaItems.eventId, billNumber: hearingAgendaItems.billNumber, itemText: hearingAgendaItems.itemText }).from(hearingAgendaItems).where(inArray4(hearingAgendaItems.eventId, eventIds)).orderBy(asc3(hearingAgendaItems.sortOrder)).limit(60);
+          const agendaItems = await db.select({ eventId: hearingAgendaItems.eventId, billNumber: hearingAgendaItems.billNumber, itemText: hearingAgendaItems.itemText }).from(hearingAgendaItems).where(inArray4(hearingAgendaItems.eventId, eventIds)).orderBy(asc3(hearingAgendaItems.sortOrder)).limit(100);
           const agendaByEvent = /* @__PURE__ */ new Map();
+          const billCountByEvent = /* @__PURE__ */ new Map();
           for (const item of agendaItems) {
             const existing = agendaByEvent.get(item.eventId) ?? [];
             existing.push(item.billNumber ? `${item.billNumber}: ${item.itemText}` : item.itemText);
             agendaByEvent.set(item.eventId, existing);
+            billCountByEvent.set(item.eventId, (billCountByEvent.get(item.eventId) ?? 0) + 1);
           }
           const lines = events.map((e) => {
-            const dateStr = e.startsAt ? e.startsAt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" }) : "TBD";
+            const dateStr = e.startsAt ? e.startsAt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" }) : "TBD";
+            const chamberStr = e.chamber === "TX_HOUSE" ? "House" : e.chamber === "TX_SENATE" ? "Senate" : "";
+            const billCount = billCountByEvent.get(e.id) ?? 0;
+            const witnessStr = e.witnessCount ? `${e.witnessCount} witnesses` : "";
+            const billStr = billCount > 0 ? `${billCount} bills` : "";
+            const stats = [billStr, witnessStr].filter(Boolean).join(", ");
             const agenda = agendaByEvent.get(e.id) ?? [];
             const agendaStr = agenda.length > 0 ? `
-  Bills: ${agenda.slice(0, 5).join("; ")}` : "";
-            return `${e.title} \u2014 ${dateStr}${e.location ? ` at ${e.location}` : ""}${agendaStr}`;
+  Agenda: ${agenda.slice(0, 6).join("; ")}` : "";
+            return `${chamberStr ? `[${chamberStr}] ` : ""}${e.committeeName ?? e.title} \u2014 ${dateStr}${e.location ? `, ${e.location}` : ""} (${e.status})${stats ? `
+  ${stats}` : ""}${agendaStr}`;
           });
-          dataContext = `Upcoming hearings (next 14 days):
+          dataContext = `Upcoming hearings (next 14 days, ${events.length} found):
 ${lines.join("\n\n")}`;
         } else {
           dataContext = "No upcoming hearings found in the next 14 days.";
         }
       } else {
-        const [txHouseCount, txSenateCount, usHouseCount, otherTxCount] = await Promise.all([
-          db.select({ count: officialPublic.id }).from(officialPublic).where(and9(eq10(officialPublic.source, "TX_HOUSE"), eq10(officialPublic.active, true))),
-          db.select({ count: officialPublic.id }).from(officialPublic).where(and9(eq10(officialPublic.source, "TX_SENATE"), eq10(officialPublic.active, true))),
-          db.select({ count: officialPublic.id }).from(officialPublic).where(and9(eq10(officialPublic.source, "US_HOUSE"), eq10(officialPublic.active, true))),
-          db.select({ count: officialPublic.id }).from(officialPublic).where(and9(eq10(officialPublic.source, "OTHER_TX"), eq10(officialPublic.active, true)))
+        const [txHouseCount, txSenateCount, usHouseCount, otherTxCount, cmteCount] = await Promise.all([
+          db.select({ cnt: sql13`count(*)` }).from(officialPublic).where(and10(eq11(officialPublic.source, "TX_HOUSE"), eq11(officialPublic.active, true))),
+          db.select({ cnt: sql13`count(*)` }).from(officialPublic).where(and10(eq11(officialPublic.source, "TX_SENATE"), eq11(officialPublic.active, true))),
+          db.select({ cnt: sql13`count(*)` }).from(officialPublic).where(and10(eq11(officialPublic.source, "US_HOUSE"), eq11(officialPublic.active, true))),
+          db.select({ cnt: sql13`count(*)` }).from(officialPublic).where(and10(eq11(officialPublic.source, "OTHER_TX"), eq11(officialPublic.active, true))),
+          db.select({ cnt: sql13`count(*)` }).from(committees)
         ]);
         const now = /* @__PURE__ */ new Date();
-        const nextHearings = await db.select({ title: legislativeEvents.title, startsAt: legislativeEvents.startsAt }).from(legislativeEvents).where(and9(eq10(legislativeEvents.eventType, "HEARING"), gte4(legislativeEvents.startsAt, now))).orderBy(asc3(legislativeEvents.startsAt)).limit(3);
+        const nextHearings = await db.select({
+          title: legislativeEvents.title,
+          startsAt: legislativeEvents.startsAt,
+          chamber: legislativeEvents.chamber,
+          committeeName: committees.name
+        }).from(legislativeEvents).leftJoin(committees, eq11(committees.id, legislativeEvents.committeeId)).where(and10(eq11(legislativeEvents.eventType, "COMMITTEE_HEARING"), gte4(legislativeEvents.startsAt, now))).orderBy(asc3(legislativeEvents.startsAt)).limit(5);
         const hearingLines = nextHearings.map((h) => {
-          const dateStr = h.startsAt ? h.startsAt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" }) : "TBD";
-          return `${h.title} (${dateStr})`;
+          const dateStr = h.startsAt ? h.startsAt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" }) : "TBD";
+          const chamberStr = h.chamber === "TX_HOUSE" ? "House" : h.chamber === "TX_SENATE" ? "Senate" : "";
+          return `[${chamberStr}] ${h.committeeName ?? h.title} \u2014 ${dateStr}`;
         });
-        dataContext = `App summary:
-TX House members: ${txHouseCount.length}
-TX Senate members: ${txSenateCount.length}
-US House members (TX): ${usHouseCount.length}
-Other TX officials: ${otherTxCount.length}
+        dataContext = `Texas Legislature overview:
+TX House members: ${txHouseCount[0]?.cnt ?? 0}
+TX Senate members: ${txSenateCount[0]?.cnt ?? 0}
+US House members (TX delegation): ${usHouseCount[0]?.cnt ?? 0}
+Other statewide officials: ${otherTxCount[0]?.cnt ?? 0}
+Committees tracked: ${cmteCount[0]?.cnt ?? 0}
 ${nextHearings.length > 0 ? `
-Next hearings:
+Next ${nextHearings.length} upcoming hearings:
 ${hearingLines.join("\n")}` : "No upcoming hearings."}`;
       }
-      const answer = await answerQuestion(question, dataContext);
+      let webContext;
+      if (process.env.GOOGLE_SEARCH_API_KEY && process.env.GOOGLE_SEARCH_CX) {
+        const searchQuery = intent === "legislation" && entities.billNumbers?.length ? `Texas ${entities.billNumbers.join(" ")} bill` : intent === "hearings" && entities.committeeKeywords?.length ? `Texas legislature ${entities.committeeKeywords.join(" ")} committee hearing` : intent === "officials" && entities.names?.length ? `Texas legislator ${entities.names.join(" ")}` : null;
+        if (searchQuery) {
+          webContext = await searchWeb(searchQuery);
+        }
+      }
+      const answer = await answerQuestion(question, dataContext, webContext || void 0);
       res.json({ answer });
     } catch (err) {
       console.error("[/api/ai/ask] error:", err);
@@ -6370,15 +6624,68 @@ ${hearingLines.join("\n")}` : "No upcoming hearings."}`;
   });
 }
 
-// server/routes.ts
-init_schema();
-init_refreshOfficials();
-import { desc as desc4 } from "drizzle-orm";
-import { eq as eq11, and as and10, sql as sql13, or as or4, inArray as inArray5, isNull as isNull5 } from "drizzle-orm";
+// server/routes/mapRoutes.ts
+import fs3 from "fs";
+import path3 from "path";
+
+// server/data/geojson.ts
+import * as fs2 from "node:fs";
+import * as path2 from "node:path";
+var EMPTY = { type: "FeatureCollection", features: [] };
+function findGeoJSONPath(filename) {
+  const candidates = [
+    path2.join(process.cwd(), "server", "data", "geojson", filename),
+    path2.join(process.cwd(), "data", "geojson", filename),
+    path2.resolve("server", "data", "geojson", filename)
+  ];
+  for (const p of candidates) {
+    if (fs2.existsSync(p)) return p;
+  }
+  return null;
+}
+async function loadGeoJSONAsync(filename) {
+  try {
+    const filePath = findGeoJSONPath(filename);
+    if (!filePath) {
+      console.error(`[GeoJSON] File not found: ${filename} (cwd=${process.cwd()})`);
+      return EMPTY;
+    }
+    console.log(`[GeoJSON] Loading ${filename} from: ${filePath}`);
+    const data = await fs2.promises.readFile(filePath, "utf8");
+    const parsed = JSON.parse(data);
+    console.log(`[GeoJSON] Successfully loaded ${filename}: ${parsed.features.length} features`);
+    return parsed;
+  } catch (err) {
+    console.error(`[GeoJSON] Error loading ${filename}:`, err);
+    return EMPTY;
+  }
+}
+var txSenateGeoJSON = EMPTY;
+var txHouseGeoJSON = EMPTY;
+var usCongressGeoJSON = EMPTY;
+var txSenateGeoJSONFull = EMPTY;
+var txHouseGeoJSONFull = EMPTY;
+var usCongressGeoJSONFull = EMPTY;
+(async () => {
+  const [senate, house, congress, senateFull, houseFull, congressFull] = await Promise.all([
+    loadGeoJSONAsync("tx_senate_simplified.geojson"),
+    loadGeoJSONAsync("tx_house_simplified.geojson"),
+    loadGeoJSONAsync("us_congress_simplified.geojson"),
+    loadGeoJSONAsync("tx_senate.geojson"),
+    loadGeoJSONAsync("tx_house.geojson"),
+    loadGeoJSONAsync("us_congress.geojson")
+  ]);
+  txSenateGeoJSON = senate;
+  txHouseGeoJSON = house;
+  usCongressGeoJSON = congress;
+  txSenateGeoJSONFull = senateFull;
+  txHouseGeoJSONFull = houseFull;
+  usCongressGeoJSONFull = congressFull;
+})();
+
+// server/routes/mapRoutes.ts
 import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
-init_refreshCommittees();
-init_refreshOtherTexasOfficials();
 
 // server/geonames.ts
 var GEONAMES_BASE = "http://api.geonames.org";
@@ -6584,1252 +6891,41 @@ async function lookupCityMulti(query, username, maxResults) {
   return results;
 }
 
-// server/routes.ts
-init_schema();
-function getMapHtml() {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; }
-    #map { width: 100%; height: 100%; }
-    .leaflet-control-attribution { display: none; }
-    .leaflet-draw-toolbar { display: none !important; }
-    .user-location-marker {
-      background: #007AFF;
-      border: 3px solid white;
-      border-radius: 50%;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+// server/routes/mapRoutes.ts
+var mapHtml = fs3.readFileSync(path3.resolve(process.cwd(), "server", "templates", "map.html"), "utf-8");
+var cachedGeoJSON = { tx_house: null, tx_senate: null, us_congress: null };
+function getGeoJSONForOverlay(overlayType) {
+  if (overlayType === "house" || overlayType === "tx_house") {
+    if (!cachedGeoJSON.tx_house) {
+      cachedGeoJSON.tx_house = txHouseGeoJSON;
     }
-    .address-dot-marker {
-      background: #9B59B6;
-      border: 2px solid white;
-      border-radius: 50%;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    }
-    .cluster-badge {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 9px;
-      font-weight: bold;
-      color: white;
-      background: #7B68EE;
-      border-radius: 50%;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    }
-    .headshot-marker {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      pointer-events: auto;
-    }
-    .headshot-bubble {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: white;
-      border: 2.5px solid rgba(0,0,0,0.15);
-      overflow: hidden;
-      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
-    }
-    .headshot-bubble img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .headshot-initials {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 16px;
-      color: #555;
-      background: #e8e8e8;
-    }
-    .headshot-tail {
-      width: 0;
-      height: 0;
-      border-left: 7px solid transparent;
-      border-right: 7px solid transparent;
-      border-top: 10px solid white;
-      margin-top: -2px;
-      filter: drop-shadow(0 2px 2px rgba(0,0,0,0.15));
-    }
-    .headshot-overflow {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .headshot-overflow-bubble {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: rgba(74, 144, 226, 0.9);
-      border: 2.5px solid white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 14px;
-      color: white;
-      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
-      cursor: pointer;
-    }
-    .headshot-overflow-tail {
-      width: 0;
-      height: 0;
-      border-left: 7px solid transparent;
-      border-right: 7px solid transparent;
-      border-top: 10px solid rgba(74, 144, 226, 0.9);
-      margin-top: -2px;
-    }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <script>
-    var map = L.map('map', {
-      center: [31.0, -100.0],
-      zoom: 6,
-      zoomControl: true,
-      attributionControl: false
-    });
-    
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18
-    }).addTo(map);
-    
-    var layers = { senate: null, house: null, congress: null };
-    var highlightLayers = []; // Array of all highlight layers for multi-select support
-    var geoJSONData = { tx_senate: null, tx_house: null, us_congress: null };
-    var enabledLayers = { senate: true, house: true, congress: false };
-    var locationMarker = null;
-    var drawnPolygon = null;
-    var polyline = null;
-    var drawPoints = [];
-    var addressDotMarkers = [];
-    var addressDotsByCity = {};
-    
-    var loadStatus = {
-      tx_senate: { loaded: false, loading: false, features: 0, error: null },
-      tx_house: { loaded: false, loading: false, features: 0, error: null },
-      us_congress: { loaded: false, loading: false, features: 0, error: null }
-    };
-    
-    var layerColors = {
-      tx_senate: { fill: '#4B79A1', stroke: '#4B79A1', fillOpacity: 0.15, weight: 3 },
-      tx_house: { fill: '#55BB69', stroke: '#55BB69', fillOpacity: 0.15, weight: 3 },
-      us_congress: { fill: '#8B4513', stroke: '#8B4513', fillOpacity: 0.15, weight: 3 }
-    };
-    
-    function postMessage(data) {
-      try {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(data));
-        } else if (window.parent !== window) {
-          // Use '*' to allow cross-origin communication since parent may be on different port
-          window.parent.postMessage(JSON.stringify(data), '*');
-        }
-      } catch (e) {
-        console.error('[Leaflet] postMessage error:', e);
-      }
-    }
-    
-    function createLayer(type, data, colors) {
-      var layer = L.geoJSON(data, {
-        style: {
-          color: colors.stroke,
-          weight: colors.weight || 3,
-          fillColor: colors.fill,
-          fillOpacity: colors.fillOpacity || 0.15,
-          opacity: 0.8
-        }
-      });
-      return layer;
-    }
-    
-    async function fetchAndSetGeoJSON(layerType) {
-      if (loadStatus[layerType].loaded || loadStatus[layerType].loading) {
-        console.log('[OVERLAY]', layerType, 'already loaded or loading');
-        return loadStatus[layerType].loaded;
-      }
-      
-      loadStatus[layerType].loading = true;
-      console.log('[OVERLAY]', layerType, 'fetching from /api/geojson/' + layerType);
-      
-      try {
-        var response = await fetch('/api/geojson/' + layerType);
-        console.log('[OVERLAY]', layerType, 'status=' + response.status);
-        
-        if (!response.ok) {
-          throw new Error('HTTP ' + response.status);
-        }
-        
-        var data = await response.json();
-        var featureCount = data.features?.length || 0;
-        console.log('[OVERLAY]', layerType, 'features=' + featureCount);
-        
-        geoJSONData[layerType] = data;
-        loadStatus[layerType].loaded = true;
-        loadStatus[layerType].features = featureCount;
-        loadStatus[layerType].loading = false;
-        
-        var typeKey = layerType === 'tx_senate' ? 'senate' : 
-                      layerType === 'tx_house' ? 'house' : 'congress';
-        if (layers[typeKey]) {
-          map.removeLayer(layers[typeKey]);
-        }
-        layers[typeKey] = createLayer(typeKey, data, layerColors[layerType]);
-        
-        if (enabledLayers[typeKey] && layers[typeKey]) {
-          layers[typeKey].addTo(map);
-          layers[typeKey].bringToFront();
-          console.log('[OVERLAY]', layerType, 'auto-added to map (enabled)');
-        }
-        
-        postMessage({
-          type: 'geoJSONLoaded',
-          layerType: layerType,
-          features: featureCount,
-          success: true
-        });
-        
-        return true;
-      } catch (e) {
-        console.error('[OVERLAY]', layerType, 'error=' + e.message);
-        loadStatus[layerType].error = e.message;
-        loadStatus[layerType].loading = false;
-        
-        postMessage({
-          type: 'geoJSONLoaded',
-          layerType: layerType,
-          features: 0,
-          success: false,
-          error: e.message
-        });
-        
-        return false;
-      }
-    }
-    
-    window.toggleLayer = function(type, visible) {
-      console.log('[OVERLAY] toggleLayer:', type, 'visible=', visible);
-      enabledLayers[type] = visible;
-      var layerType = type === 'senate' ? 'tx_senate' : 
-                      type === 'house' ? 'tx_house' : 'us_congress';
-      var layer = layers[type];
-      
-      if (!layer && visible && geoJSONData[layerType]) {
-        layer = createLayer(type, geoJSONData[layerType], layerColors[layerType]);
-        layers[type] = layer;
-      }
-      
-      if (layer) {
-        if (visible) {
-          layer.addTo(map);
-          layer.bringToFront();
-          console.log('[OVERLAY]', type, 'added to map');
-        } else {
-          map.removeLayer(layer);
-          console.log('[OVERLAY]', type, 'removed from map');
-        }
-      } else {
-        console.log('[OVERLAY]', type, 'layer not found or not loaded');
-      }
-    };
-    
-    function pointInPolygon(lat, lng, polygon) {
-      var x = lng, y = lat;
-      var inside = false;
-      for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        var xi = polygon[i][0], yi = polygon[i][1];
-        var xj = polygon[j][0], yj = polygon[j][1];
-        var intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-        if (intersect) inside = !inside;
-      }
-      return inside;
-    }
-    
-    function isPointInGeoJSONFeature(lat, lng, feature) {
-      if (!feature.geometry) return false;
-      if (feature.geometry.type === 'Polygon') {
-        var rings = feature.geometry.coordinates;
-        var inOuter = pointInPolygon(lat, lng, rings[0]);
-        if (!inOuter) return false;
-        for (var h = 1; h < rings.length; h++) {
-          if (pointInPolygon(lat, lng, rings[h])) return false;
-        }
-        return true;
-      } else if (feature.geometry.type === 'MultiPolygon') {
-        for (var p = 0; p < feature.geometry.coordinates.length; p++) {
-          var polyRings = feature.geometry.coordinates[p];
-          var inOuterPoly = pointInPolygon(lat, lng, polyRings[0]);
-          if (inOuterPoly) {
-            var inHole = false;
-            for (var hIdx = 1; hIdx < polyRings.length; hIdx++) {
-              if (pointInPolygon(lat, lng, polyRings[hIdx])) { inHole = true; break; }
-            }
-            if (!inHole) return true;
-          }
-        }
-        return false;
-      }
-      return false;
-    }
-    
-    map.on('click', function(e) {
-      console.log('[MAP_TAP] Click at', e.latlng.lat, e.latlng.lng);
-      console.log('[MAP_TAP] Enabled layers:', JSON.stringify(enabledLayers));
-      
-      var hits = [];
-      var layerMap = { senate: 'tx_senate', house: 'tx_house', congress: 'us_congress' };
-      
-      for (var key in enabledLayers) {
-        if (!enabledLayers[key]) continue;
-        var dataKey = layerMap[key];
-        var geojson = geoJSONData[dataKey];
-        if (!geojson || !geojson.features) {
-          console.log('[MAP_TAP]', dataKey, 'no data loaded');
-          continue;
-        }
-        
-        for (var i = 0; i < geojson.features.length; i++) {
-          var feat = geojson.features[i];
-          if (isPointInGeoJSONFeature(e.latlng.lat, e.latlng.lng, feat)) {
-            var distNum = feat.properties.DIST_NBR || feat.properties.district;
-            hits.push({
-              type: dataKey,
-              district: parseInt(distNum) || 0,
-              properties: feat.properties
-            });
-          }
-        }
-      }
-      
-      console.log('[MAP_TAP] Total hits:', hits.length);
-      postMessage({
-        type: 'mapTap',
-        lat: e.latlng.lat,
-        lng: e.latlng.lng,
-        hits: hits
-      });
-    });
-    
-    window.highlightDistricts = function(hits) {
-      console.log('[Leaflet] highlightDistricts called with', hits.length, 'hits');
-      
-      // Clear all existing highlight layers
-      for (var k = 0; k < highlightLayers.length; k++) {
-        map.removeLayer(highlightLayers[k]);
-      }
-      highlightLayers = [];
-      
-      var layerMap = { senate: 'tx_senate', house: 'tx_house', congress: 'us_congress' };
-      for (var i = 0; i < hits.length; i++) {
-        var hit = hits[i];
-        // Support both districtNumber (native) and district (web) keys
-        var districtNumber = hit.districtNumber !== undefined ? hit.districtNumber : hit.district;
-        // Support both source (native) and type (web) keys
-        var layerType = hit.type;
-        if (hit.source) {
-          layerType = hit.source === 'TX_HOUSE' ? 'tx_house' : 
-                      hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
-        }
-        
-        var typeKey = layerType === 'tx_senate' ? 'senate' : 
-                      layerType === 'tx_house' ? 'house' : 'congress';
-        var dataKey = layerMap[typeKey];
-        var geojson = geoJSONData[dataKey];
-        if (!geojson) continue;
-        
-        for (var j = 0; j < geojson.features.length; j++) {
-          var feat = geojson.features[j];
-          var distNum = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
-          if (distNum === districtNumber) {
-            var colors = layerColors[dataKey];
-            var hl = L.geoJSON(feat, {
-              style: {
-                color: colors.stroke,
-                weight: 5,
-                fillColor: colors.fill,
-                fillOpacity: 0.4,
-                opacity: 1
-              }
-            });
-            hl.addTo(map);
-            highlightLayers.push(hl);
-            break;
-          }
-        }
-      }
-      console.log('[Leaflet] Highlighted', highlightLayers.length, 'districts');
-    };
-    
-    window.clearHighlights = function() {
-      console.log('[Leaflet] clearHighlights called, current layers:', highlightLayers.length);
-      for (var k = 0; k < highlightLayers.length; k++) {
-        map.removeLayer(highlightLayers[k]);
-      }
-      highlightLayers = [];
-    };
-    
-    window.setUserLocation = function(lat, lng) {
-      if (locationMarker) {
-        map.removeLayer(locationMarker);
-      }
-      var icon = L.divIcon({
-        className: 'user-location-marker',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
-      });
-      locationMarker = L.marker([lat, lng], { icon: icon }).addTo(map);
-    };
-    
-    window.centerMap = function(lat, lng, zoom) {
-      map.setView([lat, lng], zoom || 10);
-    };
-    
-    window.focusDistrict = function(type, districtNum) {
-      var dataKey = type === 'senate' ? 'tx_senate' : 
-                    type === 'house' ? 'tx_house' : 'us_congress';
-      var geojson = geoJSONData[dataKey];
-      if (!geojson) return;
-      
-      for (var i = 0; i < geojson.features.length; i++) {
-        var feat = geojson.features[i];
-        var distNum = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
-        if (distNum === districtNum) {
-          var layer = L.geoJSON(feat);
-          var bounds = layer.getBounds();
-          map.fitBounds(bounds, { padding: [50, 50] });
-          
-          var colors = layerColors[dataKey];
-          window.clearHighlights();
-          var hl = L.geoJSON(feat, {
-            style: { color: colors.stroke, weight: 5, fillColor: colors.fill, fillOpacity: 0.4, opacity: 1 }
-          });
-          hl.addTo(map);
-          highlightLayers.push(hl);
-          break;
-        }
-      }
-    };
-    
-    window.setAddressDots = function(dots) {
-      for (var i = 0; i < addressDotMarkers.length; i++) {
-        map.removeLayer(addressDotMarkers[i]);
-      }
-      addressDotMarkers = [];
-      addressDotsByCity = {};
-      
-      for (var j = 0; j < dots.length; j++) {
-        var dot = dots[j];
-        var cityKey = dot.lat.toFixed(2) + ',' + dot.lng.toFixed(2);
-        if (!addressDotsByCity[cityKey]) {
-          addressDotsByCity[cityKey] = [];
-        }
-        addressDotsByCity[cityKey].push(dot);
-      }
-      
-      for (var key in addressDotsByCity) {
-        var cluster = addressDotsByCity[key];
-        var first = cluster[0];
-        var icon;
-        if (cluster.length > 1) {
-          icon = L.divIcon({
-            className: 'cluster-badge',
-            html: '<span>' + cluster.length + '</span>',
-            iconSize: [22, 22],
-            iconAnchor: [11, 11]
-          });
-        } else {
-          icon = L.divIcon({
-            className: 'address-dot-marker',
-            iconSize: [12, 12],
-            iconAnchor: [6, 6]
-          });
-        }
-        var marker = L.marker([first.lat, first.lng], { icon: icon });
-        marker.clusterData = cluster;
-        marker.on('click', function(e) {
-          L.DomEvent.stopPropagation(e);
-          postMessage({
-            type: 'addressDotClick',
-            officials: this.clusterData
-          });
-        });
-        marker.addTo(map);
-        addressDotMarkers.push(marker);
-      }
-    };
-    
-    window.setActiveAddressDot = function(id) {
-      // Optional: highlight active dot
-    };
-    
-    var headshotMarkers = [];
-    var centroidCache = {};
-    var featureCache = {};
-    var boundaryCache = {};
-    
-    function computeCentroid(feature) {
-      if (!feature || !feature.geometry) return null;
-      var coords = [];
-      function extractCoords(geom) {
-        if (geom.type === 'Polygon') {
-          for (var i = 0; i < geom.coordinates[0].length; i++) {
-            coords.push(geom.coordinates[0][i]);
-          }
-        } else if (geom.type === 'MultiPolygon') {
-          var bestArea = 0;
-          var bestIdx = 0;
-          for (var p = 0; p < geom.coordinates.length; p++) {
-            var ring = geom.coordinates[p][0];
-            var area = 0;
-            for (var a = 0; a < ring.length - 1; a++) {
-              area += ring[a][0] * ring[a+1][1] - ring[a+1][0] * ring[a][1];
-            }
-            area = Math.abs(area) / 2;
-            if (area > bestArea) { bestArea = area; bestIdx = p; }
-          }
-          var best = geom.coordinates[bestIdx][0];
-          for (var b = 0; b < best.length; b++) {
-            coords.push(best[b]);
-          }
-        }
-      }
-      extractCoords(feature.geometry);
-      if (coords.length === 0) return null;
-      var sumLat = 0, sumLng = 0;
-      for (var c = 0; c < coords.length; c++) {
-        sumLng += coords[c][0];
-        sumLat += coords[c][1];
-      }
-      return [sumLat / coords.length, sumLng / coords.length];
-    }
-    
-    function getDistrictFeature(layerType, districtNum) {
-      var key = layerType + '_' + districtNum;
-      if (featureCache[key]) return featureCache[key];
-      var geojson = geoJSONData[layerType];
-      if (!geojson || !geojson.features) return null;
-      for (var i = 0; i < geojson.features.length; i++) {
-        var feat = geojson.features[i];
-        var dn = parseInt(feat.properties.DIST_NBR || feat.properties.district) || 0;
-        if (dn === districtNum) {
-          featureCache[key] = feat;
-          return feat;
-        }
-      }
-      return null;
-    }
-    
-    function getDistrictCentroid(layerType, districtNum) {
-      var key = layerType + '_' + districtNum;
-      if (centroidCache[key]) return centroidCache[key];
-      var feat = getDistrictFeature(layerType, districtNum);
-      if (!feat) return null;
-      var c = computeCentroid(feat);
-      if (c) centroidCache[key] = c;
-      return c;
-    }
-    
-    function getInitials(name) {
-      if (!name) return '?';
-      var parts = name.trim().split(/\\s+/);
-      if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-      return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-    }
-    
-    function getBoundaryRings(feature) {
-      var rings = [];
-      if (feature.geometry.type === 'Polygon') {
-        rings.push(feature.geometry.coordinates[0]);
-      } else if (feature.geometry.type === 'MultiPolygon') {
-        for (var p = 0; p < feature.geometry.coordinates.length; p++) {
-          rings.push(feature.geometry.coordinates[p][0]);
-        }
-      }
-      return rings;
-    }
-    
-    function nearestPointOnSegment(px, py, ax, ay, bx, by) {
-      var dx = bx - ax, dy = by - ay;
-      var lenSq = dx * dx + dy * dy;
-      if (lenSq === 0) return { x: ax, y: ay, dist: Math.sqrt((px-ax)*(px-ax)+(py-ay)*(py-ay)) };
-      var t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-      t = Math.max(0, Math.min(1, t));
-      var nx = ax + t * dx, ny = ay + t * dy;
-      var d = Math.sqrt((px-nx)*(px-nx)+(py-ny)*(py-ny));
-      return { x: nx, y: ny, dist: d };
-    }
-    
-    function nearestPointOnBoundary(lat, lng, feature) {
-      var cacheKey = (feature.properties.DIST_NBR || feature.properties.district || '') + '_' + feature.geometry.type;
-      var rings = boundaryCache[cacheKey] || getBoundaryRings(feature);
-      if (!boundaryCache[cacheKey]) boundaryCache[cacheKey] = rings;
-      var bestDist = Infinity, bestX = 0, bestY = 0;
-      for (var r = 0; r < rings.length; r++) {
-        var ring = rings[r];
-        for (var i = 0; i < ring.length - 1; i++) {
-          var res = nearestPointOnSegment(lng, lat, ring[i][0], ring[i][1], ring[i+1][0], ring[i+1][1]);
-          if (res.dist < bestDist) {
-            bestDist = res.dist;
-            bestX = res.x;
-            bestY = res.y;
-          }
-        }
-      }
-      return [bestY, bestX];
-    }
-    
-    function closestPointInsidePolygon(lat, lng, feature) {
-      if (isPointInGeoJSONFeature(lat, lng, feature)) return [lat, lng];
-      var nearest = nearestPointOnBoundary(lat, lng, feature);
-      var c = computeCentroid(feature);
-      if (!c) return nearest;
-      var step = 0.00015;
-      var candLat = nearest[0], candLng = nearest[1];
-      for (var j = 0; j < 25; j++) {
-        var dx = c[1] - candLng;
-        var dy = c[0] - candLat;
-        var len = Math.sqrt(dx * dx + dy * dy) || 1;
-        candLat = candLat + (dy / len) * step;
-        candLng = candLng + (dx / len) * step;
-        if (isPointInGeoJSONFeature(candLat, candLng, feature)) return [candLat, candLng];
-      }
-      return c;
-    }
-    
-    function getMarkerPosition(originLat, originLng, layerType, districtNum) {
-      var feature = getDistrictFeature(layerType, districtNum);
-      if (!feature) return getDistrictCentroid(layerType, districtNum);
-      return closestPointInsidePolygon(originLat, originLng, feature);
-    }
-
-    var polylabelCache = {};
-
-    function getFeatureBbox(feature) {
-      var minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-      var rings = getBoundaryRings(feature);
-      for (var r = 0; r < rings.length; r++) {
-        for (var i = 0; i < rings[r].length; i++) {
-          var coord = rings[r][i];
-          if (coord[0] < minLng) minLng = coord[0];
-          if (coord[0] > maxLng) maxLng = coord[0];
-          if (coord[1] < minLat) minLat = coord[1];
-          if (coord[1] > maxLat) maxLat = coord[1];
-        }
-      }
-      return [minLng, minLat, maxLng, maxLat];
-    }
-
-    function distanceToPolygonBorderServer(lat, lng, feature) {
-      var nearest = nearestPointOnBoundary(lat, lng, feature);
-      var dx = lng - nearest[1];
-      var dy = lat - nearest[0];
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    function getPolylabelServer(feature) {
-      var rings = getBoundaryRings(feature);
-      if (!rings || rings.length === 0) return computeCentroid(feature);
-      var bb = getFeatureBbox(feature);
-      var bestPoint = null;
-      var bestDist = -Infinity;
-
-      var centroid = computeCentroid(feature);
-      if (centroid && isPointInGeoJSONFeature(centroid[0], centroid[1], feature)) {
-        bestDist = distanceToPolygonBorderServer(centroid[0], centroid[1], feature);
-        bestPoint = [centroid[0], centroid[1]];
-      }
-
-      var cellW = (bb[2] - bb[0]);
-      var cellH = (bb[3] - bb[1]);
-
-      for (var pass = 0; pass < 3; pass++) {
-        var gridSize = pass === 0 ? 10 : 8;
-        var sMinLng, sMinLat, sMaxLng, sMaxLat;
-        if (pass === 0 || !bestPoint) {
-          sMinLng = bb[0]; sMinLat = bb[1]; sMaxLng = bb[2]; sMaxLat = bb[3];
-        } else {
-          var refW = cellW / Math.pow(gridSize, pass);
-          var refH = cellH / Math.pow(gridSize, pass);
-          sMinLng = bestPoint[1] - refW; sMinLat = bestPoint[0] - refH;
-          sMaxLng = bestPoint[1] + refW; sMaxLat = bestPoint[0] + refH;
-        }
-        for (var gi = 0; gi < gridSize; gi++) {
-          for (var gj = 0; gj < gridSize; gj++) {
-            var pLng = sMinLng + ((gi + 0.5) / gridSize) * (sMaxLng - sMinLng);
-            var pLat = sMinLat + ((gj + 0.5) / gridSize) * (sMaxLat - sMinLat);
-            if (isPointInGeoJSONFeature(pLat, pLng, feature)) {
-              var d = distanceToPolygonBorderServer(pLat, pLng, feature);
-              if (d > bestDist) { bestDist = d; bestPoint = [pLat, pLng]; }
-            }
-          }
-        }
-      }
-      return bestPoint || centroid;
-    }
-
-    function getDistrictPolylabelServer(layerType, districtNum) {
-      var cacheKey = layerType + '_' + districtNum;
-      if (polylabelCache[cacheKey]) return polylabelCache[cacheKey];
-      var feature = getDistrictFeature(layerType, districtNum);
-      if (!feature) return getDistrictCentroid(layerType, districtNum);
-      var result = getPolylabelServer(feature);
-      if (result) polylabelCache[cacheKey] = result;
-      return result;
-    }
-
-    function getSafeInsetThresholdServer(feature) {
-      var bb = getFeatureBbox(feature);
-      var diagLng = bb[2] - bb[0];
-      var diagLat = bb[3] - bb[1];
-      var diag = Math.sqrt(diagLng * diagLng + diagLat * diagLat);
-      var threshold = diag * 0.015;
-      var minT = 0.001;
-      var maxT = 0.01;
-      return Math.max(minT, Math.min(maxT, threshold));
-    }
-
-    function pushPointTowardInteriorServer(lat, lng, feature, targetDist, hintLat, hintLng) {
-      var curLat = lat, curLng = lng;
-      for (var iter = 0; iter < 30; iter++) {
-        if (!isPointInGeoJSONFeature(curLat, curLng, feature)) {
-          curLat = (curLat + hintLat) / 2;
-          curLng = (curLng + hintLng) / 2;
-          continue;
-        }
-        var d = distanceToPolygonBorderServer(curLat, curLng, feature);
-        if (d >= targetDist) return [curLat, curLng];
-        var dx = hintLng - curLng;
-        var dy = hintLat - curLat;
-        var len = Math.sqrt(dx * dx + dy * dy) || 1;
-        var step = Math.max(0.0002, (targetDist - d) * 0.5);
-        curLat = curLat + (dy / len) * step;
-        curLng = curLng + (dx / len) * step;
-      }
-      if (isPointInGeoJSONFeature(curLat, curLng, feature)) return [curLat, curLng];
-      return [hintLat, hintLng];
-    }
-
-    function getBorderSafeBasePointServer(desLat, desLng, feature, layerType, districtNum) {
-      var polylabel = getDistrictPolylabelServer(layerType, districtNum);
-      if (!polylabel) return [desLat, desLng];
-      var safeThreshold = getSafeInsetThresholdServer(feature);
-
-      if (isPointInGeoJSONFeature(desLat, desLng, feature)) {
-        var d = distanceToPolygonBorderServer(desLat, desLng, feature);
-        if (d >= safeThreshold) return [desLat, desLng];
-        return pushPointTowardInteriorServer(desLat, desLng, feature, safeThreshold, polylabel[0], polylabel[1]);
-      }
-
-      var nearest = nearestPointOnBoundary(desLat, desLng, feature);
-      var pushed = pushPointTowardInteriorServer(nearest[0], nearest[1], feature, safeThreshold, polylabel[0], polylabel[1]);
-      if (isPointInGeoJSONFeature(pushed[0], pushed[1], feature) && distanceToPolygonBorderServer(pushed[0], pushed[1], feature) >= safeThreshold) {
-        return pushed;
-      }
-      return polylabel;
-    }
-
-    var anchorCacheServer = {};
-
-    function getBorderSafeAnchorsServer(layerType, districtNum) {
-      var cacheKey = layerType + '_' + districtNum;
-      if (anchorCacheServer[cacheKey]) return anchorCacheServer[cacheKey];
-      var feature = getDistrictFeature(layerType, districtNum);
-      if (!feature) return [];
-      var polylabel = getDistrictPolylabelServer(layerType, districtNum);
-      if (!polylabel) return [];
-      var safeThreshold = getSafeInsetThresholdServer(feature);
-      var bb = getFeatureBbox(feature);
-      var gridSize = 7;
-      var candidates = [polylabel];
-      for (var gi = 0; gi < gridSize; gi++) {
-        for (var gj = 0; gj < gridSize; gj++) {
-          var lng = bb[0] + ((gi + 0.5) / gridSize) * (bb[2] - bb[0]);
-          var lat = bb[1] + ((gj + 0.5) / gridSize) * (bb[3] - bb[1]);
-          if (isPointInGeoJSONFeature(lat, lng, feature)) {
-            var d = distanceToPolygonBorderServer(lat, lng, feature);
-            if (d >= safeThreshold) candidates.push([lat, lng]);
-          }
-        }
-      }
-      var maxAnchors = Math.min(6, Math.max(2, candidates.length));
-      var selected = [polylabel];
-      while (selected.length < maxAnchors && candidates.length > selected.length) {
-        var best = null, bestMinDist = -1;
-        for (var ci = 0; ci < candidates.length; ci++) {
-          var alreadyUsed = false;
-          for (var si = 0; si < selected.length; si++) {
-            if (candidates[ci] === selected[si]) { alreadyUsed = true; break; }
-          }
-          if (alreadyUsed) continue;
-          var minDist = Infinity;
-          for (var si2 = 0; si2 < selected.length; si2++) {
-            var dx = candidates[ci][1] - selected[si2][1];
-            var dy = candidates[ci][0] - selected[si2][0];
-            var dd = dx * dx + dy * dy;
-            if (dd < minDist) minDist = dd;
-          }
-          if (minDist > bestMinDist) { bestMinDist = minDist; best = candidates[ci]; }
-        }
-        if (best) selected.push(best);
-        else break;
-      }
-      anchorCacheServer[cacheKey] = selected;
-      return selected;
-    }
-
-    function distancePointToDrawnPolygonServer(lat, lng, drawnCoords) {
-      var ring = drawnCoords[0];
-      if (!ring || ring.length < 3) return Infinity;
-      if (pointInPolygon(lat, lng, ring)) return 0;
-      var minDist = Infinity;
-      for (var i = 0; i < ring.length - 1; i++) {
-        var res = nearestPointOnSegment(lng, lat, ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
-        if (res.dist < minDist) minDist = res.dist;
-      }
-      return minDist;
-    }
-
-    function nearestAnchorToDrawnPolygonServer(anchors, drawnCoords) {
-      if (!anchors || anchors.length === 0) return null;
-      if (!drawnCoords || !drawnCoords[0]) return anchors[0];
-      var bestAnchor = anchors[0];
-      var bestDist = Infinity;
-      for (var i = 0; i < anchors.length; i++) {
-        var d = distancePointToDrawnPolygonServer(anchors[i][0], anchors[i][1], drawnCoords);
-        if (d < bestDist) { bestDist = d; bestAnchor = anchors[i]; }
-      }
-      return bestAnchor;
-    }
-
-    var activeMarkerStateServer = null;
-    var pixelLayoutTimerServer = null;
-    var MIN_PX_SERVER = 64;
-
-    function applyPixelLayoutServer() {
-      if (!activeMarkerStateServer || activeMarkerStateServer.entries.length < 2) return;
-      var entries = activeMarkerStateServer.entries;
-      var leafletMarkers = activeMarkerStateServer.leafletMarkers;
-
-      for (var i = 0; i < entries.length; i++) {
-        entries[i].pos = [entries[i].basePos[0], entries[i].basePos[1]];
-      }
-
-      for (var i2 = 0; i2 < entries.length; i2++) {
-        entries[i2].screenPt = map.latLngToContainerPoint(L.latLng(entries[i2].pos[0], entries[i2].pos[1]));
-      }
-
-      var hasOverlap = false;
-      for (var ci = 0; ci < entries.length && !hasOverlap; ci++) {
-        for (var cj = ci + 1; cj < entries.length && !hasOverlap; cj++) {
-          var cdx = entries[ci].screenPt.x - entries[cj].screenPt.x;
-          var cdy = entries[ci].screenPt.y - entries[cj].screenPt.y;
-          if (Math.sqrt(cdx * cdx + cdy * cdy) < MIN_PX_SERVER) hasOverlap = true;
-        }
-      }
-
-      if (!hasOverlap) {
-        for (var ui = 0; ui < entries.length; ui++) {
-          if (leafletMarkers[ui]) leafletMarkers[ui].setLatLng(entries[ui].pos);
-        }
-        return;
-      }
-
-      var centerPx = { x: 0, y: 0 };
-      for (var ai = 0; ai < entries.length; ai++) {
-        centerPx.x += entries[ai].screenPt.x;
-        centerPx.y += entries[ai].screenPt.y;
-      }
-      centerPx.x /= entries.length;
-      centerPx.y /= entries.length;
-
-      var radiiPx = [0, 70, 100, 140, 180, 220, 260, 300];
-      var anglesPerRing = 12;
-      var placed = [];
-
-      for (var idx = 0; idx < entries.length; idx++) {
-        var entry = entries[idx];
-        var found = false;
-        for (var ri = 0; ri < radiiPx.length && !found; ri++) {
-          var radius = radiiPx[ri];
-          var numAngles = radius === 0 ? 1 : anglesPerRing;
-          for (var aii = 0; aii < numAngles && !found; aii++) {
-            var angle = -Math.PI / 2 + (2 * Math.PI * aii / numAngles);
-            if (radius === 0 && idx > 0) break;
-            var candPx = { x: centerPx.x + radius * Math.cos(angle), y: centerPx.y + radius * Math.sin(angle) };
-            var candLatLng = map.containerPointToLatLng(L.point(candPx.x, candPx.y));
-            var candLat = candLatLng.lat, candLng = candLatLng.lng;
-            if (entry.feature && !isPointInGeoJSONFeature(candLat, candLng, entry.feature)) continue;
-            if (entry.feature) {
-              var bDist = distanceToPolygonBorderServer(candLat, candLng, entry.feature);
-              var sThreshold = getSafeInsetThresholdServer(entry.feature);
-              if (bDist < sThreshold * 0.25) continue;
-            }
-            var finalPx = map.latLngToContainerPoint(L.latLng(candLat, candLng));
-            var tooClose = false;
-            for (var pi = 0; pi < placed.length; pi++) {
-              var pPx = entries[placed[pi]].screenPt;
-              var pdx = finalPx.x - pPx.x;
-              var pdy = finalPx.y - pPx.y;
-              if (Math.sqrt(pdx * pdx + pdy * pdy) < MIN_PX_SERVER) { tooClose = true; break; }
-            }
-            if (!tooClose) {
-              entry.pos = [candLat, candLng];
-              entry.screenPt = finalPx;
-              placed.push(idx);
-              found = true;
-            }
-          }
-        }
-        if (!found) placed.push(idx);
-      }
-
-      for (var fi = 0; fi < entries.length; fi++) {
-        if (leafletMarkers[fi]) leafletMarkers[fi].setLatLng(entries[fi].pos);
-      }
-      console.log('[HEADSHOTS] Pixel layout applied at zoom ' + map.getZoom());
-    }
-
-    map.on('moveend', function() {
-      if (!activeMarkerStateServer || activeMarkerStateServer.entries.length < 2) return;
-      if (pixelLayoutTimerServer) clearTimeout(pixelLayoutTimerServer);
-      pixelLayoutTimerServer = setTimeout(function() {
-        applyPixelLayoutServer();
-      }, 100);
-    });
-    
-    window.setHeadshotMarkers = function(markers, selectionOrigin, selectionMode, drawnPolygon) {
-      window.clearHeadshotMarkers();
-      activeMarkerStateServer = null;
-      var mode = selectionMode || null;
-      var MAX_VISIBLE = 10;
-      var visible = markers.slice(0, MAX_VISIBLE);
-      var overflow = markers.length - MAX_VISIBLE;
-      var hasOrigin = selectionOrigin && typeof selectionOrigin.lat === 'number';
-      var isDraw = mode === 'draw';
-      var hasDrawnPoly = drawnPolygon && drawnPolygon.coordinates && drawnPolygon.coordinates[0];
-
-      var entries = [];
-      for (var i = 0; i < visible.length; i++) {
-        var m = visible[i];
-        var feature = getDistrictFeature(m.layerType, m.districtNumber);
-        if (!feature) {
-          var centroid = getDistrictCentroid(m.layerType, m.districtNumber);
-          if (centroid) {
-            entries.push({ m: m, pos: [centroid[0], centroid[1]], basePos: [centroid[0], centroid[1]], feature: null, layerType: m.layerType, key: m.layerType + '_' + m.districtNumber });
-          }
-          continue;
-        }
-
-        var pos;
-        if (isDraw && hasDrawnPoly) {
-          var anchors = getBorderSafeAnchorsServer(m.layerType, m.districtNumber);
-          pos = nearestAnchorToDrawnPolygonServer(anchors, drawnPolygon.coordinates);
-          if (!pos) pos = getDistrictPolylabelServer(m.layerType, m.districtNumber);
-        } else if (hasOrigin) {
-          pos = getBorderSafeBasePointServer(selectionOrigin.lat, selectionOrigin.lng, feature, m.layerType, m.districtNumber);
-        } else {
-          pos = getDistrictPolylabelServer(m.layerType, m.districtNumber);
-        }
-        if (!pos) pos = getDistrictCentroid(m.layerType, m.districtNumber);
-        if (!pos) continue;
-
-        entries.push({
-          m: m,
-          pos: [pos[0], pos[1]],
-          basePos: [pos[0], pos[1]],
-          feature: feature,
-          layerType: m.layerType,
-          key: m.layerType + '_' + m.districtNumber
-        });
-      }
-
-      var leafletMarkersArr = [];
-      for (var ei = 0; ei < entries.length; ei++) {
-        var entry = entries[ei];
-        var em = entry.m;
-
-        var innerHtml;
-        if (em.photoUrl) {
-          innerHtml = '<img src="' + em.photoUrl + '" onerror="this.style.display=\\'none\\';this.nextSibling.style.display=\\'flex\\'" /><div class="headshot-initials" style="display:none">' + getInitials(em.name) + '</div>';
-        } else {
-          innerHtml = '<div class="headshot-initials">' + getInitials(em.name) + '</div>';
-        }
-
-        var html = '<div class="headshot-marker"><div class="headshot-bubble">' + innerHtml + '</div><div class="headshot-tail"></div></div>';
-        var icon = L.divIcon({
-          className: '',
-          html: html,
-          iconSize: [48, 62],
-          iconAnchor: [24, 62]
-        });
-        var marker = L.marker(entry.pos, { icon: icon, interactive: true, zIndexOffset: 1000 });
-        marker._officialId = em.officialId;
-        marker.on('click', function(e) {
-          L.DomEvent.stopPropagation(e);
-          postMessage({ type: 'headshotMarkerClicked', officialId: this._officialId });
-        });
-        marker.addTo(map);
-        headshotMarkers.push(marker);
-        leafletMarkersArr.push(marker);
-      }
-
-      activeMarkerStateServer = {
-        entries: entries,
-        leafletMarkers: leafletMarkersArr
-      };
-
-      if (entries.length >= 2) {
-        applyPixelLayoutServer();
-      }
-      
-      if (overflow > 0) {
-        var overflowPos;
-        if (hasOrigin) {
-          overflowPos = [selectionOrigin.lat, selectionOrigin.lng];
-        } else {
-          var sumLat = 0, sumLng = 0, cnt = 0;
-          for (var j = 0; j < visible.length; j++) {
-            var c = getDistrictCentroid(visible[j].layerType, visible[j].districtNumber);
-            if (c) { sumLat += c[0]; sumLng += c[1]; cnt++; }
-          }
-          overflowPos = cnt > 0 ? [sumLat / cnt, sumLng / cnt] : null;
-        }
-        if (overflowPos) {
-          var oHtml = '<div class="headshot-overflow"><div class="headshot-overflow-bubble">+' + overflow + '</div><div class="headshot-overflow-tail"></div></div>';
-          var oIcon = L.divIcon({
-            className: '',
-            html: oHtml,
-            iconSize: [48, 62],
-            iconAnchor: [24, 62]
-          });
-          var oMarker = L.marker(overflowPos, { icon: oIcon, interactive: true, zIndexOffset: 1001 });
-          oMarker.on('click', function(e) {
-            L.DomEvent.stopPropagation(e);
-            postMessage({ type: 'headshotOverflowClicked' });
-          });
-          oMarker.addTo(map);
-          headshotMarkers.push(oMarker);
-        }
-      }
-
-      console.log('[HEADSHOTS] Set', entries.length, 'markers, mode=' + (mode || 'default') + (isDraw && hasDrawnPoly ? ' (anchor-to-polygon)' : ''));
-    };
-    
-    window.clearHeadshotMarkers = function() {
-      for (var i = 0; i < headshotMarkers.length; i++) {
-        map.removeLayer(headshotMarkers[i]);
-      }
-      headshotMarkers = [];
-      activeMarkerStateServer = null;
-    };
-    
-    window.receiveMessage = function(message) {
-      try {
-        var data = JSON.parse(message);
-        console.log('[Leaflet] Received message:', data.type);
-        
-        if (data.type === 'toggleLayer') {
-          window.toggleLayer(data.layer, data.visible);
-        } else if (data.type === 'setGeoJSON') {
-          var layerType = data.layerType;
-          var typeKey = layerType === 'tx_senate' ? 'senate' : 
-                        layerType === 'tx_house' ? 'house' : 'congress';
-          geoJSONData[layerType] = data.geojson;
-          loadStatus[layerType].loaded = true;
-          loadStatus[layerType].features = data.geojson.features?.length || 0;
-          if (layers[typeKey]) {
-            map.removeLayer(layers[typeKey]);
-          }
-          layers[typeKey] = createLayer(typeKey, data.geojson, layerColors[layerType]);
-          if (enabledLayers[typeKey]) {
-            layers[typeKey].addTo(map);
-            layers[typeKey].bringToFront();
-          }
-        } else if (data.type === 'SET_USER_LOCATION') {
-          window.setUserLocation(data.lat, data.lng);
-        } else if (data.type === 'CENTER_MAP') {
-          window.centerMap(data.lat, data.lng, data.zoom);
-        } else if (data.type === 'FOCUS_DISTRICT') {
-          // Message shape: { source: 'TX_HOUSE'|'TX_SENATE'|'US_HOUSE', districtNumber: number }
-          var focusTypeKey = data.source === 'TX_SENATE' ? 'senate'
-                           : data.source === 'TX_HOUSE'  ? 'house'
-                           : 'congress';
-          window.focusDistrict(focusTypeKey, data.districtNumber);
-        } else if (data.type === 'SET_ADDRESS_DOTS') {
-          window.setAddressDots(data.dots || []);
-        } else if (data.type === 'SET_ACTIVE_ADDRESS_DOT') {
-          window.setActiveAddressDot(data.officialId);
-        } else if (data.type === 'CLEAR_SELECTION') {
-          // Clear any selection UI
-        } else if (data.type === 'CLEAR_HIGHLIGHTS') {
-          console.log('[Leaflet] Received CLEAR_HIGHLIGHTS message');
-          window.clearHighlights();
-        } else if (data.type === 'HIGHLIGHT_DISTRICTS') {
-          console.log('[Leaflet] Received HIGHLIGHT_DISTRICTS, hits:', data.hits?.length);
-          window.highlightDistricts(data.hits || []);
-        } else if (data.type === 'SET_HEADSHOT_MARKERS') {
-          console.log('[Leaflet] Received SET_HEADSHOT_MARKERS, count:', data.markers?.length);
-          window.setHeadshotMarkers(data.markers || [], data.selectionOrigin || null, data.selectionMode || null, data.drawnPolygon || null);
-        } else if (data.type === 'CLEAR_HEADSHOT_MARKERS') {
-          console.log('[Leaflet] Received CLEAR_HEADSHOT_MARKERS');
-          window.clearHeadshotMarkers();
-        }
-      } catch (e) {
-        console.error('[Leaflet] Error processing message:', e);
-      }
-    };
-    
-    window.addEventListener('message', function(e) {
-      if (e.data && typeof e.data === 'string') {
-        window.receiveMessage(e.data);
-      }
-    });
-    
-    document.addEventListener('message', function(e) {
-      window.receiveMessage(e.data);
-    });
-    
-    // Force Leaflet to recalculate tile viewport once the iframe has finished
-    // laying out.  Without this call the map container may have 0-height at
-    // the moment L.map() runs, leaving the map blank/gray.
-    map.invalidateSize();
-    window.addEventListener('resize', function() { map.invalidateSize(); });
-
-    // Auto-load GeoJSON on page load
-    setTimeout(function() {
-      // Re-check size in case flex layout settled after the first paint.
-      map.invalidateSize();
-      console.log('[Leaflet] Auto-loading GeoJSON...');
-      postMessage({ type: 'mapReady' });
-
-      Promise.all([
-        fetchAndSetGeoJSON('tx_senate'),
-        fetchAndSetGeoJSON('tx_house'),
-        fetchAndSetGeoJSON('us_congress')
-      ]).then(function(results) {
-        console.log('[Leaflet] All GeoJSON loaded:', results);
-        postMessage({ type: 'allGeoJSONLoaded' });
-      }).catch(function(err) {
-        console.error('[Leaflet] GeoJSON load error:', err);
-      });
-    }, 100);
-  </script>
-</body>
-</html>`;
-}
-function createVacantOfficial(source, district) {
-  const chamber = source === "TX_HOUSE" ? "TX House" : source === "TX_SENATE" ? "TX Senate" : "US House";
-  const vacantId = `VACANT-${source}-${district}`;
-  return {
-    id: vacantId,
-    personId: null,
-    source,
-    sourceMemberId: vacantId,
-    chamber,
-    district: String(district),
-    fullName: "Vacant District",
-    roleTitle: null,
-    party: null,
-    photoUrl: null,
-    capitolAddress: null,
-    capitolPhone: null,
-    capitolRoom: null,
-    districtAddresses: null,
-    districtPhones: null,
-    website: null,
-    email: null,
-    active: true,
-    lastRefreshedAt: /* @__PURE__ */ new Date(),
-    searchZips: null,
-    searchCities: null,
-    isVacant: true,
-    private: null
-  };
-}
-function fillVacancies(officials, source) {
-  const range = DISTRICT_RANGES[source];
-  const districtMap = /* @__PURE__ */ new Map();
-  for (const official of officials) {
-    districtMap.set(official.district, { ...official, isVacant: false });
+    return cachedGeoJSON.tx_house;
   }
-  const result = [];
-  for (let d = range.min; d <= range.max; d++) {
-    const districtStr = String(d);
-    if (districtMap.has(districtStr)) {
-      result.push(districtMap.get(districtStr));
-    } else {
-      result.push(createVacantOfficial(source, d));
+  if (overlayType === "senate" || overlayType === "tx_senate") {
+    if (!cachedGeoJSON.tx_senate) {
+      cachedGeoJSON.tx_senate = txSenateGeoJSON;
     }
+    return cachedGeoJSON.tx_senate;
   }
-  return result;
-}
-function sourceFromDistrictType(dt) {
-  switch (dt) {
-    case "tx_house":
-      return "TX_HOUSE";
-    case "tx_senate":
-      return "TX_SENATE";
-    case "us_congress":
-      return "US_HOUSE";
-  }
-}
-function mergeOfficial(pub, priv) {
-  const merged = { ...pub };
-  if (priv) {
-    merged.private = {
-      personalPhone: priv.personalPhone,
-      personalAddress: priv.personalAddress,
-      spouseName: priv.spouseName,
-      childrenNames: priv.childrenNames,
-      birthday: priv.birthday,
-      anniversary: priv.anniversary,
-      notes: priv.notes,
-      tags: priv.tags,
-      updatedAt: priv.updatedAt,
-      addressSource: priv.addressSource
-    };
-  }
-  return merged;
-}
-async function registerRoutes(app2) {
-  maybeRunScheduledRefresh().catch((err) => {
-    console.error("[Startup] Failed to check scheduled refresh:", err);
-  });
-  maybeRunCommitteeRefresh().catch((err) => {
-    console.error("[Startup] Failed to check committee refresh:", err);
-  });
-  maybeRunOtherTxRefresh().catch((err) => {
-    console.error("[Startup] Failed to check Other TX officials seed:", err);
-  });
-  setTimeout(async () => {
-    try {
-      const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
-      console.log(`[Startup] Checking for new officials needing hometown lookup...`);
-      const result = await bulkFillHometowns2();
-      console.log(`[Startup] Hometown check done: filled=${result.filled}, notFound=${result.notFound}, errors=${result.errors}`);
-    } catch (err) {
-      console.error(`[Startup] Hometown check failed:`, err instanceof Error ? err.message : err);
+  if (overlayType === "congress" || overlayType === "us_congress") {
+    if (!cachedGeoJSON.us_congress) {
+      cachedGeoJSON.us_congress = usCongressGeoJSON;
     }
-  }, 9e4);
-  startOfficialsRefreshScheduler();
-  registerPrayerRoutes(app2);
-  registerLegislativeRoutes(app2);
-  registerAiRoutes(app2);
+    return cachedGeoJSON.us_congress;
+  }
+  return null;
+}
+function getSourceFromOverlay(overlay) {
+  if (overlay === "house" || overlay === "tx_house") return "TX_HOUSE";
+  if (overlay === "senate" || overlay === "tx_senate") return "TX_SENATE";
+  return "US_HOUSE";
+}
+function getDistrictNumber(feature) {
+  const props = feature.properties || {};
+  const districtNum = props.district || props.SLDUST || props.SLDLST || props.CD;
+  return districtNum ? parseInt(String(districtNum)) : null;
+}
+function registerMapRoutes(app2) {
   app2.get("/api/geojson/tx_house", (_req, res) => {
     res.json(txHouseGeoJSON);
   });
@@ -7850,363 +6946,196 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/map.html", (_req, res) => {
     res.setHeader("Content-Type", "text/html");
-    res.send(getMapHtml());
+    res.send(mapHtml);
   });
-  app2.get("/api/officials", async (req, res) => {
+  app2.get("/api/lookup/place", async (req, res) => {
     try {
-      const { district_type, source, search, q, active } = req.query;
-      const conditions = [];
-      if (active !== "false") {
-        conditions.push(eq11(officialPublic.active, true));
+      const q = String(req.query.q || "").trim();
+      if (q.length < 2) {
+        return res.status(400).json({ error: "Query too short (min 2 characters)" });
       }
-      let sourceFilter = null;
-      const isAllSources = source === "ALL";
-      if (district_type && typeof district_type === "string") {
-        const validTypes = ["tx_house", "tx_senate", "us_congress"];
-        if (!validTypes.includes(district_type)) {
-          return res.status(400).json({ error: "Invalid district_type" });
-        }
-        sourceFilter = sourceFromDistrictType(district_type);
-        conditions.push(eq11(officialPublic.source, sourceFilter));
+      const { result, fromCache, error } = await lookupPlace(q);
+      if (error) {
+        console.log(`[Lookup] Place error: ${error}`);
+        return res.status(500).json({ error });
       }
-      if (source && typeof source === "string" && source !== "ALL") {
-        const validSources = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "OTHER_TX"];
-        if (!validSources.includes(source)) {
-          return res.status(400).json({ error: "Invalid source" });
-        }
-        sourceFilter = source;
-        conditions.push(eq11(officialPublic.source, sourceFilter));
+      if (!result) {
+        console.log(`[Lookup] No Texas place found for "${q}"`);
+        return res.status(404).json({ message: "No Texas place found" });
       }
-      const publicOfficials = await db.select().from(officialPublic).where(conditions.length > 0 ? and10(...conditions) : void 0);
-      const privateData = await db.select().from(officialPrivate);
-      const privateMap = new Map(privateData.map((p) => [p.officialPublicId, p]));
-      let officials = publicOfficials.map(
-        (pub) => mergeOfficial(pub, privateMap.get(pub.id) || null)
-      );
-      if (isAllSources || !sourceFilter) {
-        const houseOfficials = fillVacancies(
-          officials.filter((o) => o.source === "TX_HOUSE"),
-          "TX_HOUSE"
-        );
-        const senateOfficials = fillVacancies(
-          officials.filter((o) => o.source === "TX_SENATE"),
-          "TX_SENATE"
-        );
-        const congressOfficials = fillVacancies(
-          officials.filter((o) => o.source === "US_HOUSE"),
-          "US_HOUSE"
-        );
-        officials = [...houseOfficials, ...senateOfficials, ...congressOfficials];
-      } else if (sourceFilter && sourceFilter !== "OTHER_TX") {
-        officials = fillVacancies(officials, sourceFilter);
-      }
-      const searchTerm = search || q;
-      if (searchTerm && typeof searchTerm === "string") {
-        const term = searchTerm.toLowerCase();
-        const beforeCount = officials.length;
-        officials = officials.filter((o) => {
-          if (o.fullName.toLowerCase().includes(term)) return true;
-          if (o.district.includes(term)) return true;
-          if (o.isVacant && "vacant".includes(term)) return true;
-          if (o.party && o.party.toLowerCase().includes(term)) return true;
-          if (o.capitolAddress && o.capitolAddress.toLowerCase().includes(term)) return true;
-          if (o.districtAddresses && Array.isArray(o.districtAddresses)) {
-            for (const addr of o.districtAddresses) {
-              if (typeof addr === "string" && addr.toLowerCase().includes(term)) return true;
-            }
-          }
-          if (o.email && o.email.toLowerCase().includes(term)) return true;
-          if (o.website && o.website.toLowerCase().includes(term)) return true;
-          if (o.searchZips && o.searchZips.toLowerCase().includes(term)) return true;
-          if (o.searchCities && o.searchCities.toLowerCase().includes(term)) return true;
-          return false;
-        });
-        const afterCount = officials.length;
-        const bySource = {};
-        for (const o of officials) {
-          bySource[o.source] = (bySource[o.source] || 0) + 1;
-        }
-        console.log(`[Search] q="${searchTerm}" | before=${beforeCount} | after=${afterCount} | bySource=${JSON.stringify(bySource)}`);
-      }
-      const sourceOrder = {
-        "TX_HOUSE": 1,
-        "TX_SENATE": 2,
-        "US_HOUSE": 3
-      };
-      officials.sort((a, b) => {
-        if (isAllSources || !sourceFilter) {
-          const orderA = sourceOrder[a.source] || 99;
-          const orderB = sourceOrder[b.source] || 99;
-          if (orderA !== orderB) return orderA - orderB;
-        }
-        const distA = parseInt(a.district, 10);
-        const distB = parseInt(b.district, 10);
-        if (!isNaN(distA) && !isNaN(distB)) {
-          if (distA !== distB) return distA - distB;
-        }
-        const lastA = a.fullName.split(" ").pop() || "";
-        const lastB = b.fullName.split(" ").pop() || "";
-        return lastA.localeCompare(lastB);
-      });
-      const vacancyCount = officials.filter((o) => o.isVacant).length;
-      res.json({ officials, count: officials.length, vacancyCount });
+      console.log(`[Lookup] Place: "${q}" \u2192 ${result.name} (${result.lat}, ${result.lng}) [cache=${fromCache}]`);
+      res.json({ ...result, fromCache });
     } catch (err) {
-      console.error("[API] Error fetching officials:", err);
-      res.status(500).json({ error: "Failed to fetch officials" });
+      console.error("[Lookup] Place error:", err);
+      res.status(500).json({ error: "Place lookup failed" });
     }
   });
-  app2.post("/api/officials/batch-backfill", async (req, res) => {
+  app2.get("/api/lookup/place/candidates", async (req, res) => {
     try {
-      const { officialIds } = req.body;
-      if (!officialIds || !Array.isArray(officialIds)) {
-        return res.status(400).json({ error: "officialIds array required" });
+      const q = String(req.query.q || "").trim();
+      const maxResults = Math.min(parseInt(String(req.query.max || "5"), 10) || 5, 10);
+      if (q.length < 2) {
+        return res.status(400).json({ error: "Query too short (min 2 characters)" });
       }
-      const results = {};
-      const privateRecords = await db.select({
-        officialPublicId: officialPrivate.officialPublicId,
-        personalAddress: officialPrivate.personalAddress,
-        addressSource: officialPrivate.addressSource
-      }).from(officialPrivate);
-      const privateMap = new Map(privateRecords.map((r) => [r.officialPublicId, r]));
-      for (const id of officialIds) {
-        const priv = privateMap.get(id);
-        results[id] = {
-          hometown: priv?.personalAddress || null,
-          addressSource: priv?.addressSource || null
-        };
+      const { results, fromCache, error } = await lookupPlaceCandidates(q, maxResults);
+      if (error) {
+        console.log(`[Lookup] Place candidates error: ${error}`);
+        return res.status(500).json({ error });
       }
-      res.json({ results });
+      console.log(`[Lookup] Place candidates: "${q}" \u2192 ${results.length} results [cache=${fromCache}]`);
+      res.json({ results, fromCache });
     } catch (err) {
-      console.error("[API] Batch backfill error:", err);
-      res.status(500).json({ error: "Batch backfill failed" });
+      console.error("[Lookup] Place candidates error:", err);
+      res.status(500).json({ error: "Place lookup failed" });
     }
   });
-  app2.get("/api/officials/backfill-audit", async (req, res) => {
+  app2.post("/api/lookup/districts-at-point", (req, res) => {
     try {
-      const allPublic = await db.select({
-        id: officialPublic.id,
-        fullName: officialPublic.fullName,
-        source: officialPublic.source,
-        district: officialPublic.district
-      }).from(officialPublic).where(eq11(officialPublic.active, true));
-      const allPrivate = await db.select().from(officialPrivate);
-      const privMap = new Map(allPrivate.map((p) => [p.officialPublicId, p]));
-      const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
-      const audit = allPublic.map((pub) => {
-        const priv = privMap.get(pub.id);
-        const address = priv?.personalAddress;
-        const addrSource = priv?.addressSource || null;
-        return {
-          id: pub.id,
-          name: pub.fullName,
-          source: pub.source,
-          district: pub.district,
-          hasAddress: !isEffectivelyEmpty2(address),
-          address: address || null,
-          addressSource: addrSource
-        };
-      });
-      const summary = {
-        total: audit.length,
-        withAddress: audit.filter((a) => a.hasAddress).length,
-        missingAddress: audit.filter((a) => !a.hasAddress).length,
-        bySource: {},
-        byAddressSource: {}
-      };
-      for (const a of audit) {
-        if (!summary.bySource[a.source]) {
-          summary.bySource[a.source] = { total: 0, filled: 0, missing: 0 };
-        }
-        summary.bySource[a.source].total++;
-        if (a.hasAddress) summary.bySource[a.source].filled++;
-        else summary.bySource[a.source].missing++;
-        const src = a.addressSource || "unknown";
-        summary.byAddressSource[src] = (summary.byAddressSource[src] || 0) + 1;
+      const { lat, lng } = req.body;
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        return res.status(400).json({ error: "lat and lng (numbers) are required" });
       }
-      res.json({ summary, officials: audit });
-    } catch (err) {
-      console.error("[API] Backfill audit error:", err);
-      res.status(500).json({ error: "Audit failed" });
-    }
-  });
-  app2.get("/api/officials/with-addresses", async (req, res) => {
-    try {
-      const results = await db.select({
-        officialId: officialPublic.id,
-        fullName: officialPublic.fullName,
-        source: officialPublic.source,
-        personalAddress: officialPrivate.personalAddress
-      }).from(officialPublic).innerJoin(officialPrivate, eq11(officialPublic.id, officialPrivate.officialPublicId)).where(
-        and10(
-          eq11(officialPublic.active, true),
-          sql13`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
-        )
-      );
-      res.json({
-        addresses: results.map((r) => ({
-          officialId: r.officialId,
-          officialName: r.fullName,
-          source: r.source,
-          personalAddress: r.personalAddress
-        }))
-      });
-    } catch (err) {
-      console.error("[API] Error fetching addresses:", err);
-      res.status(500).json({ error: "Failed to fetch addresses" });
-    }
-  });
-  app2.get("/api/officials/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const vacantMatch = id.match(/^VACANT-(TX_HOUSE|TX_SENATE|US_HOUSE)-(\d+)$/);
-      if (vacantMatch) {
-        const source = vacantMatch[1];
-        const district = parseInt(vacantMatch[2], 10);
-        const vacant = createVacantOfficial(source, district);
-        return res.json({ official: vacant });
-      }
-      const sourceDistrictMatch = id.match(/^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/);
-      if (sourceDistrictMatch) {
-        const source = sourceDistrictMatch[1];
-        const district = sourceDistrictMatch[2];
-        const [pub2] = await db.select().from(officialPublic).where(and10(
-          eq11(officialPublic.source, source),
-          eq11(officialPublic.district, district),
-          eq11(officialPublic.active, true)
-        )).limit(1);
-        if (!pub2) {
-          const vacant = createVacantOfficial(source, parseInt(district, 10));
-          return res.json({ official: vacant });
-        }
-        const [priv2] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, pub2.id)).limit(1);
-        const official2 = mergeOfficial(pub2, priv2 || null);
-        official2.isVacant = false;
-        return res.json({ official: official2 });
-      }
-      const [pub] = await db.select().from(officialPublic).where(eq11(officialPublic.id, id)).limit(1);
-      if (!pub) {
-        return res.status(404).json({ error: "Official not found" });
-      }
-      const [priv] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, id)).limit(1);
-      const official = mergeOfficial(pub, priv || null);
-      official.isVacant = false;
-      res.json({ official });
-    } catch (err) {
-      console.error("[API] Error fetching official:", err);
-      res.status(500).json({ error: "Failed to fetch official" });
-    }
-  });
-  app2.get("/api/officials/by-district", async (req, res) => {
-    try {
-      const { district_type, district_number } = req.query;
-      if (!district_type || !district_number) {
-        return res.status(400).json({ error: "district_type and district_number are required" });
-      }
-      const validTypes = ["tx_house", "tx_senate", "us_congress"];
-      if (!validTypes.includes(district_type)) {
-        return res.status(400).json({ error: "Invalid district_type" });
-      }
-      const distNum = String(district_number);
-      const source = sourceFromDistrictType(district_type);
-      const [pub] = await db.select().from(officialPublic).where(and10(
-        eq11(officialPublic.source, source),
-        eq11(officialPublic.district, distNum),
-        eq11(officialPublic.active, true)
-      )).limit(1);
-      if (!pub) {
-        return res.status(404).json({ error: "Official not found" });
-      }
-      const [priv] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, pub.id)).limit(1);
-      const official = mergeOfficial(pub, priv || null);
-      res.json({ official });
-    } catch (err) {
-      console.error("[API] Error fetching official by district:", err);
-      res.status(500).json({ error: "Failed to fetch official" });
-    }
-  });
-  app2.post("/api/officials/by-districts", async (req, res) => {
-    try {
-      const { districts } = req.body;
-      if (!Array.isArray(districts) || districts.length === 0) {
-        return res.status(400).json({ error: "districts array is required" });
-      }
-      const results = [];
-      for (const dist of districts) {
-        const { source, districtNumber } = dist;
-        if (!source || districtNumber === void 0) continue;
-        const [pub] = await db.select().from(officialPublic).where(and10(
-          eq11(officialPublic.source, source),
-          eq11(officialPublic.district, String(districtNumber)),
-          eq11(officialPublic.active, true)
-        )).limit(1);
-        if (pub) {
-          const [priv] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, pub.id)).limit(1);
-          results.push(mergeOfficial(pub, priv || null));
-        } else {
-          results.push(createVacantOfficial(source, districtNumber));
-        }
-      }
-      res.json({ officials: results });
-    } catch (err) {
-      console.error("[API] Error fetching officials by districts:", err);
-      res.status(500).json({ error: "Failed to fetch officials" });
-    }
-  });
-  app2.patch("/api/officials/:id/private", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const [pub] = await db.select().from(officialPublic).where(eq11(officialPublic.id, id)).limit(1);
-      if (!pub) {
-        return res.status(404).json({ error: "Official not found" });
-      }
-      const parseResult = updateOfficialPrivateSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return res.status(400).json({ error: "Invalid request body", details: parseResult.error.issues });
-      }
-      const updateData = parseResult.data;
-      const [existing] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, id)).limit(1);
-      if (existing) {
-        await db.update(officialPrivate).set({
-          ...updateData,
-          addressSource: "user",
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq11(officialPrivate.id, existing.id));
-      } else {
-        let finalUpdateData = { ...updateData };
-        let autoFilled = false;
-        const addressIsEmpty = !updateData.personalAddress || updateData.personalAddress.trim().length === 0;
-        if (addressIsEmpty && pub.fullName) {
-          console.log(`[API] Auto-fill: Looking up hometown for new private notes record for "${pub.fullName}"`);
+      console.log(`[Lookup] Districts at point: (${lat}, ${lng})`);
+      const point2 = turf.point([lng, lat]);
+      const hits = [];
+      const overlayMappings = [
+        { overlay: "house", source: "TX_HOUSE" },
+        { overlay: "senate", source: "TX_SENATE" },
+        { overlay: "congress", source: "US_HOUSE" }
+      ];
+      for (const { overlay, source } of overlayMappings) {
+        const featureCollection = getGeoJSONForOverlay(overlay);
+        if (!featureCollection || !featureCollection.features) continue;
+        for (const feature of featureCollection.features) {
           try {
-            const { lookupHometownFromTexasTribune: lookupHometownFromTexasTribune2 } = await Promise.resolve().then(() => (init_texasTribuneLookup(), texasTribuneLookup_exports));
-            const result = await lookupHometownFromTexasTribune2(pub.fullName);
-            if (result.success && result.hometown) {
-              console.log(`[API] Auto-fill: Setting personalAddress to "${result.hometown}" for ${pub.fullName}`);
-              finalUpdateData.personalAddress = result.hometown;
-              autoFilled = true;
-            } else {
-              console.log(`[API] Auto-fill: No hometown found for ${pub.fullName}`);
+            if (turf.booleanPointInPolygon(point2, feature)) {
+              const districtNumber = getDistrictNumber(feature);
+              if (districtNumber !== null) {
+                hits.push({ source, districtNumber });
+                break;
+              }
             }
-          } catch (error) {
-            console.error(`[API] Auto-fill: Error looking up hometown:`, error);
+          } catch {
           }
         }
-        await db.insert(officialPrivate).values({
-          officialPublicId: id,
-          ...finalUpdateData,
-          addressSource: autoFilled ? "tribune" : "user",
-          updatedAt: /* @__PURE__ */ new Date()
-        });
       }
-      const [updatedPriv] = await db.select().from(officialPrivate).where(eq11(officialPrivate.officialPublicId, id)).limit(1);
-      const official = mergeOfficial(pub, updatedPriv);
-      res.json({ official });
+      console.log(`[Lookup] Districts found: ${hits.map((h) => `${h.source}:${h.districtNumber}`).join(", ") || "none"}`);
+      res.json({ hits, lat, lng });
     } catch (err) {
-      console.error("[API] Error updating private data:", err);
-      res.status(500).json({ error: "Failed to update private data" });
+      console.error("[Lookup] Districts-at-point error:", err);
+      res.status(500).json({ error: "Failed to find districts at point" });
     }
   });
-  app2.post("/api/refresh", async (req, res) => {
+  app2.get("/api/lookup/cache-stats", (_req, res) => {
+    res.json(getCacheStats());
+  });
+  app2.post("/api/map/area-hits", (req, res) => {
+    try {
+      const { geometry, overlays } = req.body;
+      if (!geometry || geometry.type !== "Polygon" || !Array.isArray(geometry.coordinates)) {
+        return res.status(400).json({ error: "Invalid geometry: must be a Polygon" });
+      }
+      if (!overlays || typeof overlays !== "object") {
+        return res.status(400).json({ error: "overlays object is required" });
+      }
+      console.log("[API] /api/map/area-hits - geometry points:", geometry.coordinates[0]?.length);
+      console.log("[API] /api/map/area-hits - overlays:", JSON.stringify(overlays));
+      const drawnPolygon = turf.polygon(geometry.coordinates);
+      const hits = [];
+      const hitDebug = {};
+      const overlayTypes = ["house", "senate", "congress"];
+      for (const overlayType of overlayTypes) {
+        if (!overlays[overlayType]) continue;
+        const featureCollection = getGeoJSONForOverlay(overlayType);
+        if (!featureCollection || !featureCollection.features) {
+          console.log(`[API] No GeoJSON for overlay: ${overlayType}`);
+          continue;
+        }
+        let hitCount = 0;
+        for (const feature of featureCollection.features) {
+          try {
+            if (booleanIntersects(drawnPolygon, feature)) {
+              const districtNumber = getDistrictNumber(feature);
+              if (districtNumber !== null) {
+                const source = getSourceFromOverlay(overlayType);
+                const alreadyExists = hits.some(
+                  (h) => h.source === source && h.districtNumber === districtNumber
+                );
+                if (!alreadyExists) {
+                  hits.push({ source, districtNumber });
+                  hitCount++;
+                }
+              }
+            }
+          } catch {
+          }
+        }
+        hitDebug[overlayType] = hitCount;
+      }
+      console.log("[API] /api/map/area-hits - hits per overlay:", JSON.stringify(hitDebug));
+      console.log("[API] /api/map/area-hits - total hits:", hits.length);
+      res.json({ hits });
+    } catch (err) {
+      console.error("[API] Error in /api/map/area-hits:", err);
+      res.status(500).json({ error: "Failed to compute area hits" });
+    }
+  });
+  app2.get("/api/photo-proxy", async (req, res) => {
+    try {
+      const url = req.query.url;
+      if (!url) {
+        return res.status(400).json({ error: "Missing url parameter" });
+      }
+      const allowedDomains = [
+        "directory.texastribune.org",
+        "www.congress.gov",
+        "congress.gov",
+        "bioguide.congress.gov"
+      ];
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        return res.status(400).json({ error: "Invalid URL" });
+      }
+      if (!allowedDomains.includes(parsedUrl.hostname)) {
+        return res.status(403).json({ error: "Domain not allowed" });
+      }
+      const imageResponse = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "Referer": `https://${parsedUrl.hostname}/`
+        }
+      });
+      if (!imageResponse.ok) {
+        return res.status(imageResponse.status).json({ error: "Failed to fetch image" });
+      }
+      const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+      const buffer = Buffer.from(await imageResponse.arrayBuffer());
+      res.set({
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=604800, immutable",
+        "Content-Length": String(buffer.length)
+      });
+      res.send(buffer);
+    } catch (error) {
+      console.error("[API] Photo proxy error:", error);
+      res.status(500).json({ error: "Photo proxy failed" });
+    }
+  });
+}
+
+// server/routes/adminRoutes.ts
+init_db();
+init_schema();
+init_refreshOfficials();
+init_scheduler();
+init_refreshGeoJSON();
+init_refreshCommittees();
+import { desc as desc4, eq as eq12, and as and11, sql as sql14, or as or4, inArray as inArray5, isNull as isNull5 } from "drizzle-orm";
+function registerAdminRoutes(app2) {
+  app2.post("/api/refresh", async (_req, res) => {
     try {
       const { refreshAllOfficials: refreshAllOfficials2 } = await Promise.resolve().then(() => (init_refreshOfficials(), refreshOfficials_exports));
       await refreshAllOfficials2();
@@ -8346,30 +7275,28 @@ async function registerRoutes(app2) {
           url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/ArcGIS/rest/services/Texas_US_House_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson&resultRecordCount=1"
         }
       ];
-      const results = await Promise.all(sources.map(async (source) => {
-        try {
-          const response = await fetch(source.url);
-          const data = await response.json();
-          const sampleProps = data.features?.[0]?.properties || {};
-          const countUrl = source.url.replace("resultRecordCount=1", "returnCountOnly=true");
-          const countResponse = await fetch(countUrl);
-          const countData = await countResponse.json();
-          return {
-            name: source.name,
-            featureCount: countData.count,
-            samplePropertyKeys: Object.keys(sampleProps),
-            sampleDistrictValue: sampleProps.DIST_NBR,
-            sampleRepName: sampleProps.REP_NM,
-            status: "ok"
-          };
-        } catch (err) {
-          return {
-            name: source.name,
-            status: "error",
-            error: String(err)
-          };
-        }
-      }));
+      const results = await Promise.all(
+        sources.map(async (source) => {
+          try {
+            const response = await fetch(source.url);
+            const data = await response.json();
+            const sampleProps = data.features?.[0]?.properties || {};
+            const countUrl = source.url.replace("resultRecordCount=1", "returnCountOnly=true");
+            const countResponse = await fetch(countUrl);
+            const countData = await countResponse.json();
+            return {
+              name: source.name,
+              featureCount: countData.count,
+              samplePropertyKeys: Object.keys(sampleProps),
+              sampleDistrictValue: sampleProps.DIST_NBR,
+              sampleRepName: sampleProps.REP_NM,
+              status: "ok"
+            };
+          } catch (err) {
+            return { name: source.name, status: "error", error: String(err) };
+          }
+        })
+      );
       res.json({ sources: results });
     } catch (err) {
       console.error("[Admin] GeoJSON source debug error:", err);
@@ -8378,21 +7305,16 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/admin/officials-counts", async (_req, res) => {
     try {
-      const counts = await db.select({
-        source: officialPublic.source,
-        count: sql13`count(*)::int`
-      }).from(officialPublic).where(eq11(officialPublic.active, true)).groupBy(officialPublic.source);
-      const countsBySource = {
-        TX_HOUSE: 0,
-        TX_SENATE: 0,
-        US_HOUSE: 0
-      };
+      const counts = await db.select({ source: officialPublic.source, count: sql14`count(*)::int` }).from(officialPublic).where(eq12(officialPublic.active, true)).groupBy(officialPublic.source);
+      const countsBySource = { TX_HOUSE: 0, TX_SENATE: 0, US_HOUSE: 0 };
       for (const { source, count } of counts) {
         countsBySource[source] = count;
       }
       const lastRefreshJobs = await db.select().from(refreshJobLog).orderBy(desc4(refreshJobLog.startedAt)).limit(5);
       const lastSuccessfulRefresh = lastRefreshJobs.find((j) => j.status === "success");
-      const lastFailedRefresh = lastRefreshJobs.find((j) => j.status === "failed" || j.status === "aborted");
+      const lastFailedRefresh = lastRefreshJobs.find(
+        (j) => j.status === "failed" || j.status === "aborted"
+      );
       const result = {
         counts: countsBySource,
         total: countsBySource.TX_HOUSE + countsBySource.TX_SENATE + countsBySource.US_HOUSE,
@@ -8425,12 +7347,691 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Failed to fetch counts" });
     }
   });
+  app2.post("/admin/refresh/committees", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      if (!adminToken) {
+        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
+      }
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      const force = req.query.force === "true";
+      if (getIsRefreshingCommittees()) {
+        return res.status(409).json({ error: "Committees refresh already in progress" });
+      }
+      console.log(`[Admin] Committees refresh triggered (force=${force})`);
+      const result = await checkAndRefreshCommitteesIfChanged(force);
+      res.json({ success: true, results: result.results, durationMs: result.durationMs });
+    } catch (err) {
+      console.error("[Admin] Committees refresh error:", err);
+      res.status(500).json({ error: "Committees refresh failed" });
+    }
+  });
+  app2.post("/admin/refresh/committees/reset", (req, res) => {
+    const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+    const providedToken = req.headers["x-admin-token"];
+    if (!adminToken || providedToken !== adminToken) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    forceResetIsRefreshingCommittees();
+    console.log("[Admin] isRefreshingCommittees flag force-reset");
+    res.json({ success: true, message: "isRefreshing flag reset. You can now trigger a fresh refresh." });
+  });
+  app2.post("/admin/refresh/committees/backfill-missing", async (req, res) => {
+    const token = req.headers["x-admin-token"];
+    if (token !== process.env.ADMIN_REFRESH_TOKEN) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const result = await backfillMissingCommitteeMembers();
+      res.json({ success: true, ...result });
+    } catch (err) {
+      console.error("[Admin] backfill-missing error:", err);
+      res.status(500).json({ error: String(err) });
+    }
+  });
+  app2.post("/admin/refresh/other-tx-officials", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      if (!adminToken) {
+        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
+      }
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      const force = req.query.force === "true";
+      console.log(`[Admin] Other TX Officials refresh triggered (force=${force})`);
+      const { refreshOtherTexasOfficials: refreshOtherTexasOfficials2 } = await Promise.resolve().then(() => (init_refreshOtherTexasOfficials(), refreshOtherTexasOfficials_exports));
+      const result = await refreshOtherTexasOfficials2({ force });
+      res.json({
+        success: result.success,
+        fingerprint: result.fingerprint,
+        changed: result.changed,
+        upsertedCount: result.upsertedCount,
+        deactivatedCount: result.deactivatedCount,
+        totalOfficials: result.totalOfficials,
+        breakdown: result.breakdown,
+        sources: result.sources,
+        error: result.error
+      });
+    } catch (err) {
+      console.error("[Admin] Other TX Officials refresh error:", err);
+      res.status(500).json({ error: "Other TX Officials refresh failed" });
+    }
+  });
+  app2.post("/admin/backfill/headshots", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      const { lookupHeadshotFromTexasTribune: lookupHeadshotFromTexasTribune2 } = await Promise.resolve().then(() => (init_texasTribuneLookup(), texasTribuneLookup_exports));
+      const officials = await db.select({
+        id: officialPublic.id,
+        fullName: officialPublic.fullName,
+        source: officialPublic.source,
+        photoUrl: officialPublic.photoUrl
+      }).from(officialPublic).where(
+        and11(
+          eq12(officialPublic.active, true),
+          inArray5(officialPublic.source, ["TX_HOUSE", "TX_SENATE"]),
+          or4(isNull5(officialPublic.photoUrl), eq12(officialPublic.photoUrl, ""))
+        )
+      );
+      console.log(`[Admin] Headshot backfill: ${officials.length} officials missing photos`);
+      res.json({ message: "Headshot backfill started", totalToProcess: officials.length });
+      let found = 0;
+      let failed = 0;
+      for (const official of officials) {
+        try {
+          const result = await lookupHeadshotFromTexasTribune2(official.fullName);
+          if (result.success && result.photoUrl) {
+            await db.update(officialPublic).set({ photoUrl: result.photoUrl }).where(eq12(officialPublic.id, official.id));
+            found++;
+            console.log(`[Headshot] ${found}/${officials.length} Found: ${official.fullName}`);
+          } else {
+            failed++;
+            console.log(`[Headshot] Not found: ${official.fullName}`);
+          }
+        } catch (err) {
+          failed++;
+          console.error(`[Headshot] Error for ${official.fullName}:`, err);
+        }
+        await new Promise((r) => setTimeout(r, 1e3));
+      }
+      console.log(`[Admin] Headshot backfill complete: ${found} found, ${failed} not found`);
+    } catch (err) {
+      console.error("[Admin] Headshot backfill error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Headshot backfill failed" });
+      }
+    }
+  });
+  app2.post("/admin/person/link", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+      const { officialPublicId, personId } = req.body;
+      if (!officialPublicId || !personId) {
+        return res.status(400).json({ error: "officialPublicId and personId are required" });
+      }
+      const official = await db.select().from(officialPublic).where(eq12(officialPublic.id, officialPublicId)).limit(1);
+      if (official.length === 0) {
+        return res.status(404).json({ error: "Official not found" });
+      }
+      const { persons: persons3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const person = await db.select().from(persons3).where(eq12(persons3.id, personId)).limit(1);
+      if (person.length === 0) {
+        return res.status(404).json({ error: "Person not found" });
+      }
+      const { setExplicitPersonLink: setExplicitPersonLink2 } = await Promise.resolve().then(() => (init_identityResolver(), identityResolver_exports));
+      const result = await setExplicitPersonLink2(officialPublicId, personId);
+      console.log(`[Admin] Created explicit person link: official ${officialPublicId} -> person ${personId}`);
+      res.json({ success: true, link: result, official: official[0], person: person[0] });
+    } catch (err) {
+      console.error("[Admin] Person link error:", err);
+      res.status(500).json({ error: "Failed to create person link" });
+    }
+  });
+  app2.get("/admin/status", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+      if (!providedToken || providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid or missing admin token" });
+      }
+      const { getIdentityStats: getIdentityStats2, getAllExplicitPersonLinks: getAllExplicitPersonLinks2 } = await Promise.resolve().then(() => (init_identityResolver(), identityResolver_exports));
+      const identityStats = await getIdentityStats2();
+      const explicitLinks = await getAllExplicitPersonLinks2();
+      const officialsStates = await getAllRefreshStates();
+      const geojsonStates = await getGeoJSONRefreshStates();
+      const committeesStates = await getAllCommitteeRefreshStates();
+      const schedulerStatus = getSchedulerStatus();
+      const datasets = {
+        officials: {
+          TX_HOUSE: officialsStates.find((s) => s.source === "TX_HOUSE") || null,
+          TX_SENATE: officialsStates.find((s) => s.source === "TX_SENATE") || null,
+          US_HOUSE: officialsStates.find((s) => s.source === "US_HOUSE") || null,
+          isRefreshing: getIsRefreshing()
+        },
+        other_tx_officials: { note: "Static data source - no refresh state tracking" },
+        geojson: { states: geojsonStates, isRefreshing: getIsRefreshingGeoJSON() },
+        committees: { states: committeesStates, isRefreshing: getIsRefreshingCommittees() }
+      };
+      res.json({
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        scheduler: schedulerStatus,
+        datasets,
+        identity: { ...identityStats, explicitLinksDetails: explicitLinks }
+      });
+    } catch (err) {
+      console.error("[Admin] Status error:", err);
+      res.status(500).json({ error: "Failed to get system status" });
+    }
+  });
+  app2.post("/api/admin/bootstrap-legislative", async (_req, res) => {
+    try {
+      const { triggerFullLegislativeBootstrap: triggerFullLegislativeBootstrap2 } = await Promise.resolve().then(() => (init_scheduler(), scheduler_exports));
+      const result = await triggerFullLegislativeBootstrap2();
+      res.json(result);
+    } catch (err) {
+      console.error("[Admin] Bootstrap legislative error:", err);
+      res.status(500).json({ error: "Bootstrap failed" });
+    }
+  });
+}
+
+// server/routes/officialsRoutes.ts
+init_db();
+init_schema();
+import { eq as eq13, and as and12, sql as sql15 } from "drizzle-orm";
+
+// server/lib/officialUtils.ts
+init_schema();
+function sourceFromDistrictType(dt) {
+  switch (dt) {
+    case "tx_house":
+      return "TX_HOUSE";
+    case "tx_senate":
+      return "TX_SENATE";
+    case "us_congress":
+      return "US_HOUSE";
+  }
+}
+function mergeOfficial(pub, priv) {
+  const merged = { ...pub };
+  if (priv) {
+    merged.private = {
+      personalPhone: priv.personalPhone,
+      personalAddress: priv.personalAddress,
+      spouseName: priv.spouseName,
+      childrenNames: priv.childrenNames,
+      birthday: priv.birthday,
+      anniversary: priv.anniversary,
+      notes: priv.notes,
+      tags: priv.tags,
+      updatedAt: priv.updatedAt,
+      addressSource: priv.addressSource
+    };
+  }
+  return merged;
+}
+function createVacantOfficial(source, district) {
+  const chamber = source === "TX_HOUSE" ? "TX House" : source === "TX_SENATE" ? "TX Senate" : "US House";
+  const vacantId = `VACANT-${source}-${district}`;
+  return {
+    id: vacantId,
+    personId: null,
+    source,
+    sourceMemberId: vacantId,
+    chamber,
+    district: String(district),
+    fullName: "Vacant District",
+    roleTitle: null,
+    party: null,
+    photoUrl: null,
+    capitolAddress: null,
+    capitolPhone: null,
+    capitolRoom: null,
+    districtAddresses: null,
+    districtPhones: null,
+    website: null,
+    email: null,
+    active: true,
+    lastRefreshedAt: /* @__PURE__ */ new Date(),
+    searchZips: null,
+    searchCities: null,
+    isVacant: true,
+    private: null
+  };
+}
+function fillVacancies(officials, source) {
+  const range = DISTRICT_RANGES[source];
+  const districtMap = /* @__PURE__ */ new Map();
+  for (const official of officials) {
+    districtMap.set(official.district, { ...official, isVacant: false });
+  }
+  const result = [];
+  for (let d = range.min; d <= range.max; d++) {
+    const districtStr = String(d);
+    result.push(districtMap.has(districtStr) ? districtMap.get(districtStr) : createVacantOfficial(source, d));
+  }
+  return result;
+}
+
+// server/routes/officialsRoutes.ts
+function registerOfficialsRoutes(app2) {
+  app2.get("/api/officials", async (req, res) => {
+    try {
+      const { district_type, source, search, q, active } = req.query;
+      const conditions = [];
+      if (active !== "false") {
+        conditions.push(eq13(officialPublic.active, true));
+      }
+      let sourceFilter = null;
+      const isAllSources = source === "ALL";
+      if (district_type && typeof district_type === "string") {
+        const validTypes = ["tx_house", "tx_senate", "us_congress"];
+        if (!validTypes.includes(district_type)) {
+          return res.status(400).json({ error: "Invalid district_type" });
+        }
+        sourceFilter = sourceFromDistrictType(district_type);
+        conditions.push(eq13(officialPublic.source, sourceFilter));
+      }
+      if (source && typeof source === "string" && source !== "ALL") {
+        const validSources = ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "OTHER_TX"];
+        if (!validSources.includes(source)) {
+          return res.status(400).json({ error: "Invalid source" });
+        }
+        sourceFilter = source;
+        conditions.push(eq13(officialPublic.source, sourceFilter));
+      }
+      const publicOfficials = await db.select().from(officialPublic).where(conditions.length > 0 ? and12(...conditions) : void 0);
+      const privateData = await db.select().from(officialPrivate);
+      const privateMap = new Map(privateData.map((p) => [p.officialPublicId, p]));
+      let officials = publicOfficials.map(
+        (pub) => mergeOfficial(pub, privateMap.get(pub.id) || null)
+      );
+      if (isAllSources || !sourceFilter) {
+        const houseOfficials = fillVacancies(
+          officials.filter((o) => o.source === "TX_HOUSE"),
+          "TX_HOUSE"
+        );
+        const senateOfficials = fillVacancies(
+          officials.filter((o) => o.source === "TX_SENATE"),
+          "TX_SENATE"
+        );
+        const congressOfficials = fillVacancies(
+          officials.filter((o) => o.source === "US_HOUSE"),
+          "US_HOUSE"
+        );
+        officials = [...houseOfficials, ...senateOfficials, ...congressOfficials];
+      } else if (sourceFilter && sourceFilter !== "OTHER_TX") {
+        officials = fillVacancies(officials, sourceFilter);
+      }
+      const searchTerm = search || q;
+      if (searchTerm && typeof searchTerm === "string") {
+        const term = searchTerm.toLowerCase();
+        const beforeCount = officials.length;
+        officials = officials.filter((o) => {
+          if (o.fullName.toLowerCase().includes(term)) return true;
+          if (o.district.includes(term)) return true;
+          if (o.isVacant && "vacant".includes(term)) return true;
+          if (o.party && o.party.toLowerCase().includes(term)) return true;
+          if (o.capitolAddress && o.capitolAddress.toLowerCase().includes(term)) return true;
+          if (o.districtAddresses && Array.isArray(o.districtAddresses)) {
+            for (const addr of o.districtAddresses) {
+              if (typeof addr === "string" && addr.toLowerCase().includes(term)) return true;
+            }
+          }
+          if (o.email && o.email.toLowerCase().includes(term)) return true;
+          if (o.website && o.website.toLowerCase().includes(term)) return true;
+          if (o.searchZips && o.searchZips.toLowerCase().includes(term)) return true;
+          if (o.searchCities && o.searchCities.toLowerCase().includes(term)) return true;
+          return false;
+        });
+        const afterCount = officials.length;
+        const bySource = {};
+        for (const o of officials) {
+          bySource[o.source] = (bySource[o.source] || 0) + 1;
+        }
+        console.log(
+          `[Search] q="${searchTerm}" | before=${beforeCount} | after=${afterCount} | bySource=${JSON.stringify(bySource)}`
+        );
+      }
+      const sourceOrder = { TX_HOUSE: 1, TX_SENATE: 2, US_HOUSE: 3 };
+      officials.sort((a, b) => {
+        if (isAllSources || !sourceFilter) {
+          const orderA = sourceOrder[a.source] || 99;
+          const orderB = sourceOrder[b.source] || 99;
+          if (orderA !== orderB) return orderA - orderB;
+        }
+        const distA = parseInt(a.district, 10);
+        const distB = parseInt(b.district, 10);
+        if (!isNaN(distA) && !isNaN(distB) && distA !== distB) return distA - distB;
+        const lastA = a.fullName.split(" ").pop() || "";
+        const lastB = b.fullName.split(" ").pop() || "";
+        return lastA.localeCompare(lastB);
+      });
+      const vacancyCount = officials.filter((o) => o.isVacant).length;
+      res.json({ officials, count: officials.length, vacancyCount });
+    } catch (err) {
+      console.error("[API] Error fetching officials:", err);
+      res.status(500).json({ error: "Failed to fetch officials" });
+    }
+  });
+  app2.post("/api/officials/batch-backfill", async (req, res) => {
+    try {
+      const { officialIds } = req.body;
+      if (!officialIds || !Array.isArray(officialIds)) {
+        return res.status(400).json({ error: "officialIds array required" });
+      }
+      const results = {};
+      const privateRecords = await db.select({
+        officialPublicId: officialPrivate.officialPublicId,
+        personalAddress: officialPrivate.personalAddress,
+        addressSource: officialPrivate.addressSource
+      }).from(officialPrivate);
+      const privateMap = new Map(privateRecords.map((r) => [r.officialPublicId, r]));
+      for (const id of officialIds) {
+        const priv = privateMap.get(id);
+        results[id] = {
+          hometown: priv?.personalAddress || null,
+          addressSource: priv?.addressSource || null
+        };
+      }
+      res.json({ results });
+    } catch (err) {
+      console.error("[API] Batch backfill error:", err);
+      res.status(500).json({ error: "Batch backfill failed" });
+    }
+  });
+  app2.get("/api/officials/backfill-audit", async (req, res) => {
+    try {
+      const allPublic = await db.select({
+        id: officialPublic.id,
+        fullName: officialPublic.fullName,
+        source: officialPublic.source,
+        district: officialPublic.district
+      }).from(officialPublic).where(eq13(officialPublic.active, true));
+      const allPrivate = await db.select().from(officialPrivate);
+      const privMap = new Map(allPrivate.map((p) => [p.officialPublicId, p]));
+      const { isEffectivelyEmpty: isEffectivelyEmpty2 } = await Promise.resolve().then(() => (init_backfillUtils(), backfillUtils_exports));
+      const audit = allPublic.map((pub) => {
+        const priv = privMap.get(pub.id);
+        const address = priv?.personalAddress;
+        const addrSource = priv?.addressSource || null;
+        return {
+          id: pub.id,
+          name: pub.fullName,
+          source: pub.source,
+          district: pub.district,
+          hasAddress: !isEffectivelyEmpty2(address),
+          address: address || null,
+          addressSource: addrSource
+        };
+      });
+      const summary = {
+        total: audit.length,
+        withAddress: audit.filter((a) => a.hasAddress).length,
+        missingAddress: audit.filter((a) => !a.hasAddress).length,
+        bySource: {},
+        byAddressSource: {}
+      };
+      for (const a of audit) {
+        if (!summary.bySource[a.source]) {
+          summary.bySource[a.source] = { total: 0, filled: 0, missing: 0 };
+        }
+        summary.bySource[a.source].total++;
+        if (a.hasAddress) summary.bySource[a.source].filled++;
+        else summary.bySource[a.source].missing++;
+        const src = a.addressSource || "unknown";
+        summary.byAddressSource[src] = (summary.byAddressSource[src] || 0) + 1;
+      }
+      res.json({ summary, officials: audit });
+    } catch (err) {
+      console.error("[API] Backfill audit error:", err);
+      res.status(500).json({ error: "Audit failed" });
+    }
+  });
+  app2.get("/api/officials/with-addresses", async (_req, res) => {
+    try {
+      const results = await db.select({
+        officialId: officialPublic.id,
+        fullName: officialPublic.fullName,
+        source: officialPublic.source,
+        personalAddress: officialPrivate.personalAddress
+      }).from(officialPublic).innerJoin(officialPrivate, eq13(officialPublic.id, officialPrivate.officialPublicId)).where(
+        and12(
+          eq13(officialPublic.active, true),
+          sql15`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
+        )
+      );
+      res.json({
+        addresses: results.map((r) => ({
+          officialId: r.officialId,
+          officialName: r.fullName,
+          source: r.source,
+          personalAddress: r.personalAddress
+        }))
+      });
+    } catch (err) {
+      console.error("[API] Error fetching addresses:", err);
+      res.status(500).json({ error: "Failed to fetch addresses" });
+    }
+  });
+  app2.get("/api/officials/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const vacantMatch = id.match(/^VACANT-(TX_HOUSE|TX_SENATE|US_HOUSE)-(\d+)$/);
+      if (vacantMatch) {
+        const source = vacantMatch[1];
+        const district = parseInt(vacantMatch[2], 10);
+        return res.json({ official: createVacantOfficial(source, district) });
+      }
+      const sourceDistrictMatch = id.match(/^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/);
+      if (sourceDistrictMatch) {
+        const source = sourceDistrictMatch[1];
+        const district = sourceDistrictMatch[2];
+        const [pub2] = await db.select().from(officialPublic).where(
+          and12(
+            eq13(officialPublic.source, source),
+            eq13(officialPublic.district, district),
+            eq13(officialPublic.active, true)
+          )
+        ).limit(1);
+        if (!pub2) {
+          return res.json({ official: createVacantOfficial(source, parseInt(district, 10)) });
+        }
+        const [priv2] = await db.select().from(officialPrivate).where(eq13(officialPrivate.officialPublicId, pub2.id)).limit(1);
+        const official2 = mergeOfficial(pub2, priv2 || null);
+        official2.isVacant = false;
+        return res.json({ official: official2 });
+      }
+      const [pub] = await db.select().from(officialPublic).where(eq13(officialPublic.id, id)).limit(1);
+      if (!pub) {
+        return res.status(404).json({ error: "Official not found" });
+      }
+      const [priv] = await db.select().from(officialPrivate).where(eq13(officialPrivate.officialPublicId, id)).limit(1);
+      const official = mergeOfficial(pub, priv || null);
+      official.isVacant = false;
+      res.json({ official });
+    } catch (err) {
+      console.error("[API] Error fetching official:", err);
+      res.status(500).json({ error: "Failed to fetch official" });
+    }
+  });
+  app2.get("/api/officials/by-district", async (req, res) => {
+    try {
+      const { district_type, district_number } = req.query;
+      if (!district_type || !district_number) {
+        return res.status(400).json({ error: "district_type and district_number are required" });
+      }
+      const validTypes = ["tx_house", "tx_senate", "us_congress"];
+      if (!validTypes.includes(district_type)) {
+        return res.status(400).json({ error: "Invalid district_type" });
+      }
+      const distNum = String(district_number);
+      const source = sourceFromDistrictType(district_type);
+      const [pub] = await db.select().from(officialPublic).where(
+        and12(
+          eq13(officialPublic.source, source),
+          eq13(officialPublic.district, distNum),
+          eq13(officialPublic.active, true)
+        )
+      ).limit(1);
+      if (!pub) {
+        return res.status(404).json({ error: "Official not found" });
+      }
+      const [priv] = await db.select().from(officialPrivate).where(eq13(officialPrivate.officialPublicId, pub.id)).limit(1);
+      res.json({ official: mergeOfficial(pub, priv || null) });
+    } catch (err) {
+      console.error("[API] Error fetching official by district:", err);
+      res.status(500).json({ error: "Failed to fetch official" });
+    }
+  });
+  app2.post("/api/officials/by-districts", async (req, res) => {
+    try {
+      const { districts } = req.body;
+      if (!Array.isArray(districts) || districts.length === 0) {
+        return res.status(400).json({ error: "districts array is required" });
+      }
+      const results = [];
+      for (const dist of districts) {
+        const { source, districtNumber } = dist;
+        if (!source || districtNumber === void 0) continue;
+        const [pub] = await db.select().from(officialPublic).where(
+          and12(
+            eq13(officialPublic.source, source),
+            eq13(officialPublic.district, String(districtNumber)),
+            eq13(officialPublic.active, true)
+          )
+        ).limit(1);
+        if (pub) {
+          const [priv] = await db.select().from(officialPrivate).where(eq13(officialPrivate.officialPublicId, pub.id)).limit(1);
+          results.push(mergeOfficial(pub, priv || null));
+        } else {
+          results.push(createVacantOfficial(source, districtNumber));
+        }
+      }
+      res.json({ officials: results });
+    } catch (err) {
+      console.error("[API] Error fetching officials by districts:", err);
+      res.status(500).json({ error: "Failed to fetch officials" });
+    }
+  });
+  app2.patch("/api/officials/:id/private", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const [pub] = await db.select().from(officialPublic).where(eq13(officialPublic.id, id)).limit(1);
+      if (!pub) {
+        return res.status(404).json({ error: "Official not found" });
+      }
+      const parseResult = updateOfficialPrivateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Invalid request body", details: parseResult.error.issues });
+      }
+      const updateData = parseResult.data;
+      const [existing] = await db.select().from(officialPrivate).where(eq13(officialPrivate.officialPublicId, id)).limit(1);
+      if (existing) {
+        await db.update(officialPrivate).set({ ...updateData, addressSource: "user", updatedAt: /* @__PURE__ */ new Date() }).where(eq13(officialPrivate.id, existing.id));
+      } else {
+        let finalUpdateData = { ...updateData };
+        let autoFilled = false;
+        const addressIsEmpty = !updateData.personalAddress || updateData.personalAddress.trim().length === 0;
+        if (addressIsEmpty && pub.fullName) {
+          console.log(
+            `[API] Auto-fill: Looking up hometown for new private notes record for "${pub.fullName}"`
+          );
+          try {
+            const { lookupHometownFromTexasTribune: lookupHometownFromTexasTribune2 } = await Promise.resolve().then(() => (init_texasTribuneLookup(), texasTribuneLookup_exports));
+            const result = await lookupHometownFromTexasTribune2(pub.fullName);
+            if (result.success && result.hometown) {
+              console.log(
+                `[API] Auto-fill: Setting personalAddress to "${result.hometown}" for ${pub.fullName}`
+              );
+              finalUpdateData.personalAddress = result.hometown;
+              autoFilled = true;
+            } else {
+              console.log(`[API] Auto-fill: No hometown found for ${pub.fullName}`);
+            }
+          } catch (error) {
+            console.error(`[API] Auto-fill: Error looking up hometown:`, error);
+          }
+        }
+        await db.insert(officialPrivate).values({
+          officialPublicId: id,
+          ...finalUpdateData,
+          addressSource: autoFilled ? "tribune" : "user",
+          updatedAt: /* @__PURE__ */ new Date()
+        });
+      }
+      const [updatedPriv] = await db.select().from(officialPrivate).where(eq13(officialPrivate.officialPublicId, id)).limit(1);
+      res.json({ official: mergeOfficial(pub, updatedPriv) });
+    } catch (err) {
+      console.error("[API] Error updating private data:", err);
+      res.status(500).json({ error: "Failed to update private data" });
+    }
+  });
+}
+
+// server/routes.ts
+init_schema();
+init_schema();
+import { eq as eq14, and as and13, sql as sql16 } from "drizzle-orm";
+init_refreshOfficials();
+init_scheduler();
+init_refreshCommittees();
+init_refreshOtherTexasOfficials();
+async function registerRoutes(app2) {
+  maybeRunScheduledRefresh().catch((err) => {
+    console.error("[Startup] Failed to check scheduled refresh:", err);
+  });
+  maybeRunCommitteeRefresh().catch((err) => {
+    console.error("[Startup] Failed to check committee refresh:", err);
+  });
+  maybeRunOtherTxRefresh().catch((err) => {
+    console.error("[Startup] Failed to check Other TX officials seed:", err);
+  });
+  setTimeout(async () => {
+    try {
+      const { bulkFillHometowns: bulkFillHometowns2 } = await Promise.resolve().then(() => (init_bulkFillHometowns(), bulkFillHometowns_exports));
+      console.log(`[Startup] Checking for new officials needing hometown lookup...`);
+      const result = await bulkFillHometowns2();
+      console.log(`[Startup] Hometown check done: filled=${result.filled}, notFound=${result.notFound}, errors=${result.errors}`);
+    } catch (err) {
+      console.error(`[Startup] Hometown check failed:`, err instanceof Error ? err.message : err);
+    }
+  }, 9e4);
+  startOfficialsRefreshScheduler();
+  registerPrayerRoutes(app2);
+  registerLegislativeRoutes(app2);
+  registerAiRoutes(app2);
+  registerMapRoutes(app2);
+  registerAdminRoutes(app2);
+  registerOfficialsRoutes(app2);
   app2.get("/api/stats", async (_req, res) => {
     try {
       const counts = await db.select({
         source: officialPublic.source,
-        count: sql13`count(*)::int`
-      }).from(officialPublic).where(eq11(officialPublic.active, true)).groupBy(officialPublic.source);
+        count: sql16`count(*)::int`
+      }).from(officialPublic).where(eq14(officialPublic.active, true)).groupBy(officialPublic.source);
       const stats = {
         tx_house: 0,
         tx_senate: 0,
@@ -8464,129 +8065,12 @@ async function registerRoutes(app2) {
       });
     }
   });
-  let cachedGeoJSON = {
-    tx_house: null,
-    tx_senate: null,
-    us_congress: null
-  };
-  function getGeoJSONForOverlay(overlayType) {
-    if (overlayType === "house" || overlayType === "tx_house") {
-      if (!cachedGeoJSON.tx_house) {
-        cachedGeoJSON.tx_house = txHouseGeoJSON;
-      }
-      return cachedGeoJSON.tx_house;
-    }
-    if (overlayType === "senate" || overlayType === "tx_senate") {
-      if (!cachedGeoJSON.tx_senate) {
-        cachedGeoJSON.tx_senate = txSenateGeoJSON;
-      }
-      return cachedGeoJSON.tx_senate;
-    }
-    if (overlayType === "congress" || overlayType === "us_congress") {
-      if (!cachedGeoJSON.us_congress) {
-        cachedGeoJSON.us_congress = usCongressGeoJSON;
-      }
-      return cachedGeoJSON.us_congress;
-    }
-    return null;
-  }
-  function getSourceFromOverlay(overlay) {
-    if (overlay === "house" || overlay === "tx_house") return "TX_HOUSE";
-    if (overlay === "senate" || overlay === "tx_senate") return "TX_SENATE";
-    return "US_HOUSE";
-  }
-  function getDistrictNumber(feature) {
-    const props = feature.properties || {};
-    const districtNum = props.district || props.SLDUST || props.SLDLST || props.CD;
-    return districtNum ? parseInt(String(districtNum)) : null;
-  }
-  app2.get("/api/lookup/place", async (req, res) => {
-    try {
-      const q = String(req.query.q || "").trim();
-      if (q.length < 2) {
-        return res.status(400).json({ error: "Query too short (min 2 characters)" });
-      }
-      const { result, fromCache, error } = await lookupPlace(q);
-      if (error) {
-        console.log(`[Lookup] Place error: ${error}`);
-        return res.status(500).json({ error });
-      }
-      if (!result) {
-        console.log(`[Lookup] No Texas place found for "${q}"`);
-        return res.status(404).json({ message: "No Texas place found" });
-      }
-      console.log(`[Lookup] Place: "${q}" \u2192 ${result.name} (${result.lat}, ${result.lng}) [cache=${fromCache}]`);
-      res.json({ ...result, fromCache });
-    } catch (err) {
-      console.error("[Lookup] Place error:", err);
-      res.status(500).json({ error: "Place lookup failed" });
-    }
-  });
-  app2.get("/api/lookup/place/candidates", async (req, res) => {
-    try {
-      const q = String(req.query.q || "").trim();
-      const maxResults = Math.min(parseInt(String(req.query.max || "5"), 10) || 5, 10);
-      if (q.length < 2) {
-        return res.status(400).json({ error: "Query too short (min 2 characters)" });
-      }
-      const { results, fromCache, error } = await lookupPlaceCandidates(q, maxResults);
-      if (error) {
-        console.log(`[Lookup] Place candidates error: ${error}`);
-        return res.status(500).json({ error });
-      }
-      console.log(`[Lookup] Place candidates: "${q}" \u2192 ${results.length} results [cache=${fromCache}]`);
-      res.json({ results, fromCache });
-    } catch (err) {
-      console.error("[Lookup] Place candidates error:", err);
-      res.status(500).json({ error: "Place lookup failed" });
-    }
-  });
-  app2.post("/api/lookup/districts-at-point", (req, res) => {
-    try {
-      const { lat, lng } = req.body;
-      if (typeof lat !== "number" || typeof lng !== "number") {
-        return res.status(400).json({ error: "lat and lng (numbers) are required" });
-      }
-      console.log(`[Lookup] Districts at point: (${lat}, ${lng})`);
-      const point2 = turf.point([lng, lat]);
-      const hits = [];
-      const overlayMappings = [
-        { overlay: "house", source: "TX_HOUSE" },
-        { overlay: "senate", source: "TX_SENATE" },
-        { overlay: "congress", source: "US_HOUSE" }
-      ];
-      for (const { overlay, source } of overlayMappings) {
-        const featureCollection = getGeoJSONForOverlay(overlay);
-        if (!featureCollection || !featureCollection.features) continue;
-        for (const feature of featureCollection.features) {
-          try {
-            if (turf.booleanPointInPolygon(point2, feature)) {
-              const districtNumber = getDistrictNumber(feature);
-              if (districtNumber !== null) {
-                hits.push({ source, districtNumber });
-                break;
-              }
-            }
-          } catch {
-          }
-        }
-      }
-      console.log(`[Lookup] Districts found: ${hits.map((h) => `${h.source}:${h.districtNumber}`).join(", ") || "none"}`);
-      res.json({ hits, lat, lng });
-    } catch (err) {
-      console.error("[Lookup] Districts-at-point error:", err);
-      res.status(500).json({ error: "Failed to find districts at point" });
-    }
-  });
-  app2.get("/api/lookup/cache-stats", (req, res) => {
-    res.json(getCacheStats());
-  });
   app2.get("/api/committees", async (req, res) => {
     try {
       const chamber = req.query.chamber;
       let query = db.select().from(committees);
       if (chamber === "TX_HOUSE" || chamber === "TX_SENATE") {
-        query = query.where(eq11(committees.chamber, chamber));
+        query = query.where(eq14(committees.chamber, chamber));
       }
       const allCommittees = await query.orderBy(committees.sortOrder, committees.name);
       const parentCommittees = allCommittees.filter((c) => !c.parentCommitteeId);
@@ -8604,7 +8088,7 @@ async function registerRoutes(app2) {
   app2.get("/api/committees/:committeeId", async (req, res) => {
     try {
       const { committeeId } = req.params;
-      const committee = await db.select().from(committees).where(eq11(committees.id, committeeId)).limit(1);
+      const committee = await db.select().from(committees).where(eq14(committees.id, committeeId)).limit(1);
       if (committee.length === 0) {
         return res.status(404).json({ error: "Committee not found" });
       }
@@ -8618,7 +8102,7 @@ async function registerRoutes(app2) {
         officialDistrict: officialPublic.district,
         officialParty: officialPublic.party,
         officialPhotoUrl: officialPublic.photoUrl
-      }).from(committeeMemberships).leftJoin(officialPublic, eq11(committeeMemberships.officialPublicId, officialPublic.id)).where(eq11(committeeMemberships.committeeId, committeeId)).orderBy(committeeMemberships.sortOrder);
+      }).from(committeeMemberships).leftJoin(officialPublic, eq14(committeeMemberships.officialPublicId, officialPublic.id)).where(eq14(committeeMemberships.committeeId, committeeId)).orderBy(committeeMemberships.sortOrder);
       res.json({
         committee: committee[0],
         members
@@ -8635,10 +8119,10 @@ async function registerRoutes(app2) {
       if (sourceDistrictMatch) {
         const source = sourceDistrictMatch[1];
         const district = sourceDistrictMatch[2];
-        const [pub] = await db.select({ id: officialPublic.id }).from(officialPublic).where(and10(
-          eq11(officialPublic.source, source),
-          eq11(officialPublic.district, district),
-          eq11(officialPublic.active, true)
+        const [pub] = await db.select({ id: officialPublic.id }).from(officialPublic).where(and13(
+          eq14(officialPublic.source, source),
+          eq14(officialPublic.district, district),
+          eq14(officialPublic.active, true)
         )).limit(1);
         if (pub) officialId = pub.id;
       }
@@ -8647,70 +8131,21 @@ async function registerRoutes(app2) {
         committeeName: committees.name,
         chamber: committees.chamber,
         roleTitle: committeeMemberships.roleTitle
-      }).from(committeeMemberships).innerJoin(committees, eq11(committeeMemberships.committeeId, committees.id)).where(eq11(committeeMemberships.officialPublicId, officialId)).orderBy(committees.name);
+      }).from(committeeMemberships).innerJoin(committees, eq14(committeeMemberships.committeeId, committees.id)).where(eq14(committeeMemberships.officialPublicId, officialId)).orderBy(committees.name);
       res.json(memberships);
     } catch (err) {
       console.error("[API] Error fetching official committees:", err);
       res.status(500).json({ error: "Failed to fetch official committees" });
     }
   });
-  app2.post("/admin/refresh/committees", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      if (!adminToken) {
-        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
-      }
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      const force = req.query.force === "true";
-      if (getIsRefreshingCommittees()) {
-        return res.status(409).json({ error: "Committees refresh already in progress" });
-      }
-      console.log(`[Admin] Committees refresh triggered (force=${force})`);
-      const result = await checkAndRefreshCommitteesIfChanged(force);
-      res.json({
-        success: true,
-        results: result.results,
-        durationMs: result.durationMs
-      });
-    } catch (err) {
-      console.error("[Admin] Committees refresh error:", err);
-      res.status(500).json({ error: "Committees refresh failed" });
-    }
-  });
-  app2.post("/admin/refresh/committees/reset", (req, res) => {
-    const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-    const providedToken = req.headers["x-admin-token"];
-    if (!adminToken || providedToken !== adminToken) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    forceResetIsRefreshingCommittees();
-    console.log("[Admin] isRefreshingCommittees flag force-reset");
-    res.json({ success: true, message: "isRefreshing flag reset. You can now trigger a fresh refresh." });
-  });
-  app2.post("/admin/refresh/committees/backfill-missing", async (req, res) => {
-    const token = req.headers["x-admin-token"];
-    if (token !== process.env.ADMIN_REFRESH_TOKEN) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    try {
-      const result = await backfillMissingCommitteeMembers();
-      res.json({ success: true, ...result });
-    } catch (err) {
-      console.error("[Admin] backfill-missing error:", err);
-      res.status(500).json({ error: String(err) });
-    }
-  });
   app2.get("/api/other-tx-officials", async (req, res) => {
     try {
       const { active, grouped } = req.query;
-      const conditions = [eq11(officialPublic.source, "OTHER_TX")];
+      const conditions = [eq14(officialPublic.source, "OTHER_TX")];
       if (active !== "false") {
-        conditions.push(eq11(officialPublic.active, true));
+        conditions.push(eq14(officialPublic.active, true));
       }
-      const officials = await db.select().from(officialPublic).where(and10(...conditions));
+      const officials = await db.select().from(officialPublic).where(and13(...conditions));
       const privateData = await db.select().from(officialPrivate);
       const privateMap = new Map(privateData.map((p) => [p.officialPublicId, p]));
       const merged = officials.map(
@@ -8763,274 +8198,6 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Failed to fetch other TX officials" });
     }
   });
-  app2.post("/admin/refresh/other-tx-officials", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      if (!adminToken) {
-        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
-      }
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      const force = req.query.force === "true";
-      console.log(`[Admin] Other TX Officials refresh triggered (force=${force})`);
-      const { refreshOtherTexasOfficials: refreshOtherTexasOfficials2 } = await Promise.resolve().then(() => (init_refreshOtherTexasOfficials(), refreshOtherTexasOfficials_exports));
-      const result = await refreshOtherTexasOfficials2({ force });
-      res.json({
-        success: result.success,
-        fingerprint: result.fingerprint,
-        changed: result.changed,
-        upsertedCount: result.upsertedCount,
-        deactivatedCount: result.deactivatedCount,
-        totalOfficials: result.totalOfficials,
-        breakdown: result.breakdown,
-        sources: result.sources,
-        error: result.error
-      });
-    } catch (err) {
-      console.error("[Admin] Other TX Officials refresh error:", err);
-      res.status(500).json({ error: "Other TX Officials refresh failed" });
-    }
-  });
-  app2.post("/admin/backfill/headshots", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      if (!adminToken) {
-        return res.status(503).json({ error: "Admin not configured" });
-      }
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      const { lookupHeadshotFromTexasTribune: lookupHeadshotFromTexasTribune2 } = await Promise.resolve().then(() => (init_texasTribuneLookup(), texasTribuneLookup_exports));
-      const officials = await db.select({
-        id: officialPublic.id,
-        fullName: officialPublic.fullName,
-        source: officialPublic.source,
-        photoUrl: officialPublic.photoUrl
-      }).from(officialPublic).where(and10(
-        eq11(officialPublic.active, true),
-        inArray5(officialPublic.source, ["TX_HOUSE", "TX_SENATE"]),
-        or4(
-          isNull5(officialPublic.photoUrl),
-          eq11(officialPublic.photoUrl, "")
-        )
-      ));
-      console.log(`[Admin] Headshot backfill: ${officials.length} officials missing photos`);
-      res.json({
-        message: "Headshot backfill started",
-        totalToProcess: officials.length
-      });
-      let found = 0;
-      let failed = 0;
-      for (const official of officials) {
-        try {
-          const result = await lookupHeadshotFromTexasTribune2(official.fullName);
-          if (result.success && result.photoUrl) {
-            await db.update(officialPublic).set({ photoUrl: result.photoUrl }).where(eq11(officialPublic.id, official.id));
-            found++;
-            console.log(`[Headshot] ${found}/${officials.length} Found: ${official.fullName}`);
-          } else {
-            failed++;
-            console.log(`[Headshot] Not found: ${official.fullName}`);
-          }
-        } catch (err) {
-          failed++;
-          console.error(`[Headshot] Error for ${official.fullName}:`, err);
-        }
-        await new Promise((r) => setTimeout(r, 1e3));
-      }
-      console.log(`[Admin] Headshot backfill complete: ${found} found, ${failed} not found`);
-    } catch (err) {
-      console.error("[Admin] Headshot backfill error:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Headshot backfill failed" });
-      }
-    }
-  });
-  app2.post("/admin/person/link", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      if (!adminToken) {
-        return res.status(503).json({ error: "Admin not configured" });
-      }
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      const { officialPublicId, personId } = req.body;
-      if (!officialPublicId || !personId) {
-        return res.status(400).json({ error: "officialPublicId and personId are required" });
-      }
-      const official = await db.select().from(officialPublic).where(eq11(officialPublic.id, officialPublicId)).limit(1);
-      if (official.length === 0) {
-        return res.status(404).json({ error: "Official not found" });
-      }
-      const { persons: persons3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const person = await db.select().from(persons3).where(eq11(persons3.id, personId)).limit(1);
-      if (person.length === 0) {
-        return res.status(404).json({ error: "Person not found" });
-      }
-      const { setExplicitPersonLink: setExplicitPersonLink2 } = await Promise.resolve().then(() => (init_identityResolver(), identityResolver_exports));
-      const result = await setExplicitPersonLink2(officialPublicId, personId);
-      console.log(`[Admin] Created explicit person link: official ${officialPublicId} -> person ${personId}`);
-      res.json({
-        success: true,
-        link: result,
-        official: official[0],
-        person: person[0]
-      });
-    } catch (err) {
-      console.error("[Admin] Person link error:", err);
-      res.status(500).json({ error: "Failed to create person link" });
-    }
-  });
-  app2.get("/admin/status", async (req, res) => {
-    try {
-      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
-      const providedToken = req.headers["x-admin-token"];
-      if (!adminToken) {
-        return res.status(503).json({ error: "Admin not configured" });
-      }
-      if (providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid admin token" });
-      }
-      const { getIdentityStats: getIdentityStats2, getAllExplicitPersonLinks: getAllExplicitPersonLinks2 } = await Promise.resolve().then(() => (init_identityResolver(), identityResolver_exports));
-      const identityStats = await getIdentityStats2();
-      const explicitLinks = await getAllExplicitPersonLinks2();
-      const officialsStates = await getAllRefreshStates();
-      const geojsonStates = await getGeoJSONRefreshStates();
-      const committeesStates = await getAllCommitteeRefreshStates();
-      const schedulerStatus = getSchedulerStatus();
-      const datasets = {
-        officials: {
-          TX_HOUSE: officialsStates.find((s) => s.source === "TX_HOUSE") || null,
-          TX_SENATE: officialsStates.find((s) => s.source === "TX_SENATE") || null,
-          US_HOUSE: officialsStates.find((s) => s.source === "US_HOUSE") || null,
-          isRefreshing: getIsRefreshing()
-        },
-        other_tx_officials: {
-          note: "Static data source - no refresh state tracking"
-        },
-        geojson: {
-          states: geojsonStates,
-          isRefreshing: getIsRefreshingGeoJSON()
-        },
-        committees: {
-          states: committeesStates,
-          isRefreshing: getIsRefreshingCommittees()
-        }
-      };
-      res.json({
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        scheduler: schedulerStatus,
-        datasets,
-        identity: {
-          ...identityStats,
-          explicitLinksDetails: explicitLinks
-        }
-      });
-    } catch (err) {
-      console.error("[Admin] Status error:", err);
-      res.status(500).json({ error: "Failed to get system status" });
-    }
-  });
-  app2.post("/api/map/area-hits", (req, res) => {
-    try {
-      const { geometry, overlays } = req.body;
-      if (!geometry || geometry.type !== "Polygon" || !Array.isArray(geometry.coordinates)) {
-        return res.status(400).json({ error: "Invalid geometry: must be a Polygon" });
-      }
-      if (!overlays || typeof overlays !== "object") {
-        return res.status(400).json({ error: "overlays object is required" });
-      }
-      console.log("[API] /api/map/area-hits - geometry points:", geometry.coordinates[0]?.length);
-      console.log("[API] /api/map/area-hits - overlays:", JSON.stringify(overlays));
-      const drawnPolygon = turf.polygon(geometry.coordinates);
-      const hits = [];
-      const hitDebug = {};
-      const overlayTypes = ["house", "senate", "congress"];
-      for (const overlayType of overlayTypes) {
-        if (!overlays[overlayType]) continue;
-        const featureCollection = getGeoJSONForOverlay(overlayType);
-        if (!featureCollection || !featureCollection.features) {
-          console.log(`[API] No GeoJSON for overlay: ${overlayType}`);
-          continue;
-        }
-        let hitCount = 0;
-        for (const feature of featureCollection.features) {
-          try {
-            if (booleanIntersects(drawnPolygon, feature)) {
-              const districtNumber = getDistrictNumber(feature);
-              if (districtNumber !== null) {
-                const source = getSourceFromOverlay(overlayType);
-                const alreadyExists = hits.some(
-                  (h) => h.source === source && h.districtNumber === districtNumber
-                );
-                if (!alreadyExists) {
-                  hits.push({ source, districtNumber });
-                  hitCount++;
-                }
-              }
-            }
-          } catch (intersectErr) {
-          }
-        }
-        hitDebug[overlayType] = hitCount;
-      }
-      console.log("[API] /api/map/area-hits - hits per overlay:", JSON.stringify(hitDebug));
-      console.log("[API] /api/map/area-hits - total hits:", hits.length);
-      res.json({ hits });
-    } catch (err) {
-      console.error("[API] Error in /api/map/area-hits:", err);
-      res.status(500).json({ error: "Failed to compute area hits" });
-    }
-  });
-  app2.get("/api/photo-proxy", async (req, res) => {
-    try {
-      const url = req.query.url;
-      if (!url) {
-        return res.status(400).json({ error: "Missing url parameter" });
-      }
-      const allowedDomains = [
-        "directory.texastribune.org",
-        "www.congress.gov",
-        "congress.gov",
-        "bioguide.congress.gov"
-      ];
-      let parsedUrl;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        return res.status(400).json({ error: "Invalid URL" });
-      }
-      if (!allowedDomains.includes(parsedUrl.hostname)) {
-        return res.status(403).json({ error: "Domain not allowed" });
-      }
-      const imageResponse = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-          "Referer": `https://${parsedUrl.hostname}/`
-        }
-      });
-      if (!imageResponse.ok) {
-        return res.status(imageResponse.status).json({ error: "Failed to fetch image" });
-      }
-      const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
-      const buffer = Buffer.from(await imageResponse.arrayBuffer());
-      res.set({
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=604800, immutable",
-        "Content-Length": String(buffer.length)
-      });
-      res.send(buffer);
-    } catch (error) {
-      console.error("[API] Photo proxy error:", error);
-      res.status(500).json({ error: "Photo proxy failed" });
-    }
-  });
   const httpServer = createServer(app2);
   return httpServer;
 }
@@ -9038,12 +8205,11 @@ async function registerRoutes(app2) {
 // server/index.ts
 init_db();
 init_schema();
-import * as fs3 from "fs";
-import * as path3 from "path";
+import * as fs4 from "fs";
+import * as path4 from "path";
 import * as http from "http";
-import { and as and11, eq as eq12, like } from "drizzle-orm";
+import { and as and14, eq as eq15, like } from "drizzle-orm";
 var app = express();
-var log = console.log;
 function setupCors(app2) {
   app2.use((req, res, next) => {
     const origins = /* @__PURE__ */ new Set();
@@ -9072,19 +8238,13 @@ function setupCors(app2) {
   });
 }
 function setupBodyParsing(app2) {
-  app2.use(
-    express.json({
-      verify: (req, _res, buf) => {
-        req.rawBody = buf;
-      }
-    })
-  );
+  app2.use(express.json());
   app2.use(express.urlencoded({ extended: false }));
 }
 function setupRequestLogging(app2) {
   app2.use((req, res, next) => {
     const start = Date.now();
-    const path4 = req.path;
+    const path5 = req.path;
     let capturedJsonResponse = void 0;
     const originalResJson = res.json;
     res.json = function(bodyJson, ...args) {
@@ -9092,24 +8252,25 @@ function setupRequestLogging(app2) {
       return originalResJson.apply(res, [bodyJson, ...args]);
     };
     res.on("finish", () => {
-      if (!path4.startsWith("/api")) return;
+      if (!path5.startsWith("/api")) return;
       const duration = Date.now() - start;
-      let logLine = `${req.method} ${path4} ${res.statusCode} in ${duration}ms`;
+      let logLine = `${req.method} ${path5} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "\u2026";
+      const maxLen = process.env.NODE_ENV === "development" ? 500 : 200;
+      if (logLine.length > maxLen) {
+        logLine = logLine.slice(0, maxLen - 1) + "\u2026";
       }
-      log(logLine);
+      console.log(logLine);
     });
     next();
   });
 }
 function getAppName() {
   try {
-    const appJsonPath = path3.resolve(process.cwd(), "app.json");
-    const appJsonContent = fs3.readFileSync(appJsonPath, "utf-8");
+    const appJsonPath = path4.resolve(process.cwd(), "app.json");
+    const appJsonContent = fs4.readFileSync(appJsonPath, "utf-8");
     const appJson = JSON.parse(appJsonContent);
     return appJson.expo?.name || "App Landing Page";
   } catch {
@@ -9126,19 +8287,19 @@ function rebaseUrl(url, baseUrl) {
   }
 }
 function serveExpoManifest(platform, req, res) {
-  const manifestPath = path3.resolve(
+  const manifestPath = path4.resolve(
     process.cwd(),
     "static-build",
     platform,
     "manifest.json"
   );
-  if (!fs3.existsSync(manifestPath)) {
+  if (!fs4.existsSync(manifestPath)) {
     return res.status(404).json({ error: `Manifest not found for platform: ${platform}` });
   }
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
-  const manifest = JSON.parse(fs3.readFileSync(manifestPath, "utf-8"));
+  const manifest = JSON.parse(fs4.readFileSync(manifestPath, "utf-8"));
   const forwardedProto = req.header("x-forwarded-proto");
   const protocol = forwardedProto || req.protocol || "https";
   const forwardedHost = req.header("x-forwarded-host");
@@ -9172,7 +8333,7 @@ function serveExpoManifest(platform, req, res) {
       }
     }
   }
-  log(`[Manifest] Serving ${platform} manifest with baseUrl: ${requestBaseUrl}`);
+  console.log(`[Manifest] Serving ${platform} manifest with baseUrl: ${requestBaseUrl}`);
   res.json(manifest);
 }
 function serveLandingPage({
@@ -9187,22 +8348,22 @@ function serveLandingPage({
   const host = forwardedHost || req.get("host");
   const baseUrl = `${protocol}://${host}`;
   const expsUrl = `${host}`;
-  log(`baseUrl`, baseUrl);
-  log(`expsUrl`, expsUrl);
+  console.log(`baseUrl`, baseUrl);
+  console.log(`expsUrl`, expsUrl);
   const html = landingPageTemplate.replace(/BASE_URL_PLACEHOLDER/g, baseUrl).replace(/EXPS_URL_PLACEHOLDER/g, expsUrl).replace(/APP_NAME_PLACEHOLDER/g, appName);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.status(200).send(html);
 }
 function configureExpoAndLanding(app2) {
-  const templatePath = path3.resolve(
+  const templatePath = path4.resolve(
     process.cwd(),
     "server",
     "templates",
     "landing-page.html"
   );
-  const landingPageTemplate = fs3.readFileSync(templatePath, "utf-8");
+  const landingPageTemplate = fs4.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
-  log("Serving static Expo files with dynamic manifest routing");
+  console.log("Serving static Expo files with dynamic manifest routing");
   app2.use((req, res, next) => {
     if (req.path.startsWith("/api")) {
       return next();
@@ -9215,7 +8376,7 @@ function configureExpoAndLanding(app2) {
       try {
         return serveExpoManifest(platform, req, res);
       } catch (manifestErr) {
-        log("[Manifest] Error serving manifest:", manifestErr);
+        console.log("[Manifest] Error serving manifest:", manifestErr);
         return res.status(500).json({ error: "Failed to serve manifest" });
       }
     }
@@ -9229,9 +8390,9 @@ function configureExpoAndLanding(app2) {
     }
     next();
   });
-  app2.use("/assets", express.static(path3.resolve(process.cwd(), "assets")));
-  app2.use(express.static(path3.resolve(process.cwd(), "static-build")));
-  log("Expo routing: Checking expo-platform header on / and /manifest");
+  app2.use("/assets", express.static(path4.resolve(process.cwd(), "assets")));
+  app2.use(express.static(path4.resolve(process.cwd(), "static-build")));
+  console.log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 function setupErrorHandler(app2) {
   app2.use((err, _req, res, _next) => {
@@ -9242,9 +8403,12 @@ function setupErrorHandler(app2) {
     console.error("[Error]", err);
   });
 }
+var bootstrapAlertsCleaned = false;
 async function cleanupBootstrapAlerts() {
+  if (bootstrapAlertsCleaned) return;
   try {
-    const result = await db.delete(alerts).where(and11(eq12(alerts.alertType, "RSS_ITEM"), like(alerts.body, "Page content updated%"))).returning({ id: alerts.id });
+    const result = await db.delete(alerts).where(and14(eq15(alerts.alertType, "RSS_ITEM"), like(alerts.body, "Page content updated%"))).returning({ id: alerts.id });
+    bootstrapAlertsCleaned = true;
     if (result.length > 0) {
       console.log(`[Startup] Cleaned up ${result.length} false-positive RSS bootstrap alert(s)`);
     }
@@ -9274,7 +8438,7 @@ async function cleanupBootstrapAlerts() {
       reusePort: true
     },
     () => {
-      log(`express server serving on port ${port}`);
+      console.log(`express server serving on port ${port}`);
     }
   );
   if (process.env.NODE_ENV === "development") {
@@ -9284,7 +8448,7 @@ async function cleanupBootstrapAlerts() {
     });
     expoServer.on("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        log(`[ExpoServer] Port ${EXPO_PORT} in use (Metro running?), will retry in 5s...`);
+        console.log(`[ExpoServer] Port ${EXPO_PORT} in use (Metro running?), will retry in 5s...`);
         setTimeout(() => {
           expoServer.close();
           expoServer.listen({ port: EXPO_PORT, host: "0.0.0.0" });
@@ -9292,7 +8456,7 @@ async function cleanupBootstrapAlerts() {
       }
     });
     expoServer.listen({ port: EXPO_PORT, host: "0.0.0.0" }, () => {
-      log(`[ExpoServer] Serving static Expo manifests on port ${EXPO_PORT}`);
+      console.log(`[ExpoServer] Serving static Expo manifests on port ${EXPO_PORT}`);
     });
   }
 })();
