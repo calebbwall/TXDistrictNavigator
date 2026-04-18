@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import { createServer } from "node:http";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
@@ -286,40 +287,31 @@ async function cleanupBootstrapAlerts(): Promise<void> {
   }
 }
 
+// Bind port synchronously at module load — before any async work.
+// This satisfies Replit's waitForPort immediately so the preview loads
+// regardless of how long async initialization (DB, routes) takes.
+const port = parseInt(process.env.PORT || "8081", 10);
+const server = createServer(app);
+server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+  console.log(`express server serving on port ${port}`);
+});
+
 (async () => {
-  setupCors(app);
-  setupBodyParsing(app);
-  setupRequestLogging(app);
-
-  app.get("/status", (_req: Request, res: Response) => {
-    res.status(200).json({ status: "ok" });
-  });
-
-  configureExpoAndLanding(app);
-
-  let server: import("node:http").Server;
   try {
-    server = await registerRoutes(app);
+    setupCors(app);
+    setupBodyParsing(app);
+    setupRequestLogging(app);
+
+    app.get("/status", (_req: Request, res: Response) => {
+      res.status(200).json({ status: "ok" });
+    });
+
+    configureExpoAndLanding(app);
+    await registerRoutes(app);
+    setupErrorHandler(app);
+    await cleanupBootstrapAlerts();
+    console.log("[Startup] Initialization complete");
   } catch (err) {
-    console.error("[Startup] registerRoutes() failed — server cannot start:", err);
-    process.exit(1);
+    console.error("[FATAL] Startup error (server still running on port " + port + "):", err);
   }
-
-  setupErrorHandler(app);
-
-  const port = parseInt(process.env.PORT || "8081", 10);
-  server.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      console.log(`express server serving on port ${port}`);
-    },
-  );
-
-  // Run after port is bound so waitForPort resolves without waiting on DB
-  await cleanupBootstrapAlerts();
-
 })();

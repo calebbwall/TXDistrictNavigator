@@ -1,5 +1,4 @@
 import type { Express } from "express";
-import { createServer, type Server } from "node:http";
 import { db } from "./db";
 import { registerPrayerRoutes } from "./routes/prayerRoutes";
 import { registerLegislativeRoutes } from "./routes/legislativeRoutes";
@@ -16,7 +15,7 @@ import { startOfficialsRefreshScheduler } from "./jobs/scheduler";
 import { maybeRunCommitteeRefresh } from "./jobs/refreshCommittees";
 import { maybeRunOtherTxRefresh } from "./jobs/refreshOtherTexasOfficials";
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<void> {
   maybeRunScheduledRefresh().catch(err => {
     console.error("[Startup] Failed to check scheduled refresh:", err);
   });
@@ -279,6 +278,4 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
-  return httpServer;
 }
