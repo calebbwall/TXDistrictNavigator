@@ -38,6 +38,10 @@ mode = "parallel"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+args = "npm install"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
 args = "npm run server:dev"
 waitForPort = 8081
 
