@@ -7,19 +7,11 @@ channel = "stable-24_05"
 [deployment]
 deploymentTarget = "vm"
 build = ["npm", "run", "server:build"]
-run = ["bash", "-c", "PORT=8081 NODE_ENV=production node server_dist/index.js"]
-
-[[ports]]
-localPort = 5000
-externalPort = 5000
+run = ["npm", "run", "server:prod"]
 
 [[ports]]
 localPort = 8081
 externalPort = 80
-
-[[ports]]
-localPort = 8082
-externalPort = 3000
 
 [env]
 PORT = "8081"

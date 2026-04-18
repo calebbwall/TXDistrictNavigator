@@ -36,6 +36,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# compiled server output (rebuilt by deployment build step)
+server_dist/
+
 app-example
 
 # generated native folders
