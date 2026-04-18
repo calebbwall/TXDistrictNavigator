@@ -3,7 +3,6 @@ import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
-import * as http from "http";
 import { db } from "./db";
 import { alerts } from "@shared/schema";
 import { and, eq, like } from "drizzle-orm";
@@ -310,7 +309,7 @@ async function cleanupBootstrapAlerts(): Promise<void> {
 
   setupErrorHandler(app);
 
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const port = parseInt(process.env.PORT || "8081", 10);
   server.listen(
     {
       port,
@@ -321,27 +320,5 @@ async function cleanupBootstrapAlerts(): Promise<void> {
       console.log(`express server serving on port ${port}`);
     },
   );
-
-  if (process.env.NODE_ENV === "development") {
-    // Replit web preview expects the Expo manifest on port 8081 (the Metro bundler port).
-    // Since we serve static builds (no Metro), we mirror the main app here so manifest
-    // requests from the Expo Go app work on the Replit dev domain.
-    const EXPO_PORT = 8081;
-    const expoServer = http.createServer((req, res) => {
-      app(req as any, res as any);
-    });
-    expoServer.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EADDRINUSE") {
-        console.log(`[ExpoServer] Port ${EXPO_PORT} in use (Metro running?), will retry in 5s...`);
-        setTimeout(() => {
-          expoServer.close();
-          expoServer.listen({ port: EXPO_PORT, host: "0.0.0.0" });
-        }, 5000);
-      }
-    });
-    expoServer.listen({ port: EXPO_PORT, host: "0.0.0.0" }, () => {
-      console.log(`[ExpoServer] Serving static Expo manifests on port ${EXPO_PORT}`);
-    });
-  }
 
 })();
