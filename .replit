@@ -13,6 +13,10 @@ run = ["npm", "run", "server:prod"]
 localPort = 8081
 externalPort = 80
 
+[[ports]]
+localPort = 5000
+externalPort = 5000
+
 [env]
 PORT = "8081"
 
@@ -34,7 +38,7 @@ args = "Start App"
 [[workflows.workflow]]
 name = "Start App"
 author = "agent"
-mode = "parallel"
+mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
@@ -42,7 +46,28 @@ args = "npm install"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run server:dev"
+args = "npm run dev"
+waitForPort = 8081
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "Start Production"
+author = "agent"
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm install"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run server:build"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run server:prod"
 waitForPort = 8081
 
 [workflows.workflow.metadata]
