@@ -3,7 +3,7 @@
   "main": "client/index.js",
   "version": "1.0.0",
   "scripts": {
-    "expo:dev": "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000 npx expo start --localhost",
+    "expo:dev": "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000 npx expo start",
     "server:dev": "PORT=5000 NODE_ENV=development tsx server/index.ts",
     "dev": "concurrently -n \"api,expo\" -c \"blue,green\" \"npm run server:dev\" \"npm run expo:dev\"",
     "server:dev:migrate": "npm run db:push && npm run server:dev",
