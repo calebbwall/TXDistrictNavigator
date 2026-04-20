@@ -32,12 +32,19 @@ import {
 } from "@shared/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendPushToAll } from "../lib/expoPush";
+import { zonedWallTimeToUtc } from "../lib/timezone";
 
-const TLO_BASE = "https://capitol.texas.gov";
+const TX_TIMEZONE = "America/Chicago";
+const MONTH_NAMES: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+export const TLO_BASE = "https://capitol.texas.gov";
 const LEG_SESSION = "89R";
 
 // ---------- fetch helper (same pattern as refreshCommittees.ts) ----------
-async function fetchWithRetry(
+export async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
   retries = 3,
@@ -86,7 +93,7 @@ interface ParsedMeeting {
 }
 
 // ---------- parse upcoming meetings page (new TLO structure) ----------
-interface ParsedMeetingWithCode extends ParsedMeeting {
+export interface ParsedMeetingWithCode extends ParsedMeeting {
   cmteCode: string | null;
   meetingType: string | null;
 }
@@ -95,7 +102,7 @@ interface ParsedMeetingWithCode extends ParsedMeeting {
  * Parse the new TLO MeetingsUpcoming.aspx page.
  * Structure: date row (sectionTitle) → time row (Gainsboro) → one or more committee rows.
  */
-function parseMeetingsUpcomingPage(html: string, chamberCode: "H" | "S"): ParsedMeetingWithCode[] {
+export function parseMeetingsUpcomingPage(html: string, chamberCode: "H" | "S"): ParsedMeetingWithCode[] {
   const $ = cheerio.load(html);
   const meetings: ParsedMeetingWithCode[] = [];
   let currentDateStr: string | null = null;
@@ -188,16 +195,26 @@ function parseMeetingsUpcomingPage(html: string, chamberCode: "H" | "S"): Parsed
 
 function parseUpcomingDateTime(dateStr: string, timeStr: string): Date | null {
   // dateStr: "Wednesday, April 1, 2026"  timeStr: "10:00 AM"
+  // The Texas Legislature publishes times in Central Time, so we interpret the
+  // wall-clock as America/Chicago and convert to UTC for storage.
   try {
-    const cleanDate = dateStr.replace(/^[A-Z][a-z]+,\s*/i, "").trim(); // "April 1, 2026"
+    const cleanDate = dateStr.replace(/^[A-Z][a-z]+,\s*/i, "").trim();
+    const dateMatch = cleanDate.match(/^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$/);
     const timeMatch = timeStr.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-    if (!timeMatch) return null;
+    if (!dateMatch || !timeMatch) return null;
+
+    const month = MONTH_NAMES[dateMatch[1].toLowerCase()];
+    const day = parseInt(dateMatch[2], 10);
+    const year = parseInt(dateMatch[3], 10);
+    if (!month) return null;
+
     let hour = parseInt(timeMatch[1], 10);
     const min = parseInt(timeMatch[2], 10);
     const ampm = timeMatch[3].toUpperCase();
     if (ampm === "PM" && hour !== 12) hour += 12;
     if (ampm === "AM" && hour === 12) hour = 0;
-    const d = new Date(`${cleanDate} ${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}:00`);
+
+    const d = zonedWallTimeToUtc(year, month, day, hour, min, TX_TIMEZONE);
     return isNaN(d.getTime()) ? null : d;
   } catch {
     return null;
@@ -507,7 +524,13 @@ export async function refreshChamberUpcomingHearings(
       if (existing[0].fingerprint !== fp) {
         await db
           .update(legislativeEvents)
-          .set({ fingerprint: fp, lastSeenAt: new Date(), updatedAt: new Date() })
+          .set({
+            fingerprint: fp,
+            startsAt: meeting.startsAt ?? undefined,
+            location: meeting.location ?? undefined,
+            lastSeenAt: new Date(),
+            updatedAt: new Date(),
+          })
           .where(eq(legislativeEvents.id, existing[0].id));
 
         const [ev] = await db
@@ -758,7 +781,7 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
     if (!dateText || !descText || !dateText.match(/\d{1,2}\/\d{1,2}\/\d{4}/)) return;
 
     const [month, day, year] = dateText.split("/").map(Number);
-    const actionAt = new Date(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+    const actionAt = zonedWallTimeToUtc(year, month, day, 0, 0, TX_TIMEZONE);
 
     const externalId = `${billNumber}-${dateText}-${fingerprint(descText)}`;
 
