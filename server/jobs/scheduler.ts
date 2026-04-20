@@ -24,6 +24,8 @@ import { db } from "../db";
 import { committees, legislativeEvents } from "@shared/schema";
 import { sql } from "drizzle-orm";
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 let schedulerInterval: NodeJS.Timeout | null = null;
 let lastCheckWindowRun: Date | null = null;
 let refreshCycleInProgress = false;
