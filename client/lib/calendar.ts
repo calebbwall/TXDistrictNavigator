@@ -100,7 +100,7 @@ export async function addHearingToCalendar(
   try {
     const icsContent = generateHearingIcs(hearing);
     const filename = `hearing_${hearing.id}.ics`;
-    const file = new File(Paths.cache, filename);
+    const file = new File(Paths.document, filename);
     await file.write(icsContent);
 
     const isAvailable = await Sharing.isAvailableAsync();
@@ -116,7 +116,8 @@ export async function addHearingToCalendar(
         title: "Hearing Calendar Event",
       });
     }
-  } catch {
+  } catch (e) {
+    console.error("[calendar] export failed:", e);
     Alert.alert(
       "Export Failed",
       "Could not create calendar event. Please try again."
