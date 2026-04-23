@@ -195,8 +195,8 @@ export async function summarizeBill(context: BillSummaryContext): Promise<string
   const isPassed =
     !isEnacted &&
     (context.billStatus?.match(/passed|engrossed/i) != null ||
-      context.actionHistory?.some((a) => /passed (house|senate)/i.test(a)) ??
-      false);
+      (context.actionHistory?.some((a) => /passed (house|senate)/i.test(a)) ??
+      false));
 
   const lifecycleInstruction = isEnacted
     ? `This bill has been signed into law${context.effectiveDate ? ` (effective ${context.effectiveDate})` : ""}. Describe what it does in present tense — do NOT say "if passed" or "would".`
