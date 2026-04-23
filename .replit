@@ -5,9 +5,9 @@ modules = ["nodejs-22"]
 channel = "stable-24_05"
 
 [deployment]
-deploymentTarget = "vm"
+deploymentTarget = "autoscale"
 build = ["npm", "run", "server:build"]
-run = ["bash", "-c", "PORT=8081 NODE_ENV=production node server_dist/index.js"]
+run = ["npm", "run", "server:prod"]
 
 [[ports]]
 localPort = 8081
