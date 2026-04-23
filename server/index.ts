@@ -287,6 +287,12 @@ async function cleanupBootstrapAlerts(): Promise<void> {
   }
 }
 
+// Register /status synchronously BEFORE listen so deployment health checks
+// (autoscale, VM) get HTTP 200 immediately — even before async init completes.
+app.get("/status", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // Bind port synchronously at module load — before any async work.
 // This satisfies Replit's waitForPort immediately so the preview loads
 // regardless of how long async initialization (DB, routes) takes.
@@ -317,10 +323,6 @@ server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
     setupCors(app);
     setupBodyParsing(app);
     setupRequestLogging(app);
-
-    app.get("/status", (_req: Request, res: Response) => {
-      res.status(200).json({ status: "ok" });
-    });
 
     configureExpoAndLanding(app);
     await registerRoutes(app);
