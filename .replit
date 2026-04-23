@@ -5,13 +5,17 @@ modules = ["nodejs-22"]
 channel = "stable-24_05"
 
 [deployment]
-deploymentTarget = "autoscale"
+deploymentTarget = "vm"
 build = ["npm", "run", "server:build"]
-run = ["npm", "run", "server:prod"]
+run = ["bash", "-c", "PORT=8081 NODE_ENV=production node server_dist/index.js"]
 
 [[ports]]
 localPort = 8081
 externalPort = 80
+
+[[ports]]
+localPort = 19000
+externalPort = 3000
 
 [agent]
 stack = "EXPO"
