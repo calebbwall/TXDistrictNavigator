@@ -728,9 +728,12 @@ const MAP_HTML = `
       
       loadStatus[layerType].loading = true;
       console.log('[OVERLAY]', layerType, 'fetching from', apiBaseUrl + '/api/geojson/' + layerType);
-      
+
       try {
-        const response = await fetch(apiBaseUrl + '/api/geojson/' + layerType);
+        const ctrl = new AbortController();
+        const fetchTimer = setTimeout(() => ctrl.abort(), 20000);
+        const response = await fetch(apiBaseUrl + '/api/geojson/' + layerType, { signal: ctrl.signal });
+        clearTimeout(fetchTimer);
         console.log('[OVERLAY]', layerType, 'status=' + response.status);
         
         if (!response.ok) {
@@ -2334,12 +2337,14 @@ export default function MapScreen() {
 
   useEffect(() => {
     if (!mapReady || geoJSONLoadedRef.current) return;
-    
-    console.log('[MapScreen] Map is ready, starting GeoJSON load');
+
+    // Set the flag immediately to prevent a second concurrent load if mapReady
+    // flips while the async work is in progress. It will be reset on failure.
     geoJSONLoadedRef.current = true;
-    
+    console.log('[MapScreen] Map is ready, starting GeoJSON load');
+
     const currentOverlays = initialOverlaysRef.current;
-    
+
     const loadGeoJSON = async () => {
       const platform = Platform.OS;
 
@@ -2348,19 +2353,19 @@ export default function MapScreen() {
         // progress back via geoJSONLoaded / allGeoJSONLoaded events, which are
         // already wired up in handleWindowMessage.  We only need to push the
         // user's saved overlay preferences; skip the duplicate React fetch.
-        console.log('[MapScreen] web: skipping React GeoJSON fetch, sending overlay prefs');
+        //
+        // No delay needed: mapReady is set only after the iframe sends its own
+        // mapReady postMessage, which means the iframe message listener is
+        // already registered by the time this code runs.
+        console.log('[MapScreen] web: applying overlay prefs:', currentOverlays);
         const sendIframe = (msg: object) => {
           if (iframeRef.current?.contentWindow) {
             iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
           }
         };
-        // Small delay so the iframe has registered its message listener.
-        setTimeout(() => {
-          console.log('[MapScreen] web: applying overlay prefs:', currentOverlays);
-          sendIframe({ type: 'toggleLayer', layer: 'senate',   visible: currentOverlays.senate });
-          sendIframe({ type: 'toggleLayer', layer: 'house',    visible: currentOverlays.house });
-          sendIframe({ type: 'toggleLayer', layer: 'congress', visible: currentOverlays.congress });
-        }, 100);
+        sendIframe({ type: 'toggleLayer', layer: 'senate',   visible: currentOverlays.senate });
+        sendIframe({ type: 'toggleLayer', layer: 'house',    visible: currentOverlays.house });
+        sendIframe({ type: 'toggleLayer', layer: 'congress', visible: currentOverlays.congress });
         // dataLoaded is set to true when allGeoJSONLoaded arrives from the iframe.
         return;
       }
@@ -2408,7 +2413,10 @@ export default function MapScreen() {
       }, 100);
     };
 
-    loadGeoJSON();
+    loadGeoJSON().catch((err) => {
+      console.error('[MapScreen] loadGeoJSON failed, will allow retry:', err);
+      geoJSONLoadedRef.current = false;
+    });
   }, [mapReady, fetchGeoJSON, sendToWebView]);
   
   // Handle focus district from navigation params (jump-to-district feature)
