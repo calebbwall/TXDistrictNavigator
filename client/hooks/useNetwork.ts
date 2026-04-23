@@ -2,42 +2,31 @@ import { useState, useEffect } from "react";
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 
 interface NetworkState {
-  isConnected: boolean;
+  isConnected: boolean | null;
   isInternetReachable: boolean | null;
-  isOffline: boolean;
+  isOffline: boolean | null;
 }
 
 export function useNetwork(): NetworkState {
   const [state, setState] = useState<NetworkState>({
-    isConnected: true,
-    isInternetReachable: true,
-    isOffline: false,
+    isConnected: null,
+    isInternetReachable: null,
+    isOffline: null,
   });
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((netState: NetInfoState) => {
-      const isConnected = netState.isConnected ?? true;
+    const applyState = (netState: NetInfoState) => {
+      const isConnected = netState.isConnected;
       const isInternetReachable = netState.isInternetReachable;
-      const isOffline = !isConnected || isInternetReachable === false;
-      
-      setState({
-        isConnected,
-        isInternetReachable,
-        isOffline,
-      });
-    });
+      const isOffline =
+        isConnected === false || isInternetReachable === false ? true
+        : isConnected === true && isInternetReachable !== false ? false
+        : null;
+      setState({ isConnected, isInternetReachable, isOffline });
+    };
 
-    NetInfo.fetch().then((netState: NetInfoState) => {
-      const isConnected = netState.isConnected ?? true;
-      const isInternetReachable = netState.isInternetReachable;
-      const isOffline = !isConnected || isInternetReachable === false;
-      
-      setState({
-        isConnected,
-        isInternetReachable,
-        isOffline,
-      });
-    });
+    const unsubscribe = NetInfo.addEventListener(applyState);
+    NetInfo.fetch().then(applyState);
 
     return () => unsubscribe();
   }, []);

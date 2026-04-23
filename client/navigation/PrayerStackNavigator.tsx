@@ -1,7 +1,6 @@
 import React from "react";
-import { Pressable } from "react-native";
+import { Pressable, Platform } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { HeaderButton } from "@react-navigation/elements";
 import { Feather } from "@expo/vector-icons";
 import PrayerDashboardScreen from "@/screens/PrayerDashboardScreen";
 import PrayerListScreen from "@/screens/PrayerListScreen";
@@ -61,11 +60,14 @@ export default function PrayerStackNavigator() {
             </Pressable>
           ),
           headerRight: () => (
-            <HeaderButton
+            <Pressable
               onPress={() => navigation.navigate("PrayerSettings")}
+              hitSlop={12}
+              style={{ padding: Platform.OS === "android" ? 8 : 6, marginRight: Platform.OS === "android" ? 4 : 2 }}
+              android_ripple={{ color: "transparent", borderless: true, radius: 20 }}
             >
               <Feather name="settings" size={20} color={theme.text} />
-            </HeaderButton>
+            </Pressable>
           ),
         })}
       />
@@ -89,7 +91,7 @@ export default function PrayerStackNavigator() {
         options={({ navigation }) => ({
           headerTitle: "Add Prayer",
           headerLeft: () => (
-            <HeaderButton
+            <Pressable
               onPress={() => {
                 const state = navigation.getState();
                 const hasStackHistory = state && state.routes && state.routes.length > 1;
@@ -102,9 +104,12 @@ export default function PrayerStackNavigator() {
                   });
                 }
               }}
+              hitSlop={12}
+              style={{ padding: Platform.OS === "android" ? 8 : 6, marginLeft: Platform.OS === "android" ? 4 : 2 }}
+              android_ripple={{ color: "transparent", borderless: true, radius: 20 }}
             >
               <Feather name="arrow-left" size={22} color={theme.text} />
-            </HeaderButton>
+            </Pressable>
           ),
         })}
       />

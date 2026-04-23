@@ -41,7 +41,7 @@ async function copyToAppStorage(uri: string): Promise<string> {
   const filename = `mileage_${Date.now()}.jpg`;
   const src = new File(uri);
   const dest = new File(Paths.document, filename);
-  src.copy(dest);
+  await src.copy(dest);
   return dest.uri;
 }
 
@@ -51,8 +51,8 @@ async function promptPhotoSource(
   const persistUri = async (rawUri: string): Promise<string> => {
     try {
       return await copyToAppStorage(rawUri);
-    } catch {
-      // Fall back to using the raw URI (works in Expo Go)
+    } catch (e) {
+      console.error("[MileageEntry] photo copy failed, using raw URI:", e);
       return rawUri;
     }
   };

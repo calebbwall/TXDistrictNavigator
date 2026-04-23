@@ -446,6 +446,12 @@ export default function HearingDetailScreen() {
         <Section title="Notice Text">
           <CollapsibleNotice text={hearing.noticeText} />
         </Section>
+      ) : hearing.sourceUrl ? (
+        <Section title="Notice Text">
+          <ThemedText type="small" style={{ color: theme.secondaryText }}>
+            Notice not yet available — check back after the next 5 AM refresh.
+          </ThemedText>
+        </Section>
       ) : null}
     </ScrollView>
   );
