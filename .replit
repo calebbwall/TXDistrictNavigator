@@ -25,16 +25,7 @@ externalPort = 3000
 stack = "EXPO"
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start App"
+runButton = "Start App"
 
 [[workflows.workflow]]
 name = "Start App"
