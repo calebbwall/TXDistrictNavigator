@@ -298,6 +298,22 @@ server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
 
 (async () => {
   try {
+    // Verify the runtime correctly reports America/Chicago offsets.
+    // If TZ is not set on the production server, naive `new Date(localString)`
+    // calls may treat wall-clock times as UTC, causing a 5–6 hour shift.
+    const tzCheck = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago", hour: "numeric", hour12: false,
+    }).formatToParts(new Date("2025-06-01T15:00:00Z")).find((p) => p.type === "hour");
+    const chicagoHour = tzCheck ? parseInt(tzCheck.value, 10) : -1;
+    if (chicagoHour !== 10) {
+      console.warn(
+        `[Startup] TZ WARNING: America/Chicago offset check failed (expected hour=10 for 15:00 UTC in CDT, got ${chicagoHour}). ` +
+        "Ensure TZ=America/Chicago is set in the production environment."
+      );
+    } else {
+      console.log("[Startup] Timezone check passed (America/Chicago CDT offset correct)");
+    }
+
     setupCors(app);
     setupBodyParsing(app);
     setupRequestLogging(app);
