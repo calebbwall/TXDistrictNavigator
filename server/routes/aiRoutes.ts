@@ -47,6 +47,12 @@ export function registerAiRoutes(app: Express) {
     if (!process.env.GROQ_API_KEY) {
       return res.status(503).json({ error: "AI summarization is not configured" });
     }
+    // Infer enacted status from actionHistory if not explicitly provided
+    if (context.enacted === undefined && context.actionHistory?.length) {
+      context.enacted = context.actionHistory.some((a) =>
+        /signed|enrolled|effective|chaptered/i.test(a)
+      );
+    }
     const summary = await summarizeBill(context);
     res.json({ summary });
   });

@@ -13,10 +13,11 @@
 import { db } from "../db";
 import {
   legislativeEvents,
+  hearingDetails,
   alerts,
   type InsertAlert,
 } from "@shared/schema";
-import { sql, gte } from "drizzle-orm";
+import { sql, gte, isNull } from "drizzle-orm";
 import {
   refreshChamberUpcomingHearings,
   refreshHearingDetail,
@@ -119,14 +120,16 @@ export async function runDailyRefresh(): Promise<{
       }
     }
 
-    // Fetch detail pages for events that have notice URLs (but no detail yet)
+    // Fetch detail pages for events that have TLO notice URLs but no notice text yet
     const hearingsNeedingDetails = await db
       .select({ id: legislativeEvents.id, sourceUrl: legislativeEvents.sourceUrl })
       .from(legislativeEvents)
+      .leftJoin(hearingDetails, sql`${hearingDetails.eventId} = ${legislativeEvents.id}`)
       .where(
-        sql`${legislativeEvents.sourceUrl} LIKE '%tlodocs%' OR ${legislativeEvents.sourceUrl} LIKE '%MtgNotice%'`,
+        sql`(${legislativeEvents.sourceUrl} LIKE '%tlodocs%' OR ${legislativeEvents.sourceUrl} LIKE '%MtgNotice%')
+            AND ${isNull(hearingDetails.noticeText)}`,
       )
-      .limit(20);
+      .limit(50);
 
     for (const ev of hearingsNeedingDetails) {
       try {

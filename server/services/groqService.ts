@@ -56,6 +56,9 @@ export interface BillSummaryContext {
   agendaItemText?: string;
   actionHistory?: string[];
   witnessPositions?: { for: number; against: number; on: number };
+  billStatus?: string;
+  enacted?: boolean;
+  effectiveDate?: string;
 }
 
 export interface IntentClassification {
@@ -182,6 +185,25 @@ export async function summarizeBill(context: BillSummaryContext): Promise<string
     ? `Recent actions: ${context.actionHistory.slice(0, 5).join("; ")}.`
     : "";
 
+  // Determine lifecycle framing from explicit fields or infer from action history
+  const isEnacted =
+    context.enacted ??
+    context.actionHistory?.some((a) =>
+      /signed|enrolled|effective|chaptered/i.test(a)
+    ) ??
+    false;
+  const isPassed =
+    !isEnacted &&
+    (context.billStatus?.match(/passed|engrossed/i) != null ||
+      context.actionHistory?.some((a) => /passed (house|senate)/i.test(a)) ??
+      false);
+
+  const lifecycleInstruction = isEnacted
+    ? `This bill has been signed into law${context.effectiveDate ? ` (effective ${context.effectiveDate})` : ""}. Describe what it does in present tense — do NOT say "if passed" or "would".`
+    : isPassed
+    ? "This bill has passed at least one chamber. Describe what it does in present or near-certain future tense."
+    : "Describe what this bill proposes to do if passed.";
+
   const prompt = `Bill: ${context.billNumber} (Session ${context.session})
 Caption: ${context.caption ?? "Not provided"}
 Agenda description: ${context.agendaItemText ?? "Not provided"}
@@ -193,8 +215,7 @@ ${witnessLine}`;
     messages: [
       {
         role: "system",
-        content:
-          "Explain this Texas or US legislative bill in 2-3 plain English sentences for a general audience. Focus on what the bill would do if passed. Be concise and neutral. Do not start with 'This bill'.",
+        content: `Explain this Texas or US legislative bill in 2-3 plain English sentences for a general audience. ${lifecycleInstruction} Be concise and neutral. Do not start with 'This bill'.`,
       },
       { role: "user", content: prompt },
     ],
