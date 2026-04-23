@@ -13,10 +13,6 @@ run = ["npm", "run", "server:prod"]
 localPort = 8081
 externalPort = 80
 
-[[ports]]
-localPort = 19000
-externalPort = 3000
-
 [agent]
 stack = "EXPO"
 
