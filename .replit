@@ -40,7 +40,7 @@ args = "npm install"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
-waitForPort = 5000
+waitForPort = 8081
 
 [workflows.workflow.metadata]
 outputType = "webview"
