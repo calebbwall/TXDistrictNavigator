@@ -570,9 +570,36 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
         };
         
         if (existing.length > 0) {
-          const updateData = { ...insertData, id: undefined };
+          const { id: _ignoredId, ...updateData }: Partial<InsertOfficialPublic> & { id?: unknown } = { ...insertData };
           if (existing[0].photoUrl && !updateData.photoUrl) {
             updateData.photoUrl = existing[0].photoUrl;
+          }
+          // TLO's WCAG 2.1 redesign removed address/phone/website fields from
+          // member pages. Preserve whatever already exists in the DB rather
+          // than blanking those columns on every refresh.
+          const prev = existing[0];
+          if (!record.capitolAddress && prev.capitolAddress) updateData.capitolAddress = prev.capitolAddress;
+          if (!record.capitolPhone && prev.capitolPhone) updateData.capitolPhone = prev.capitolPhone;
+          if (!record.capitolRoom && prev.capitolRoom) updateData.capitolRoom = prev.capitolRoom;
+          if ((!record.districtAddresses || record.districtAddresses.length === 0) && prev.districtAddresses && prev.districtAddresses.length > 0) {
+            updateData.districtAddresses = prev.districtAddresses;
+          }
+          if ((!record.districtPhones || record.districtPhones.length === 0) && prev.districtPhones && prev.districtPhones.length > 0) {
+            updateData.districtPhones = prev.districtPhones;
+          }
+          if (!record.website && prev.website) updateData.website = prev.website;
+          if (!record.email && prev.email) updateData.email = prev.email;
+          // If we ended up keeping prior addresses, recompute search arrays from
+          // the merged set so we don't wipe the search index either.
+          const mergedAddresses: string[] = [];
+          if (updateData.capitolAddress) mergedAddresses.push(updateData.capitolAddress);
+          if (updateData.districtAddresses) mergedAddresses.push(...updateData.districtAddresses);
+          if (mergedAddresses.length > 0) {
+            updateData.searchZips = extractSearchZips(mergedAddresses);
+            updateData.searchCities = extractSearchCities(mergedAddresses);
+          } else if (prev.searchZips && prev.searchZips.length > 0) {
+            updateData.searchZips = prev.searchZips;
+            updateData.searchCities = prev.searchCities;
           }
           if (!updateData.photoUrl && (source === "TX_HOUSE" || source === "TX_SENATE")) {
             try {
