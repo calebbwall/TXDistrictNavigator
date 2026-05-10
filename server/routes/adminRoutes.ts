@@ -22,8 +22,22 @@ import {
 } from "../jobs/refreshCommittees";
 
 export function registerAdminRoutes(app: Express): void {
-  app.post("/api/refresh", async (_req, res) => {
+  app.post("/api/refresh", async (req, res) => {
     try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+
+      if (!adminToken) {
+        return res.status(503).json({
+          error: "Admin refresh not configured",
+          message: "Set ADMIN_REFRESH_TOKEN environment variable",
+        });
+      }
+
+      if (!providedToken || providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid or missing admin token" });
+      }
+
       const { refreshAllOfficials } = await import("../jobs/refreshOfficials");
       await refreshAllOfficials();
       res.json({ success: true, message: "Refresh completed" });
