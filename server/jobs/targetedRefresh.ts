@@ -522,6 +522,11 @@ export async function refreshChamberUpcomingHearings(
           .insert(hearingDetails)
           .values({ eventId: inserted.id, witnessCount: 0 } satisfies InsertHearingDetail)
           .onConflictDoNothing();
+        // Fire-and-forget: pull the TLO notice text + agenda items right away
+        // so newly-discovered hearings don't sit empty until the next 5 AM run.
+        refreshHearingDetail(inserted.id).catch((err) =>
+          console.warn(`${tag} background detail fetch failed for ${inserted.id}:`, err),
+        );
       }
       newEvents++;
     } else {
@@ -647,14 +652,25 @@ export async function refreshHearingDetail(eventId: string): Promise<boolean> {
 
   const fp = fingerprint(html);
 
-  // Check if fingerprint changed
+  // Check if fingerprint changed AND we already have meaningful notice text.
+  // Without the notice-text guard, a previous failed-or-partial run can leave
+  // hearing_details.notice_text empty forever because the fingerprint already
+  // matches and we'd skip the upsert.
   const [existing] = await db
     .select({ fingerprint: legislativeEvents.fingerprint })
     .from(legislativeEvents)
     .where(eq(legislativeEvents.id, eventId))
     .limit(1);
 
-  if (existing?.fingerprint === fp) {
+  const [existingDetail] = await db
+    .select({ noticeText: hearingDetails.noticeText })
+    .from(hearingDetails)
+    .where(eq(hearingDetails.eventId, eventId))
+    .limit(1);
+
+  const hasGoodNoticeText = (existingDetail?.noticeText?.length ?? 0) >= 50;
+
+  if (existing?.fingerprint === fp && hasGoodNoticeText) {
     console.log(`${tag} No change for event ${eventId}`);
     return false; // unchanged
   }

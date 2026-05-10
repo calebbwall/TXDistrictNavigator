@@ -127,7 +127,7 @@ export async function runDailyRefresh(): Promise<{
       .leftJoin(hearingDetails, sql`${hearingDetails.eventId} = ${legislativeEvents.id}`)
       .where(
         sql`(${legislativeEvents.sourceUrl} LIKE '%tlodocs%' OR ${legislativeEvents.sourceUrl} LIKE '%MtgNotice%')
-            AND ${isNull(hearingDetails.noticeText)}`,
+            AND (${isNull(hearingDetails.noticeText)} OR length(${hearingDetails.noticeText}) < 50)`,
       )
       .limit(50);
 

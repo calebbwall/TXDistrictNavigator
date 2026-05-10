@@ -16,7 +16,7 @@ import { Ionicons, Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { getApiUrl } from "@/lib/query-client";
+import { apiRequest } from "@/lib/query-client";
 
 interface Message {
   id: string;
@@ -66,16 +66,21 @@ export default function AskAIScreen() {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      const res = await fetch(`${getApiUrl()}/api/ai/ask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: question.trim() }),
-      });
-
-      const data = await res.json();
-      const answerText = res.ok
-        ? (data.answer ?? "No answer returned.")
-        : (data.error ?? "Something went wrong. Please try again.");
+      let answerText: string;
+      try {
+        const res = await apiRequest("POST", "/api/ai/ask", { question: question.trim() });
+        const data = await res.json();
+        answerText = data.answer ?? "No answer returned.";
+      } catch (err: any) {
+        const msg = String(err?.message ?? "");
+        if (msg.startsWith("429")) {
+          answerText = "You've hit the AI rate limit. Please try again in a minute.";
+        } else if (msg.startsWith("401")) {
+          answerText = "Authentication required. Please reopen the app.";
+        } else {
+          answerText = "Something went wrong. Please try again.";
+        }
+      }
 
       setMessages((prev) =>
         prev.map((m) =>

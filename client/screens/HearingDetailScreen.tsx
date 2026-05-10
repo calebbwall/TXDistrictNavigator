@@ -245,21 +245,17 @@ export default function HearingDetailScreen() {
     if (billSummaries[key] || loadingSummaries.has(key)) return;
     setLoadingSummaries((prev) => new Set(prev).add(key));
     try {
-      const res = await fetch(`${getApiUrl()}/api/ai/summarize-bill`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          billNumber: item.billNumber,
-          session: "89R",
-          agendaItemText: item.itemText,
-        }),
+      const res = await apiRequest("POST", "/api/ai/summarize-bill", {
+        billNumber: item.billNumber,
+        session: "89R",
+        agendaItemText: item.itemText,
       });
-      if (res.ok) {
-        const { summary } = await res.json();
+      const { summary } = await res.json();
+      if (summary) {
         setBillSummaries((prev) => ({ ...prev, [key]: summary }));
       }
     } catch {
-      // silently fail
+      // silently fail — sparkles button stays available for retry
     } finally {
       setLoadingSummaries((prev) => {
         const next = new Set(prev);
