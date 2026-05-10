@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { db } from "../db";
 import {
   prayers,
@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { eq, and, sql, or, ilike, inArray, desc, asc, isNull, lte, gte, not } from "drizzle-orm";
 import { processEventDateActions } from "../lib/prayerUtils";
+import { requireUser } from "../middleware/userAuth";
 
 export { processEventDateActions };
 
@@ -59,7 +60,9 @@ async function getAutoArchiveDays(): Promise<number> {
   return 90;
 }
 
-async function autoArchiveAnswered(): Promise<void> {
+// Auto-archive scoped to the requesting user only — prevents an anonymous
+// caller from forcing global state mutations across every user's prayers.
+async function autoArchiveAnswered(userId: string): Promise<void> {
   const enabled = await getAutoArchiveEnabled();
   if (!enabled) return;
   const days = await getAutoArchiveDays();
@@ -68,19 +71,28 @@ async function autoArchiveAnswered(): Promise<void> {
   await db.update(prayers)
     .set({ status: "ARCHIVED", archivedAt: new Date(), updatedAt: new Date() })
     .where(and(
+      eq(prayers.userId, userId),
       eq(prayers.status, "ANSWERED"),
       lte(prayers.answeredAt, cutoff)
     ));
 }
 
-async function ensureStreakRow() {
-  const rows = await db.select().from(prayerStreak).limit(1);
+async function ensureStreakRow(userId: string) {
+  const rows = await db
+    .select()
+    .from(prayerStreak)
+    .where(eq(prayerStreak.userId, userId))
+    .limit(1);
   if (rows.length === 0) {
-    await db.insert(prayerStreak).values({
-      currentStreak: 0,
-      longestStreak: 0,
-      lastCompletedDateKey: null,
-    });
+    await db
+      .insert(prayerStreak)
+      .values({
+        userId,
+        currentStreak: 0,
+        longestStreak: 0,
+        lastCompletedDateKey: null,
+      })
+      .onConflictDoNothing();
   }
 }
 
@@ -88,27 +100,39 @@ export function registerPrayerRoutes(app: Express) {
 
   // ── Prayer Categories ──
 
-  app.get("/api/prayer-categories", async (_req, res) => {
+  app.get("/api/prayer-categories", requireUser, async (req: Request, res: Response) => {
     try {
-      const cats = await db.select().from(prayerCategories).orderBy(asc(prayerCategories.sortOrder), asc(prayerCategories.name));
+      const userId = req.userId!;
+      const cats = await db
+        .select()
+        .from(prayerCategories)
+        .where(eq(prayerCategories.userId, userId))
+        .orderBy(asc(prayerCategories.sortOrder), asc(prayerCategories.name));
       res.json(cats);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/prayer-categories", async (req, res) => {
+  app.post("/api/prayer-categories", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { name, sortOrder } = req.body;
       if (!name || typeof name !== "string" || !name.trim()) {
         return res.status(400).json({ error: "Category name is required" });
       }
-      const existing = await db.select().from(prayerCategories)
-        .where(sql`LOWER(${prayerCategories.name}) = LOWER(${name.trim()})`);
+      const existing = await db
+        .select()
+        .from(prayerCategories)
+        .where(and(
+          eq(prayerCategories.userId, userId),
+          sql`LOWER(${prayerCategories.name}) = LOWER(${name.trim()})`
+        ));
       if (existing.length > 0) {
         return res.status(409).json({ error: "A category with this name already exists" });
       }
       const [cat] = await db.insert(prayerCategories).values({
+        userId,
         name: name.trim(),
         sortOrder: sortOrder ?? 0,
       }).returning();
@@ -121,13 +145,18 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/prayer-categories/:id", async (req, res) => {
+  app.patch("/api/prayer-categories/:id", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { id } = req.params;
       const updates: any = { updatedAt: new Date() };
       if (req.body.name !== undefined) updates.name = req.body.name.trim();
       if (req.body.sortOrder !== undefined) updates.sortOrder = req.body.sortOrder;
-      const [cat] = await db.update(prayerCategories).set(updates).where(eq(prayerCategories.id, id)).returning();
+      const [cat] = await db
+        .update(prayerCategories)
+        .set(updates)
+        .where(and(eq(prayerCategories.id, id), eq(prayerCategories.userId, userId)))
+        .returning();
       if (!cat) return res.status(404).json({ error: "Category not found" });
       res.json(cat);
     } catch (err: any) {
@@ -135,11 +164,19 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.delete("/api/prayer-categories/:id", async (req, res) => {
+  app.delete("/api/prayer-categories/:id", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { id } = req.params;
-      await db.update(prayers).set({ categoryId: null, updatedAt: new Date() }).where(eq(prayers.categoryId, id));
-      const [cat] = await db.delete(prayerCategories).where(eq(prayerCategories.id, id)).returning();
+      // Detach the category from this user's prayers only.
+      await db
+        .update(prayers)
+        .set({ categoryId: null, updatedAt: new Date() })
+        .where(and(eq(prayers.categoryId, id), eq(prayers.userId, userId)));
+      const [cat] = await db
+        .delete(prayerCategories)
+        .where(and(eq(prayerCategories.id, id), eq(prayerCategories.userId, userId)))
+        .returning();
       if (!cat) return res.status(404).json({ error: "Category not found" });
       res.json({ success: true });
     } catch (err: any) {
@@ -149,13 +186,14 @@ export function registerPrayerRoutes(app: Express) {
 
   // ── Prayers CRUD ──
 
-  app.get("/api/prayers", async (req, res) => {
+  app.get("/api/prayers", requireUser, async (req: Request, res: Response) => {
     try {
-      autoArchiveAnswered().catch(() => {});
+      const userId = req.userId!;
+      autoArchiveAnswered(userId).catch(() => {});
       processEventDateActions().catch(() => {});
 
       const { status, categoryId, officialId, q, limit: lim, offset: off, sort } = req.query;
-      const conditions: any[] = [];
+      const conditions: any[] = [eq(prayers.userId, userId)];
 
       if (status && status !== "ALL") {
         conditions.push(eq(prayers.status, status as "OPEN" | "ANSWERED" | "ARCHIVED"));
@@ -178,7 +216,7 @@ export function registerPrayerRoutes(app: Express) {
         : [desc(prayers.createdAt)];
 
       let query = db.select().from(prayers)
-        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .where(and(...conditions))
         .orderBy(...orderBy);
 
       const limitVal = Math.min(parseInt(lim as string) || 50, 200);
@@ -192,14 +230,16 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.post("/api/prayers", async (req, res) => {
+  app.post("/api/prayers", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const parsed = insertPrayerSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.issues });
       }
       const { title, body, categoryId, officialIds, pinnedDaily, priority, eventDate, autoAfterEventAction, autoAfterEventDaysOffset } = parsed.data;
       const [prayer] = await db.insert(prayers).values({
+        userId,
         title,
         body,
         categoryId: categoryId ?? null,
@@ -216,11 +256,12 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.get("/api/prayers/export", async (req, res) => {
+  app.get("/api/prayers/export", requireUser, async (req: Request, res: Response) => {
     try {
-      await autoArchiveAnswered();
+      const userId = req.userId!;
+      await autoArchiveAnswered(userId);
       const { status, dateFrom, dateTo, includeBody } = req.query;
-      const conditions: any[] = [];
+      const conditions: any[] = [eq(prayers.userId, userId)];
       if (status && status !== "ALL") {
         conditions.push(eq(prayers.status, status as "OPEN" | "ANSWERED" | "ARCHIVED"));
       }
@@ -237,9 +278,12 @@ export function registerPrayerRoutes(app: Express) {
         }
       }
       const allPrayers = await db.select().from(prayers)
-        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .where(and(...conditions))
         .orderBy(desc(prayers.createdAt));
-      const cats = await db.select().from(prayerCategories);
+      const cats = await db
+        .select()
+        .from(prayerCategories)
+        .where(eq(prayerCategories.userId, userId));
       const catMap = new Map(cats.map(c => [c.id, c.name]));
 
       const showBody = includeBody !== "false";
@@ -277,13 +321,14 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.get("/api/prayers/needs-attention", async (req, res) => {
+  app.get("/api/prayers/needs-attention", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const fourteenDaysAgo = new Date();
       fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
       const allOpen = await db.select().from(prayers)
-        .where(eq(prayers.status, "OPEN"));
+        .where(and(eq(prayers.userId, userId), eq(prayers.status, "OPEN")));
 
       const needsAttention = allOpen.filter(p =>
         p.lastPrayedAt === null || p.lastPrayedAt < fourteenDaysAgo
@@ -303,10 +348,11 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.get("/api/prayers/recently-answered", async (req, res) => {
+  app.get("/api/prayers/recently-answered", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const result = await db.select().from(prayers)
-        .where(eq(prayers.status, "ANSWERED"))
+        .where(and(eq(prayers.userId, userId), eq(prayers.status, "ANSWERED")))
         .orderBy(desc(prayers.answeredAt))
         .limit(5);
 
@@ -316,16 +362,17 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.get("/api/prayers/grouped", async (req, res) => {
+  app.get("/api/prayers/grouped", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { status, groupBy } = req.query;
-      const conditions: any[] = [];
+      const conditions: any[] = [eq(prayers.userId, userId)];
       if (status && status !== "ALL") {
         conditions.push(eq(prayers.status, status as "OPEN" | "ANSWERED" | "ARCHIVED"));
       }
 
       const allPrayers = await db.select().from(prayers)
-        .where(conditions.length > 0 ? and(...conditions) : undefined);
+        .where(and(...conditions));
 
       if (groupBy === "officials") {
         const officialCounts = new Map<string, number>();
@@ -349,7 +396,10 @@ export function registerPrayerRoutes(app: Express) {
       }
 
       if (groupBy === "categories") {
-        const cats = await db.select().from(prayerCategories);
+        const cats = await db
+          .select()
+          .from(prayerCategories)
+          .where(eq(prayerCategories.userId, userId));
         const catMap = new Map(cats.map(c => [c.id, c.name]));
         const categoryCounts = new Map<string, number>();
         for (const p of allPrayers) {
@@ -371,10 +421,12 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.get("/api/prayers/upcoming", async (req, res) => {
+  app.get("/api/prayers/upcoming", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const result = await db.select().from(prayers)
         .where(and(
+          eq(prayers.userId, userId),
           eq(prayers.status, "OPEN"),
           not(isNull(prayers.eventDate)),
         ))
@@ -386,9 +438,14 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.get("/api/prayers/:id", async (req, res) => {
+  app.get("/api/prayers/:id", requireUser, async (req: Request, res: Response) => {
     try {
-      const [prayer] = await db.select().from(prayers).where(eq(prayers.id, req.params.id)).limit(1);
+      const userId = req.userId!;
+      const [prayer] = await db
+        .select()
+        .from(prayers)
+        .where(and(eq(prayers.id, req.params.id), eq(prayers.userId, userId)))
+        .limit(1);
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });
       res.json(prayer);
     } catch (err: any) {
@@ -396,8 +453,9 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/prayers/:id", async (req, res) => {
+  app.patch("/api/prayers/:id", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const parsed = updatePrayerSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.issues });
@@ -409,7 +467,11 @@ export function registerPrayerRoutes(app: Express) {
       if (updates.eventDate !== undefined) {
         updates.eventDate = updates.eventDate ? new Date(updates.eventDate) : null;
       }
-      const [prayer] = await db.update(prayers).set(updates).where(eq(prayers.id, req.params.id)).returning();
+      const [prayer] = await db
+        .update(prayers)
+        .set(updates)
+        .where(and(eq(prayers.id, req.params.id), eq(prayers.userId, userId)))
+        .returning();
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });
       res.json(prayer);
     } catch (err: any) {
@@ -417,9 +479,13 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.delete("/api/prayers/:id", async (req, res) => {
+  app.delete("/api/prayers/:id", requireUser, async (req: Request, res: Response) => {
     try {
-      const [prayer] = await db.delete(prayers).where(eq(prayers.id, req.params.id)).returning();
+      const userId = req.userId!;
+      const [prayer] = await db
+        .delete(prayers)
+        .where(and(eq(prayers.id, req.params.id), eq(prayers.userId, userId)))
+        .returning();
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });
       res.json({ success: true });
     } catch (err: any) {
@@ -429,8 +495,9 @@ export function registerPrayerRoutes(app: Express) {
 
   // ── Status Transitions ──
 
-  app.post("/api/prayers/:id/answer", async (req, res) => {
+  app.post("/api/prayers/:id/answer", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { answerNote } = req.body || {};
       const [prayer] = await db.update(prayers).set({
         status: "ANSWERED",
@@ -438,7 +505,7 @@ export function registerPrayerRoutes(app: Express) {
         answerNote: answerNote ?? null,
         archivedAt: null,
         updatedAt: new Date(),
-      }).where(eq(prayers.id, req.params.id)).returning();
+      }).where(and(eq(prayers.id, req.params.id), eq(prayers.userId, userId))).returning();
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });
       res.json(prayer);
     } catch (err: any) {
@@ -446,14 +513,15 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.post("/api/prayers/:id/reopen", async (req, res) => {
+  app.post("/api/prayers/:id/reopen", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const [prayer] = await db.update(prayers).set({
         status: "OPEN",
         answeredAt: null,
         archivedAt: null,
         updatedAt: new Date(),
-      }).where(eq(prayers.id, req.params.id)).returning();
+      }).where(and(eq(prayers.id, req.params.id), eq(prayers.userId, userId))).returning();
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });
       res.json(prayer);
     } catch (err: any) {
@@ -461,13 +529,14 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.post("/api/prayers/:id/archive", async (req, res) => {
+  app.post("/api/prayers/:id/archive", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const [prayer] = await db.update(prayers).set({
         status: "ARCHIVED",
         archivedAt: new Date(),
         updatedAt: new Date(),
-      }).where(eq(prayers.id, req.params.id)).returning();
+      }).where(and(eq(prayers.id, req.params.id), eq(prayers.userId, userId))).returning();
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });
       res.json(prayer);
     } catch (err: any) {
@@ -475,14 +544,15 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.post("/api/prayers/:id/unarchive", async (req, res) => {
+  app.post("/api/prayers/:id/unarchive", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const [prayer] = await db.update(prayers).set({
         status: "OPEN",
         archivedAt: null,
         answeredAt: null,
         updatedAt: new Date(),
-      }).where(eq(prayers.id, req.params.id)).returning();
+      }).where(and(eq(prayers.id, req.params.id), eq(prayers.userId, userId))).returning();
       if (!prayer) return res.status(404).json({ error: "Prayer not found" });
       res.json(prayer);
     } catch (err: any) {
@@ -492,8 +562,9 @@ export function registerPrayerRoutes(app: Express) {
 
   // ── Bulk Actions ──
 
-  app.post("/api/prayers/bulk", async (req, res) => {
+  app.post("/api/prayers/bulk", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { action, prayerIds, answerNote } = req.body;
       if (!action || !Array.isArray(prayerIds) || prayerIds.length === 0) {
         return res.status(400).json({ error: "action and prayerIds[] required" });
@@ -520,7 +591,11 @@ export function registerPrayerRoutes(app: Express) {
           break;
       }
 
-      const result = await db.update(prayers).set(updates).where(inArray(prayers.id, prayerIds)).returning();
+      const result = await db
+        .update(prayers)
+        .set(updates)
+        .where(and(eq(prayers.userId, userId), inArray(prayers.id, prayerIds)))
+        .returning();
       res.json({ updated: result.length, prayers: result });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -529,21 +604,37 @@ export function registerPrayerRoutes(app: Express) {
 
   // ── Daily Prayer Picks ──
 
-  app.get("/api/daily-prayer-picks", async (req, res) => {
+  app.get("/api/daily-prayer-picks", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const todayKey = getTodayDateKey();
       const forceRegenerate = req.query.forceRegenerate === "true";
 
       if (forceRegenerate) {
-        await db.delete(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, todayKey));
+        await db
+          .delete(dailyPrayerPicks)
+          .where(and(
+            eq(dailyPrayerPicks.userId, userId),
+            eq(dailyPrayerPicks.dateKey, todayKey),
+          ));
       }
 
       if (!forceRegenerate) {
-        const existing = await db.select().from(dailyPrayerPicks).where(eq(dailyPrayerPicks.dateKey, todayKey)).limit(1);
+        const existing = await db
+          .select()
+          .from(dailyPrayerPicks)
+          .where(and(
+            eq(dailyPrayerPicks.userId, userId),
+            eq(dailyPrayerPicks.dateKey, todayKey),
+          ))
+          .limit(1);
         if (existing.length > 0) {
           const ids = existing[0].prayerIds as string[];
           const prayerList = ids.length > 0
-            ? await db.select().from(prayers).where(inArray(prayers.id, ids))
+            ? await db
+                .select()
+                .from(prayers)
+                .where(and(eq(prayers.userId, userId), inArray(prayers.id, ids)))
             : [];
           const ordered = ids.map(id => prayerList.find(p => p.id === id)).filter(Boolean);
           return res.json({ dateKey: todayKey, prayers: ordered, generatedAt: existing[0].generatedAt });
@@ -553,8 +644,13 @@ export function registerPrayerRoutes(app: Express) {
       const yesterdayKey = getDateKeyNDaysAgo(1);
       const twoDaysAgoKey = getDateKeyNDaysAgo(2);
 
-      const recentPickRows = await db.select().from(dailyPrayerPicks)
-        .where(inArray(dailyPrayerPicks.dateKey, [yesterdayKey, twoDaysAgoKey]));
+      const recentPickRows = await db
+        .select()
+        .from(dailyPrayerPicks)
+        .where(and(
+          eq(dailyPrayerPicks.userId, userId),
+          inArray(dailyPrayerPicks.dateKey, [yesterdayKey, twoDaysAgoKey]),
+        ));
 
       const yesterdayIds: string[] = [];
       const twoDaysAgoIds: string[] = [];
@@ -565,7 +661,7 @@ export function registerPrayerRoutes(app: Express) {
       const recentIds = new Set([...yesterdayIds, ...twoDaysAgoIds]);
 
       const openPrayers = await db.select().from(prayers)
-        .where(eq(prayers.status, "OPEN"))
+        .where(and(eq(prayers.userId, userId), eq(prayers.status, "OPEN")))
         .orderBy(asc(prayers.lastShownAt));
 
       const picks: Prayer[] = [];
@@ -630,10 +726,11 @@ export function registerPrayerRoutes(app: Express) {
       if (pickIds.length > 0) {
         await db.update(prayers)
           .set({ lastShownAt: new Date() })
-          .where(inArray(prayers.id, pickIds));
+          .where(and(eq(prayers.userId, userId), inArray(prayers.id, pickIds)));
       }
 
       await db.insert(dailyPrayerPicks).values({
+        userId,
         dateKey: todayKey,
         prayerIds: pickIds,
       }).onConflictDoNothing();
@@ -646,22 +743,32 @@ export function registerPrayerRoutes(app: Express) {
 
   // ── Streak Tracking ──
 
-  app.get("/api/prayer-streak", async (req, res) => {
+  app.get("/api/prayer-streak", requireUser, async (req: Request, res: Response) => {
     try {
-      await ensureStreakRow();
-      const [streak] = await db.select().from(prayerStreak).limit(1);
+      const userId = req.userId!;
+      await ensureStreakRow(userId);
+      const [streak] = await db
+        .select()
+        .from(prayerStreak)
+        .where(eq(prayerStreak.userId, userId))
+        .limit(1);
       res.json(streak);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/prayer-streak/complete-today", async (req, res) => {
+  app.post("/api/prayer-streak/complete-today", requireUser, async (req: Request, res: Response) => {
     try {
-      await ensureStreakRow();
+      const userId = req.userId!;
+      await ensureStreakRow(userId);
       const todayKey = getTodayDateKey();
       const yesterdayKey = getYesterdayDateKey();
-      const [streak] = await db.select().from(prayerStreak).limit(1);
+      const [streak] = await db
+        .select()
+        .from(prayerStreak)
+        .where(eq(prayerStreak.userId, userId))
+        .limit(1);
 
       if (streak.lastCompletedDateKey === todayKey) {
         return res.json(streak);
@@ -682,8 +789,14 @@ export function registerPrayerRoutes(app: Express) {
       }).where(eq(prayerStreak.id, streak.id)).returning();
 
       try {
-        const todayPicks = await db.select().from(dailyPrayerPicks)
-          .where(eq(dailyPrayerPicks.dateKey, todayKey)).limit(1);
+        const todayPicks = await db
+          .select()
+          .from(dailyPrayerPicks)
+          .where(and(
+            eq(dailyPrayerPicks.userId, userId),
+            eq(dailyPrayerPicks.dateKey, todayKey),
+          ))
+          .limit(1);
         if (todayPicks.length > 0) {
           const pickIds = todayPicks[0].prayerIds as string[];
           if (pickIds.length > 0) {
@@ -692,6 +805,7 @@ export function registerPrayerRoutes(app: Express) {
             await db.update(prayers)
               .set({ lastPrayedAt: new Date(), updatedAt: new Date() })
               .where(and(
+                eq(prayers.userId, userId),
                 inArray(prayers.id, pickIds),
                 or(
                   isNull(prayers.lastPrayedAt),
@@ -709,8 +823,11 @@ export function registerPrayerRoutes(app: Express) {
   });
 
   // ── Auto-Archive Settings ──
+  // App-wide settings (currently shared across all users for backward compat).
+  // Mutations require an authenticated user so anonymous callers cannot
+  // tamper with the global toggle.
 
-  app.get("/api/settings/auto-archive", async (_req, res) => {
+  app.get("/api/settings/auto-archive", requireUser, async (_req: Request, res: Response) => {
     try {
       const rows = await db.select().from(appSettings)
         .where(inArray(appSettings.key, ["autoArchiveEnabled", "autoArchiveDays"]));
@@ -726,7 +843,7 @@ export function registerPrayerRoutes(app: Express) {
     }
   });
 
-  app.put("/api/settings/auto-archive", async (req, res) => {
+  app.put("/api/settings/auto-archive", requireUser, async (req: Request, res: Response) => {
     try {
       const { enabled, days } = req.body;
       const now = new Date();
@@ -757,10 +874,14 @@ export function registerPrayerRoutes(app: Express) {
 
   // ── Official Prayer Counts ──
 
-  app.get("/api/officials/:id/prayer-counts", async (req, res) => {
+  app.get("/api/officials/:id/prayer-counts", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { id: officialId } = req.params;
-      const allPrayers = await db.select().from(prayers);
+      const allPrayers = await db
+        .select()
+        .from(prayers)
+        .where(eq(prayers.userId, userId));
 
       let open = 0;
       let answered = 0;

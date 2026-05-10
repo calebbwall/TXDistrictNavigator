@@ -30,10 +30,14 @@ import {
 } from "@shared/schema";
 import { eq, and, isNull, desc, asc, gte, lte, sql, inArray } from "drizzle-orm";
 import { triggerRssPoll, triggerDailyRefresh, triggerFullLegislativeBootstrap } from "../jobs/scheduler";
+import { requireUser } from "../middleware/userAuth";
 
 function requireAdminSecret(req: Request, res: Response): boolean {
   const secret = process.env.ADMIN_CRON_SECRET;
-  if (!secret) return true; // not configured = open (dev mode)
+  if (!secret) {
+    res.status(503).json({ error: "Admin endpoint disabled: ADMIN_CRON_SECRET not configured" });
+    return false;
+  }
   const provided =
     req.headers["x-admin-secret"] ??
     req.headers["authorization"]?.replace("Bearer ", "");
@@ -52,10 +56,11 @@ export function registerLegislativeRoutes(app: Express): void {
    * Query: unreadOnly=true (default false)
    * Returns up to 100 most recent alerts for the default user.
    */
-  app.get("/api/alerts", async (req: Request, res: Response) => {
+  app.get("/api/alerts", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const unreadOnly = req.query.unreadOnly === "true";
-      const conditions = [eq(alerts.userId, "default")];
+      const conditions = [eq(alerts.userId, userId)];
       if (unreadOnly) conditions.push(isNull(alerts.readAt));
 
       const rows = await db
@@ -68,7 +73,7 @@ export function registerLegislativeRoutes(app: Express): void {
       const unreadCount = await db
         .select({ count: sql<number>`count(*)` })
         .from(alerts)
-        .where(and(eq(alerts.userId, "default"), isNull(alerts.readAt)));
+        .where(and(eq(alerts.userId, userId), isNull(alerts.readAt)));
 
       res.json({ alerts: rows, unreadCount: Number(unreadCount[0]?.count ?? 0) });
     } catch (err) {
@@ -81,13 +86,14 @@ export function registerLegislativeRoutes(app: Express): void {
    * POST /api/alerts/:id/read
    * Marks a single alert as read.
    */
-  app.post("/api/alerts/:id/read", async (req: Request, res: Response) => {
+  app.post("/api/alerts/:id/read", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { id } = req.params;
       const [updated] = await db
         .update(alerts)
         .set({ readAt: new Date() })
-        .where(and(eq(alerts.id, id), isNull(alerts.readAt)))
+        .where(and(eq(alerts.id, id), eq(alerts.userId, userId), isNull(alerts.readAt)))
         .returning({ id: alerts.id });
 
       if (!updated) {
@@ -105,20 +111,21 @@ export function registerLegislativeRoutes(app: Express): void {
    * Marks multiple alerts as read.
    * Body: { ids: string[] }  — pass [] to mark all as read.
    */
-  app.post("/api/alerts/mark-read", async (req: Request, res: Response) => {
+  app.post("/api/alerts/mark-read", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { ids } = req.body as { ids: string[] };
       const now = new Date();
       if (Array.isArray(ids) && ids.length > 0) {
         await db
           .update(alerts)
           .set({ readAt: now })
-          .where(and(eq(alerts.userId, "default"), isNull(alerts.readAt), inArray(alerts.id, ids)));
+          .where(and(eq(alerts.userId, userId), isNull(alerts.readAt), inArray(alerts.id, ids)));
       } else {
         await db
           .update(alerts)
           .set({ readAt: now })
-          .where(and(eq(alerts.userId, "default"), isNull(alerts.readAt)));
+          .where(and(eq(alerts.userId, userId), isNull(alerts.readAt)));
       }
       res.json({ success: true });
     } catch (err) {
@@ -132,17 +139,18 @@ export function registerLegislativeRoutes(app: Express): void {
    * Deletes multiple alerts.
    * Body: { ids: string[] }  — pass [] to delete all.
    */
-  app.delete("/api/alerts/bulk", async (req: Request, res: Response) => {
+  app.delete("/api/alerts/bulk", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { ids } = req.body as { ids: string[] };
       if (Array.isArray(ids) && ids.length > 0) {
         await db
           .delete(alerts)
-          .where(and(eq(alerts.userId, "default"), inArray(alerts.id, ids)));
+          .where(and(eq(alerts.userId, userId), inArray(alerts.id, ids)));
       } else {
         await db
           .delete(alerts)
-          .where(eq(alerts.userId, "default"));
+          .where(eq(alerts.userId, userId));
       }
       res.json({ success: true });
     } catch (err) {
@@ -155,12 +163,13 @@ export function registerLegislativeRoutes(app: Express): void {
    * DELETE /api/alerts/:id
    * Deletes a single alert.
    */
-  app.delete("/api/alerts/:id", async (req: Request, res: Response) => {
+  app.delete("/api/alerts/:id", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { id } = req.params;
       await db
         .delete(alerts)
-        .where(and(eq(alerts.id, id), eq(alerts.userId, "default")));
+        .where(and(eq(alerts.id, id), eq(alerts.userId, userId)));
       res.json({ success: true });
     } catch (err) {
       console.error("[api/alerts/:id] Error:", err);
@@ -392,8 +401,9 @@ export function registerLegislativeRoutes(app: Express): void {
    * POST /api/subscriptions
    * Body: { type, committeeId?, billId?, chamber?, officialPublicId? }
    */
-  app.post("/api/subscriptions", async (req: Request, res: Response) => {
+  app.post("/api/subscriptions", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { type, committeeId, billId, chamber, officialPublicId } = req.body as {
         type: string;
         committeeId?: string;
@@ -409,7 +419,7 @@ export function registerLegislativeRoutes(app: Express): void {
       const [inserted] = await db
         .insert(userSubscriptions)
         .values({
-          userId: "default",
+          userId,
           type: type as InsertUserSubscription["type"],
           committeeId: committeeId ?? undefined,
           billId: billId ?? undefined,
@@ -428,12 +438,13 @@ export function registerLegislativeRoutes(app: Express): void {
   /**
    * DELETE /api/subscriptions/:id
    */
-  app.delete("/api/subscriptions/:id", async (req: Request, res: Response) => {
+  app.delete("/api/subscriptions/:id", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { id } = req.params;
       const [deleted] = await db
         .delete(userSubscriptions)
-        .where(and(eq(userSubscriptions.id, id), eq(userSubscriptions.userId, "default")))
+        .where(and(eq(userSubscriptions.id, id), eq(userSubscriptions.userId, userId)))
         .returning({ id: userSubscriptions.id });
 
       if (!deleted) {
@@ -449,12 +460,13 @@ export function registerLegislativeRoutes(app: Express): void {
   /**
    * GET /api/subscriptions
    */
-  app.get("/api/subscriptions", async (_req: Request, res: Response) => {
+  app.get("/api/subscriptions", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const rows = await db
         .select()
         .from(userSubscriptions)
-        .where(eq(userSubscriptions.userId, "default"))
+        .where(eq(userSubscriptions.userId, userId))
         .orderBy(desc(userSubscriptions.createdAt));
       res.json({ subscriptions: rows });
     } catch (err) {
@@ -516,8 +528,9 @@ export function registerLegislativeRoutes(app: Express): void {
    * Body: { token: string, platform?: "android" | "ios" }
    * Registers or refreshes a device push token (idempotent).
    */
-  app.post("/api/push-tokens", async (req: Request, res: Response) => {
+  app.post("/api/push-tokens", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { token, platform } = req.body as { token?: string; platform?: string };
       if (!token || typeof token !== "string") {
         res.status(400).json({ error: "token is required" });
@@ -527,14 +540,14 @@ export function registerLegislativeRoutes(app: Express): void {
       await db
         .insert(pushTokens)
         .values({
-          userId: "default",
+          userId,
           token,
           platform: platform ?? null,
           lastSeenAt: new Date(),
         } satisfies InsertPushToken)
         .onConflictDoUpdate({
           target: pushTokens.token,
-          set: { lastSeenAt: new Date(), platform: platform ?? null },
+          set: { userId, lastSeenAt: new Date(), platform: platform ?? null },
         });
 
       res.json({ ok: true });
@@ -547,10 +560,13 @@ export function registerLegislativeRoutes(app: Express): void {
    * DELETE /api/push-tokens/:token
    * Unregisters a device push token.
    */
-  app.delete("/api/push-tokens/:token", async (req: Request, res: Response) => {
+  app.delete("/api/push-tokens/:token", requireUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.userId!;
       const { token } = req.params;
-      await db.delete(pushTokens).where(eq(pushTokens.token, token));
+      await db
+        .delete(pushTokens)
+        .where(and(eq(pushTokens.token, token), eq(pushTokens.userId, userId)));
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: String(err) });

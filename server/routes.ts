@@ -6,6 +6,8 @@ import { registerAiRoutes } from "./routes/aiRoutes";
 import { registerMapRoutes } from "./routes/mapRoutes";
 import { registerAdminRoutes } from "./routes/adminRoutes";
 import { registerOfficialsRoutes } from "./routes/officialsRoutes";
+import { registerAuthRoutes } from "./routes/authRoutes";
+import { initUserAuth } from "./middleware/userAuth";
 import { officialPublic, officialPrivate, type MergedOfficial } from "@shared/schema";
 import { committees, committeeMemberships } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -41,6 +43,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   startOfficialsRefreshScheduler();
 
+  initUserAuth();
+  registerAuthRoutes(app);
   registerPrayerRoutes(app);
   registerLegislativeRoutes(app);
   registerAiRoutes(app);

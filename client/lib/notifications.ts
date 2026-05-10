@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { getApiUrl } from "@/lib/query-client";
+import { getAuthHeaders } from "@/lib/userAuth";
 
 // Keys for stored notification identifiers
 const DAILY_PRAYER_NOTIF_KEY = "notif:dailyPrayer";
@@ -186,9 +187,10 @@ export async function registerAndSyncPushToken(): Promise<void> {
     if (stored === token) return;
 
     const base = getApiUrl();
+    const authHeaders = await getAuthHeaders();
     await fetch(`${base}/api/push-tokens`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({ token, platform: Platform.OS }),
     });
 

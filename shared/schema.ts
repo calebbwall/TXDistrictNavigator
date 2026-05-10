@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, json, pgEnum, uniqueIndex, index, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, json, pgEnum, uniqueIndex, index, integer, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -252,16 +252,20 @@ export const prayerCategories = pgTable("prayer_categories", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
-  name: varchar("name", { length: 255 }).notNull().unique(),
+  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+  name: varchar("name", { length: 255 }).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userNameUnique: uniqueIndex("prayer_categories_user_name_idx").on(table.userId, table.name),
+}));
 
 export const prayers = pgTable("prayers", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
   title: varchar("title", { length: 500 }).notNull(),
   body: text("body").notNull(),
   status: prayerStatusEnum("status").default("OPEN").notNull(),
@@ -281,22 +285,30 @@ export const prayers = pgTable("prayers", {
   eventDate: timestamp("event_date"),
   autoAfterEventAction: varchar("auto_after_event_action", { length: 20 }).default("none").notNull(),
   autoAfterEventDaysOffset: integer("auto_after_event_days_offset").default(0).notNull(),
-});
+}, (table) => ({
+  userStatusIdx: index("prayers_user_status_idx").on(table.userId, table.status),
+}));
 
 export const dailyPrayerPicks = pgTable("daily_prayer_picks", {
-  dateKey: varchar("date_key", { length: 10 }).primaryKey(),
+  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+  dateKey: varchar("date_key", { length: 10 }).notNull(),
   prayerIds: json("prayer_ids").$type<string[]>().notNull(),
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.dateKey] }),
+}));
 
 export const prayerStreak = pgTable("prayer_streak", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
   currentStreak: integer("current_streak").default(0).notNull(),
   lastCompletedDateKey: varchar("last_completed_date_key", { length: 10 }),
   longestStreak: integer("longest_streak").default(0).notNull(),
-});
+}, (table) => ({
+  userIdUnique: uniqueIndex("prayer_streak_user_id_idx").on(table.userId),
+}));
 
 export const appSettings = pgTable("app_settings", {
   id: varchar("id")
