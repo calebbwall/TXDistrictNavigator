@@ -6,6 +6,7 @@ import {
   checkAndRefreshIfChanged,
   getAllRefreshStates,
   getIsRefreshing,
+  backfillCapitolContactInfo,
 } from "../jobs/refreshOfficials";
 import { startOfficialsRefreshScheduler, getSchedulerStatus } from "../jobs/scheduler";
 import {
@@ -452,6 +453,38 @@ export function registerAdminRoutes(app: Express): void {
       console.error("[Admin] Headshot backfill error:", err);
       if (!res.headersSent) {
         res.status(500).json({ error: "Headshot backfill failed" });
+      }
+    }
+  });
+
+  app.post("/admin/backfill/capitol-contact", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+
+      if (providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid admin token" });
+      }
+
+      res.json({ message: "Capitol contact backfill started" });
+
+      backfillCapitolContactInfo()
+        .then((r) => {
+          console.log(
+            `[Admin] Capitol contact backfill done: total=${r.total} updated=${r.updated} notFound=${r.notFound} errors=${r.errors}`,
+          );
+        })
+        .catch((err) => {
+          console.error("[Admin] Capitol contact backfill failed:", err);
+        });
+    } catch (err) {
+      console.error("[Admin] Capitol contact backfill error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Capitol contact backfill failed" });
       }
     }
   });

@@ -155,6 +155,154 @@ async function markCheckedOnly(source: SourceType): Promise<void> {
   }
 }
 
+type ContactFallbackTarget = {
+  capitolAddress?: string | null;
+  capitolPhone?: string | null;
+  capitolRoom?: string | null;
+  districtAddresses?: string[] | null;
+  districtPhones?: string[] | null;
+  email?: string | null;
+  searchZips?: string | null;
+  searchCities?: string | null;
+};
+
+async function applyTribuneContactFallback(
+  fullName: string,
+  target: ContactFallbackTarget,
+): Promise<boolean> {
+  const needsAny =
+    !target.capitolAddress ||
+    !target.capitolPhone ||
+    !target.capitolRoom ||
+    !target.districtAddresses ||
+    target.districtAddresses.length === 0 ||
+    !target.districtPhones ||
+    target.districtPhones.length === 0 ||
+    !target.email;
+
+  if (!needsAny) return false;
+
+  try {
+    const { lookupContactInfoFromTexasTribune } = await import("../lib/texasTribuneLookup");
+    const info = await lookupContactInfoFromTexasTribune(fullName);
+    if (!info.success) return false;
+
+    let mutated = false;
+    if (!target.capitolAddress && info.capitolAddress) {
+      target.capitolAddress = info.capitolAddress;
+      mutated = true;
+    }
+    if (!target.capitolPhone && info.capitolPhone) {
+      target.capitolPhone = info.capitolPhone;
+      mutated = true;
+    }
+    if (!target.capitolRoom && info.capitolRoom) {
+      target.capitolRoom = info.capitolRoom;
+      mutated = true;
+    }
+    if ((!target.districtAddresses || target.districtAddresses.length === 0) && info.districtAddress) {
+      target.districtAddresses = [info.districtAddress];
+      mutated = true;
+    }
+    if ((!target.districtPhones || target.districtPhones.length === 0) && info.districtPhone) {
+      target.districtPhones = [info.districtPhone];
+      mutated = true;
+    }
+    if (!target.email && info.capitolEmail) {
+      target.email = info.capitolEmail;
+      mutated = true;
+    }
+
+    if (mutated) {
+      const merged: string[] = [];
+      if (target.capitolAddress) merged.push(target.capitolAddress);
+      if (target.districtAddresses) merged.push(...target.districtAddresses);
+      if (merged.length > 0) {
+        target.searchZips = extractSearchZips(merged);
+        target.searchCities = extractSearchCities(merged);
+      }
+      console.log(`[RefreshOfficials] Tribune contact fallback applied for ${fullName}`);
+    }
+    return mutated;
+  } catch (err) {
+    console.log(`[RefreshOfficials] Tribune contact fallback failed for ${fullName}: ${err}`);
+    return false;
+  }
+}
+
+export interface CapitolBackfillResult {
+  total: number;
+  updated: number;
+  notFound: number;
+  errors: number;
+}
+
+export async function backfillCapitolContactInfo(): Promise<CapitolBackfillResult> {
+  const result: CapitolBackfillResult = { total: 0, updated: 0, notFound: 0, errors: 0 };
+
+  const officials = await db
+    .select()
+    .from(officialPublic)
+    .where(
+      and(
+        eq(officialPublic.active, true),
+        sql`${officialPublic.source} IN ('TX_HOUSE','TX_SENATE')`,
+        sql`(
+          ${officialPublic.capitolAddress} IS NULL OR ${officialPublic.capitolAddress} = ''
+          OR ${officialPublic.capitolPhone} IS NULL OR ${officialPublic.capitolPhone} = ''
+          OR ${officialPublic.capitolRoom} IS NULL OR ${officialPublic.capitolRoom} = ''
+        )`,
+      ),
+    );
+
+  result.total = officials.length;
+  console.log(`[RefreshOfficials] Capitol backfill: ${officials.length} officials with missing Capitol contact info`);
+
+  for (const official of officials) {
+    const target: ContactFallbackTarget = {
+      capitolAddress: official.capitolAddress,
+      capitolPhone: official.capitolPhone,
+      capitolRoom: official.capitolRoom,
+      districtAddresses: official.districtAddresses ?? null,
+      districtPhones: official.districtPhones ?? null,
+      email: official.email,
+      searchZips: official.searchZips,
+      searchCities: official.searchCities,
+    };
+
+    try {
+      const mutated = await applyTribuneContactFallback(official.fullName, target);
+      if (mutated) {
+        await db
+          .update(officialPublic)
+          .set({
+            capitolAddress: target.capitolAddress ?? null,
+            capitolPhone: target.capitolPhone ?? null,
+            capitolRoom: target.capitolRoom ?? null,
+            districtAddresses: target.districtAddresses ?? null,
+            districtPhones: target.districtPhones ?? null,
+            email: target.email ?? null,
+            searchZips: target.searchZips ?? null,
+            searchCities: target.searchCities ?? null,
+          })
+          .where(eq(officialPublic.id, official.id));
+        result.updated++;
+      } else {
+        result.notFound++;
+      }
+    } catch (err) {
+      console.error(`[RefreshOfficials] Backfill error for ${official.fullName}:`, err);
+      result.errors++;
+    }
+    await new Promise((r) => setTimeout(r, 800));
+  }
+
+  console.log(
+    `[RefreshOfficials] Capitol backfill complete: updated=${result.updated} notFound=${result.notFound} errors=${result.errors}`,
+  );
+  return result;
+}
+
 async function fetchTLOListPage(chamber: "house" | "senate"): Promise<string> {
   const chamberParam = chamber === "house" ? "H" : "S";
   const listUrl = `${TLO_BASE_URL}/Members/Members.aspx?Chamber=${chamberParam}`;
@@ -612,6 +760,9 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
               console.log(`[RefreshOfficials] Headshot lookup failed for ${record.fullName}`);
             }
           }
+          if (source === "TX_HOUSE" || source === "TX_SENATE") {
+            await applyTribuneContactFallback(record.fullName, updateData);
+          }
           await db.update(officialPublic)
             .set(updateData)
             .where(eq(officialPublic.id, existing[0].id));
@@ -626,6 +777,9 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
             } catch (err) {
               console.log(`[RefreshOfficials] Headshot lookup failed for ${record.fullName}`);
             }
+          }
+          if (source === "TX_HOUSE" || source === "TX_SENATE") {
+            await applyTribuneContactFallback(record.fullName, insertData);
           }
           await db.insert(officialPublic).values(insertData);
         }

@@ -1,5 +1,6 @@
 // @ts-ignore - node-fetch types not installed
 import fetch from "node-fetch";
+import * as cheerio from "cheerio";
 
 interface HometownResult {
   hometown: string | null;
@@ -306,4 +307,123 @@ export async function lookupHeadshotFromTexasTribune(fullName: string): Promise<
   }
   
   return { photoUrl: null, success: false, error: "Headshot not found" };
+}
+
+export interface ContactInfoResult {
+  capitolAddress: string | null;
+  capitolPhone: string | null;
+  capitolRoom: string | null;
+  capitolEmail: string | null;
+  districtAddress: string | null;
+  districtPhone: string | null;
+  success: boolean;
+  error?: string;
+}
+
+function cleanCellText(text: string): string {
+  return text.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseOfficeSection(
+  $: cheerio.CheerioAPI,
+  sectionSelector: string,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  const section = $(sectionSelector).first();
+  if (section.length === 0) return result;
+
+  section.find("table tr").each((_, tr) => {
+    const cells = $(tr).find("td");
+    if (cells.length < 2) return;
+    const labelRaw = cleanCellText($(cells[0]).text()).toLowerCase();
+    const valueCell = $(cells[1]);
+    valueCell.find("br").replaceWith("\n");
+    const valueText = valueCell
+      .text()
+      .split("\n")
+      .map((s) => cleanCellText(s))
+      .filter(Boolean)
+      .join(", ");
+    if (!labelRaw || !valueText) return;
+    result[labelRaw] = valueText;
+  });
+
+  return result;
+}
+
+function parseContactInfoFromHtml(html: string): Omit<ContactInfoResult, "success" | "error"> {
+  const $ = cheerio.load(html);
+
+  const capitol = parseOfficeSection($, 'section[aria-labelledby="main-office-heading"]');
+  const district = parseOfficeSection($, 'section[aria-labelledby="district-office-heading"]');
+
+  const capitolAddress = capitol["mailing address"] || capitol["address"] || null;
+  const capitolPhone = capitol["phone"] || null;
+  const capitolRoom = capitol["room"] || null;
+  const capitolEmail = capitol["email"] || null;
+  const districtAddress = district["address"] || district["mailing address"] || null;
+  const districtPhone = district["phone"] || null;
+
+  return {
+    capitolAddress,
+    capitolPhone,
+    capitolRoom,
+    capitolEmail,
+    districtAddress,
+    districtPhone,
+  };
+}
+
+export async function lookupContactInfoFromTexasTribune(
+  fullName: string,
+): Promise<ContactInfoResult> {
+  const slugs = generateSlugVariants(fullName);
+
+  for (const slug of slugs) {
+    const url = `https://directory.texastribune.org/${slug}/`;
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "TXDistrictNavigator/1.0 (civic-engagement-app)",
+          "Accept": "text/html",
+        },
+        redirect: "follow",
+      });
+
+      if (!response.ok) continue;
+
+      const html = await response.text();
+      if (html.includes("Page not found") || html.includes("<title>404</title>")) continue;
+
+      const parsed = parseContactInfoFromHtml(html);
+      const hasAny =
+        parsed.capitolAddress ||
+        parsed.capitolPhone ||
+        parsed.capitolRoom ||
+        parsed.capitolEmail ||
+        parsed.districtAddress ||
+        parsed.districtPhone;
+
+      if (hasAny) {
+        console.log(
+          `[TexasTribune] Found contact info for "${fullName}" via slug "${slug}"`,
+        );
+        return { ...parsed, success: true };
+      }
+    } catch (error) {
+      console.log(`[TexasTribune] Error fetching contact info ${slug}:`, error);
+    }
+  }
+
+  return {
+    capitolAddress: null,
+    capitolPhone: null,
+    capitolRoom: null,
+    capitolEmail: null,
+    districtAddress: null,
+    districtPhone: null,
+    success: false,
+    error: "Contact info not found",
+  };
 }
