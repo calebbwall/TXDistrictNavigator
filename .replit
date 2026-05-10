@@ -6,8 +6,8 @@ channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "autoscale"
-build = ["bash", "-c", "npm run server:build && npx drizzle-kit push --force"]
-run = ["npm", "run", "server:prod"]
+build = ["bash", "-c", "npm run server:build"]
+run = ["bash", "-c", "npx drizzle-kit push --force && npm run server:prod"]
 
 [[ports]]
 localPort = 8081
