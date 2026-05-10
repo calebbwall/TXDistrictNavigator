@@ -8,7 +8,7 @@ import { registerAdminRoutes } from "./routes/adminRoutes";
 import { registerOfficialsRoutes } from "./routes/officialsRoutes";
 import { registerAuthRoutes } from "./routes/authRoutes";
 import { initUserAuth } from "./middleware/userAuth";
-import { officialPublic, officialPrivate, type MergedOfficial } from "@shared/schema";
+import { officialPublic, type MergedOfficial } from "@shared/schema";
 import { committees, committeeMemberships } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { mergeOfficial } from "./lib/officialUtils";
@@ -222,11 +222,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       const officials = await db.select().from(officialPublic).where(and(...conditions));
 
-      const privateData = await db.select().from(officialPrivate);
-      const privateMap = new Map(privateData.map((p) => [p.officialPublicId, p]));
-
       const merged: MergedOfficial[] = officials.map((pub) =>
-        mergeOfficial(pub, privateMap.get(pub.id) || null)
+        mergeOfficial(pub, null)
       );
 
       if (grouped === "true") {

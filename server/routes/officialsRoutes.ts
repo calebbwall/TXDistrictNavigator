@@ -16,6 +16,21 @@ import {
   type DistrictSourceType,
   type DistrictType,
 } from "../lib/officialUtils";
+import { requireUser } from "../middleware/userAuth";
+
+function requireAdminToken(req: import("express").Request, res: import("express").Response): boolean {
+  const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+  if (!adminToken) {
+    res.status(503).json({ error: "Admin endpoint not configured" });
+    return false;
+  }
+  const provided = req.headers["x-admin-token"];
+  if (!provided || provided !== adminToken) {
+    res.status(401).json({ error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
 
 export function registerOfficialsRoutes(app: Express): void {
   app.get("/api/officials", async (req, res) => {
@@ -54,11 +69,8 @@ export function registerOfficialsRoutes(app: Express): void {
         .from(officialPublic)
         .where(conditions.length > 0 ? and(...conditions) : undefined);
 
-      const privateData = await db.select().from(officialPrivate);
-      const privateMap = new Map(privateData.map((p) => [p.officialPublicId, p]));
-
       let officials: MergedOfficial[] = publicOfficials.map((pub) =>
-        mergeOfficial(pub, privateMap.get(pub.id) || null)
+        mergeOfficial(pub, null)
       );
 
       if (isAllSources || !sourceFilter) {
@@ -137,6 +149,7 @@ export function registerOfficialsRoutes(app: Express): void {
   });
 
   app.post("/api/officials/batch-backfill", async (req, res) => {
+    if (!requireAdminToken(req, res)) return;
     try {
       const { officialIds } = req.body;
 
@@ -152,7 +165,8 @@ export function registerOfficialsRoutes(app: Express): void {
           personalAddress: officialPrivate.personalAddress,
           addressSource: officialPrivate.addressSource,
         })
-        .from(officialPrivate);
+        .from(officialPrivate)
+        .where(eq(officialPrivate.userId, "default"));
 
       const privateMap = new Map(privateRecords.map((r) => [r.officialPublicId, r]));
 
@@ -172,6 +186,7 @@ export function registerOfficialsRoutes(app: Express): void {
   });
 
   app.get("/api/officials/backfill-audit", async (req, res) => {
+    if (!requireAdminToken(req, res)) return;
     try {
       const allPublic = await db
         .select({
@@ -183,7 +198,7 @@ export function registerOfficialsRoutes(app: Express): void {
         .from(officialPublic)
         .where(eq(officialPublic.active, true));
 
-      const allPrivate = await db.select().from(officialPrivate);
+      const allPrivate = await db.select().from(officialPrivate).where(eq(officialPrivate.userId, "default"));
       const privMap = new Map(allPrivate.map((p) => [p.officialPublicId, p]));
 
       const { isEffectivelyEmpty } = await import("../lib/backfillUtils");
@@ -231,7 +246,8 @@ export function registerOfficialsRoutes(app: Express): void {
   });
 
   // IMPORTANT: This route must come BEFORE /api/officials/:id to avoid matching "with-addresses" as an ID
-  app.get("/api/officials/with-addresses", async (_req, res) => {
+  app.get("/api/officials/with-addresses", async (req, res) => {
+    if (!requireAdminToken(req, res)) return;
     try {
       const results = await db
         .select({
@@ -245,6 +261,7 @@ export function registerOfficialsRoutes(app: Express): void {
         .where(
           and(
             eq(officialPublic.active, true),
+            eq(officialPrivate.userId, "default"),
             sql`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
           )
         );
@@ -295,13 +312,7 @@ export function registerOfficialsRoutes(app: Express): void {
           return res.json({ official: createVacantOfficial(source, parseInt(district, 10)) });
         }
 
-        const [priv] = await db
-          .select()
-          .from(officialPrivate)
-          .where(eq(officialPrivate.officialPublicId, pub.id))
-          .limit(1);
-
-        const official = mergeOfficial(pub, priv || null);
+        const official = mergeOfficial(pub, null);
         official.isVacant = false;
         return res.json({ official });
       }
@@ -316,13 +327,7 @@ export function registerOfficialsRoutes(app: Express): void {
         return res.status(404).json({ error: "Official not found" });
       }
 
-      const [priv] = await db
-        .select()
-        .from(officialPrivate)
-        .where(eq(officialPrivate.officialPublicId, id))
-        .limit(1);
-
-      const official = mergeOfficial(pub, priv || null);
+      const official = mergeOfficial(pub, null);
       official.isVacant = false;
       res.json({ official });
     } catch (err) {
@@ -363,13 +368,7 @@ export function registerOfficialsRoutes(app: Express): void {
         return res.status(404).json({ error: "Official not found" });
       }
 
-      const [priv] = await db
-        .select()
-        .from(officialPrivate)
-        .where(eq(officialPrivate.officialPublicId, pub.id))
-        .limit(1);
-
-      res.json({ official: mergeOfficial(pub, priv || null) });
+      res.json({ official: mergeOfficial(pub, null) });
     } catch (err) {
       console.error("[API] Error fetching official by district:", err);
       res.status(500).json({ error: "Failed to fetch official" });
@@ -403,12 +402,7 @@ export function registerOfficialsRoutes(app: Express): void {
           .limit(1);
 
         if (pub) {
-          const [priv] = await db
-            .select()
-            .from(officialPrivate)
-            .where(eq(officialPrivate.officialPublicId, pub.id))
-            .limit(1);
-          results.push(mergeOfficial(pub, priv || null));
+          results.push(mergeOfficial(pub, null));
         } else {
           results.push(createVacantOfficial(source, districtNumber));
         }
@@ -421,7 +415,7 @@ export function registerOfficialsRoutes(app: Express): void {
     }
   });
 
-  app.patch("/api/officials/:id/private", async (req, res) => {
+  app.patch("/api/officials/:id/private", requireUser, async (req, res) => {
     try {
       const { id } = req.params;
 
@@ -444,17 +438,19 @@ export function registerOfficialsRoutes(app: Express): void {
 
       const updateData = parseResult.data;
 
+      const userId = req.userId!;
+
       const [existing] = await db
         .select()
         .from(officialPrivate)
-        .where(eq(officialPrivate.officialPublicId, id))
+        .where(and(eq(officialPrivate.officialPublicId, id), eq(officialPrivate.userId, userId)))
         .limit(1);
 
       if (existing) {
         await db
           .update(officialPrivate)
           .set({ ...updateData, addressSource: "user", updatedAt: new Date() })
-          .where(eq(officialPrivate.id, existing.id));
+          .where(and(eq(officialPrivate.id, existing.id), eq(officialPrivate.userId, userId)));
       } else {
         let finalUpdateData = { ...updateData };
         let autoFilled = false;
@@ -484,6 +480,7 @@ export function registerOfficialsRoutes(app: Express): void {
         }
 
         await db.insert(officialPrivate).values({
+          userId,
           officialPublicId: id,
           ...finalUpdateData,
           addressSource: autoFilled ? "tribune" : "user",
@@ -491,13 +488,7 @@ export function registerOfficialsRoutes(app: Express): void {
         });
       }
 
-      const [updatedPriv] = await db
-        .select()
-        .from(officialPrivate)
-        .where(eq(officialPrivate.officialPublicId, id))
-        .limit(1);
-
-      res.json({ official: mergeOfficial(pub, updatedPriv) });
+      res.json({ official: mergeOfficial(pub, null) });
     } catch (err) {
       console.error("[API] Error updating private data:", err);
       res.status(500).json({ error: "Failed to update private data" });

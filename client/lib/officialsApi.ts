@@ -1,4 +1,5 @@
 import { getApiUrl } from "./query-client";
+import { getAuthHeaders } from "./userAuth";
 
 export type DistrictType = "tx_senate" | "tx_house" | "us_congress";
 
@@ -124,10 +125,12 @@ export async function updateOfficialPrivate(
 ): Promise<MergedOfficial | null> {
   try {
     const url = new URL(`/api/officials/${id}/private`, getApiUrl());
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(url.toString(), {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders,
       },
       body: JSON.stringify(privateData),
     });

@@ -52,13 +52,14 @@ export const officialPublic = pgTable("official_public", {
 }));
 
 // Official private data - user-entered only, never touched by refresh
-// Now keyed by personId for continuity across position changes
+// Scoped per device-user so each device only reads and writes its own records.
 export const officialPrivate = pgTable("official_private", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
   personId: varchar("person_id", { length: 255 })
-    .references(() => persons.id), // New: keyed by person for continuity
+    .references(() => persons.id), // Keyed by person for continuity across position changes
   officialPublicId: varchar("official_public_id", { length: 255 })
     .references(() => officialPublic.id), // Legacy: kept for backwards compatibility
   personalPhone: varchar("personal_phone", { length: 50 }),
@@ -71,7 +72,9 @@ export const officialPrivate = pgTable("official_private", {
   notes: text("notes"),
   tags: json("tags").$type<string[]>(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userOfficialUnique: uniqueIndex("official_private_user_official_idx").on(table.userId, table.officialPublicId),
+}));
 
 // Refresh state tracking - fingerprints and timestamps per source
 export const refreshState = pgTable("refresh_state", {

@@ -1,6 +1,4 @@
 import {
-  officialPublic,
-  officialPrivate,
   DISTRICT_RANGES,
   type MergedOfficial,
   type OfficialPublic,
@@ -19,22 +17,8 @@ export function sourceFromDistrictType(dt: DistrictType): DistrictSourceType {
   }
 }
 
-export function mergeOfficial(pub: OfficialPublic, priv: OfficialPrivate | null): MergedOfficial {
+export function mergeOfficial(pub: OfficialPublic, _priv: OfficialPrivate | null): MergedOfficial {
   const merged: MergedOfficial = { ...pub };
-  if (priv) {
-    merged.private = {
-      personalPhone: priv.personalPhone,
-      personalAddress: priv.personalAddress,
-      spouseName: priv.spouseName,
-      childrenNames: priv.childrenNames,
-      birthday: priv.birthday,
-      anniversary: priv.anniversary,
-      notes: priv.notes,
-      tags: priv.tags,
-      updatedAt: priv.updatedAt,
-      addressSource: priv.addressSource,
-    };
-  }
   return merged;
 }
 
