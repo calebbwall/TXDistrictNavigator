@@ -151,12 +151,17 @@ function parseHtmlPageAsItem(html: string, feedUrl: string): RssEntry | null {
   // metadata without re-alerting.
   const fp = crypto.createHash("sha256").update(html).digest("hex").slice(0, 8);
   const dateKey = new Date().toISOString().slice(0, 10);
+  // publishedAt MUST be stable per (feed,day) because it is included in
+  // itemFingerprint(). Using `new Date()` would change the fingerprint on
+  // every poll even when the page content is identical, generating noisy
+  // DB updates and weakening real change detection. Anchoring to start of
+  // day (UTC) makes the fingerprint deterministic for the whole day.
   return {
     guid: `${feedUrl}#${dateKey}`,
     title,
     link: feedUrl,
     summary: `Page content updated (fingerprint ${fp})`,
-    publishedAt: new Date(),
+    publishedAt: new Date(`${dateKey}T00:00:00Z`),
   };
 }
 

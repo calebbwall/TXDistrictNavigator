@@ -112,12 +112,19 @@ async function runRefreshCycle(): Promise<void> {
 
 async function schedulerTick(): Promise<void> {
   try {
-    const officialsRefreshing = getIsRefreshing();
-    const geoJSONRefreshing = getIsRefreshingGeoJSON();
-    const committeesRefreshing = getIsRefreshingCommittees();
-    
-    if (officialsRefreshing || geoJSONRefreshing || committeesRefreshing || refreshCycleInProgress) {
-      console.log("[Scheduler] Refresh in progress, skipping tick");
+    // Cross-check ALL heavy jobs (officials, geo, committees, RSS poll, daily
+    // legislative refresh, refresh cycle in progress). If anything is mid-flight,
+    // skip — the weekly cycle holds DB clients for many minutes and must not
+    // dogpile concurrent jobs.
+    if (
+      getIsRefreshing() ||
+      getIsRefreshingGeoJSON() ||
+      getIsRefreshingCommittees() ||
+      getIsPollingRss() ||
+      getIsDailyRefreshing() ||
+      refreshCycleInProgress
+    ) {
+      console.log("[Scheduler] Heavy job in progress, skipping tick");
       return;
     }
 

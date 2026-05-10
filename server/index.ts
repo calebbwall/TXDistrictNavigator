@@ -4,9 +4,53 @@ import { createServer } from "node:http";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
+import { spawn } from "node:child_process";
 import { db } from "./db";
 import { alerts } from "@shared/schema";
 import { and, eq, like } from "drizzle-orm";
+
+/**
+ * Apply Drizzle schema changes at startup. This is the LAST line of defense
+ * against schema drift — even if someone bypasses the Replit workflow / deploy
+ * build hook (e.g. by running `npm run dev` or `tsx server/index.ts` directly),
+ * the schema gets pushed before any background job runs. `--force` skips the
+ * interactive data-loss prompts (we already gate destructive migrations
+ * separately).
+ *
+ * Idempotent: drizzle-kit prints "[i] No changes detected" when up-to-date.
+ */
+function applySchemaMigrations(): Promise<void> {
+  return new Promise((resolve) => {
+    if (process.env.SKIP_STARTUP_DB_PUSH === "1") {
+      console.log("[Startup] SKIP_STARTUP_DB_PUSH=1 — skipping drizzle-kit push");
+      return resolve();
+    }
+    console.log("[Startup] Applying Drizzle schema (drizzle-kit push --force)...");
+    const t0 = Date.now();
+    const child = spawn("npx", ["drizzle-kit", "push", "--force"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+    });
+    let out = "";
+    child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    child.stderr.on("data", (d: Buffer) => { out += d.toString(); });
+    child.on("close", (code: number | null) => {
+      const ms = Date.now() - t0;
+      if (code === 0) {
+        console.log(`[Startup] Schema push OK (${ms}ms): ${out.split("\n").filter(Boolean).slice(-3).join(" | ")}`);
+      } else {
+        console.error(`[Startup] Schema push FAILED (exit=${code}, ${ms}ms):\n${out}`);
+        // Don't crash — server should keep running so /status stays green.
+        // The failure log surfaces in deployment logs for the user to see.
+      }
+      resolve();
+    });
+    child.on("error", (err) => {
+      console.error("[Startup] Could not spawn drizzle-kit:", err);
+      resolve();
+    });
+  });
+}
 const app = express();
 
 // ── Process-level safety nets ──
@@ -340,6 +384,10 @@ server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
     setupRequestLogging(app);
 
     configureExpoAndLanding(app);
+    // Run schema migrations BEFORE registerRoutes (which starts the schedulers
+    // that issue queries against the schema). HTTP listener is already bound,
+    // so /status returns 200 throughout.
+    await applySchemaMigrations();
     await registerRoutes(app);
     setupErrorHandler(app);
     await cleanupBootstrapAlerts();
