@@ -113,6 +113,12 @@ export function registerAdminRoutes(app: Express): void {
       const isRefreshingGeoJSON = getIsRefreshingGeoJSON();
       const isRefreshingCommittees = getIsRefreshingCommittees();
 
+      const { listScraperAlerts, countActiveScraperAlerts } = await import("../jobs/scraperAlerts");
+      const [scraperAlertsActive, scraperAlertsCount] = await Promise.all([
+        listScraperAlerts({ limit: 25 }),
+        countActiveScraperAlerts(),
+      ]);
+
       res.json({
         isRefreshing,
         isRefreshingGeoJSON,
@@ -121,6 +127,10 @@ export function registerAdminRoutes(app: Express): void {
         officialsSources: refreshStates,
         geoJSONSources: geoJSONStates,
         committeeSources: committeeStates,
+        scraperAlerts: {
+          activeCount: scraperAlertsCount,
+          recent: scraperAlertsActive,
+        },
       });
     } catch (err) {
       console.error("[Admin] Status error:", err);
@@ -559,6 +569,12 @@ export function registerAdminRoutes(app: Express): void {
       const committeesStates = await getAllCommitteeRefreshStates();
       const schedulerStatus = getSchedulerStatus();
 
+      const { listScraperAlerts, countActiveScraperAlerts } = await import("../jobs/scraperAlerts");
+      const [scraperAlertsActive, scraperAlertsCount] = await Promise.all([
+        listScraperAlerts({ limit: 25 }),
+        countActiveScraperAlerts(),
+      ]);
+
       const datasets = {
         officials: {
           TX_HOUSE: officialsStates.find((s) => s.source === "TX_HOUSE") || null,
@@ -576,10 +592,60 @@ export function registerAdminRoutes(app: Express): void {
         scheduler: schedulerStatus,
         datasets,
         identity: { ...identityStats, explicitLinksDetails: explicitLinks },
+        scraperAlerts: {
+          activeCount: scraperAlertsCount,
+          recent: scraperAlertsActive,
+        },
       });
     } catch (err) {
       console.error("[Admin] Status error:", err);
       res.status(500).json({ error: "Failed to get system status" });
+    }
+  });
+
+  // ── Scraper alert endpoints ──────────────────────────────────
+  // Surfaces structural-failure incidents recorded by refresh jobs
+  // (SAFETY_ABORT, ZERO_PARSED, SANITY_ABORT, JOB_FAILED) so an outage
+  // like the silent TLO redesign is visible without trawling logs.
+
+  app.get("/admin/scraper-alerts", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      if (!adminToken) return res.status(503).json({ error: "Admin not configured" });
+      if (providedToken !== adminToken) return res.status(401).json({ error: "Invalid admin token" });
+
+      const includeResolved = req.query.includeResolved === "true";
+      const limit = Math.min(parseInt(String(req.query.limit ?? "100"), 10) || 100, 500);
+
+      const { listScraperAlerts, countActiveScraperAlerts } = await import("../jobs/scraperAlerts");
+      const [alerts, activeCount] = await Promise.all([
+        listScraperAlerts({ includeResolved, limit }),
+        countActiveScraperAlerts(),
+      ]);
+
+      res.set("Cache-Control", "no-store");
+      res.json({ activeCount, alerts });
+    } catch (err) {
+      console.error("[Admin] Scraper alerts list error:", err);
+      res.status(500).json({ error: "Failed to list scraper alerts" });
+    }
+  });
+
+  app.post("/admin/scraper-alerts/:id/resolve", async (req, res) => {
+    try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+      if (!adminToken) return res.status(503).json({ error: "Admin not configured" });
+      if (providedToken !== adminToken) return res.status(401).json({ error: "Invalid admin token" });
+
+      const { resolveScraperAlert } = await import("../jobs/scraperAlerts");
+      const ok = await resolveScraperAlert(req.params.id);
+      if (!ok) return res.status(404).json({ error: "Alert not found or already resolved" });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[Admin] Resolve scraper alert error:", err);
+      res.status(500).json({ error: "Failed to resolve alert" });
     }
   });
 

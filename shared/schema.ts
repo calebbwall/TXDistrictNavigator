@@ -107,6 +107,30 @@ export const refreshJobLog = pgTable("refresh_job_log", {
   durationMs: varchar("duration_ms", { length: 20 }),
 });
 
+// Scraper alerts - surfaced when a refresh job hits a structural-failure
+// branch (e.g. SAFETY ABORT, parsed 0 records, job threw). One active row per
+// (source, kind); subsequent occurrences bump occurrenceCount + lastSeenAt.
+export const scraperAlerts = pgTable("scraper_alerts", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  source: varchar("source", { length: 50 }).notNull(),
+  kind: varchar("kind", { length: 50 }).notNull(),
+  severity: varchar("severity", { length: 20 }).notNull().default("warning"),
+  message: text("message").notNull(),
+  details: json("details").$type<Record<string, unknown>>(),
+  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  occurrenceCount: integer("occurrence_count").default(1).notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  activeBySourceKind: index("scraper_alerts_active_idx").on(table.source, table.kind, table.resolvedAt),
+}));
+
+export type ScraperAlert = typeof scraperAlerts.$inferSelect;
+export type InsertScraperAlert = typeof scraperAlerts.$inferInsert;
+
 // Person links table - explicit admin overrides for identity resolution
 export const personLinks = pgTable("person_links", {
   id: varchar("id")

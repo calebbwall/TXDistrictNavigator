@@ -667,6 +667,24 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
       const msg = `SAFETY ABORT: found ${memberLinks.length} member links but parsed 0 records — TLO page structure may have changed. Skipping upsert and deactivation to protect existing data.`;
       console.error(`[RefreshOfficials] ${msg}`);
       result.errors.push(msg);
+      try {
+        const { recordScraperAlert } = await import("./scraperAlerts");
+        await recordScraperAlert({
+          source,
+          kind: "SAFETY_ABORT",
+          severity: "critical",
+          message: msg,
+          details: {
+            chamber,
+            listUrl,
+            memberLinksFound: memberLinks.length,
+            expectedMin,
+            parsedRecords: records.length,
+          },
+        });
+      } catch (alertErr) {
+        console.error(`[RefreshOfficials] Failed to raise SAFETY_ABORT alert:`, alertErr);
+      }
       return result;
     }
     
@@ -1080,6 +1098,23 @@ export async function refreshAllOfficials(): Promise<void> {
       if (!sanityCheck.valid) {
         console.error(`[RefreshOfficials] ${name} ABORTED: ${sanityCheck.reason}`);
         await logRefreshJob(result, "aborted", duration, sanityCheck.reason);
+        try {
+          const { recordScraperAlert } = await import("./scraperAlerts");
+          const isZero = result.parsedCount === 0;
+          await recordScraperAlert({
+            source: name,
+            kind: isZero ? "ZERO_PARSED" : "SANITY_ABORT",
+            severity: isZero ? "critical" : "warning",
+            message: `${name} sanity check failed: ${sanityCheck.reason}`,
+            details: {
+              parsedCount: result.parsedCount,
+              upsertedCount: result.upsertedCount,
+              reason: sanityCheck.reason,
+            },
+          });
+        } catch (alertErr) {
+          console.error(`[RefreshOfficials] Failed to raise sanity alert:`, alertErr);
+        }
         continue;
       }
       
@@ -1095,6 +1130,18 @@ export async function refreshAllOfficials(): Promise<void> {
         duration,
         String(err)
       );
+      try {
+        const { recordScraperAlert } = await import("./scraperAlerts");
+        await recordScraperAlert({
+          source: name,
+          kind: "JOB_FAILED",
+          severity: "critical",
+          message: `${name} refresh job threw: ${String(err)}`,
+          details: { error: String(err) },
+        });
+      } catch (alertErr) {
+        console.error(`[RefreshOfficials] Failed to raise JOB_FAILED alert:`, alertErr);
+      }
     }
   }
   
@@ -1202,6 +1249,23 @@ export async function checkAndRefreshIfChanged(force = false): Promise<SmartRefr
           console.error(`[RefreshOfficials] ${source} ABORTED: ${sanityCheck.reason}`);
           await logRefreshJob(refreshResult, "aborted", duration, sanityCheck.reason);
           result.errors.push({ source, error: sanityCheck.reason || "Sanity check failed" });
+          try {
+            const { recordScraperAlert } = await import("./scraperAlerts");
+            const isZero = refreshResult.parsedCount === 0;
+            await recordScraperAlert({
+              source,
+              kind: isZero ? "ZERO_PARSED" : "SANITY_ABORT",
+              severity: isZero ? "critical" : "warning",
+              message: `${source} sanity check failed: ${sanityCheck.reason}`,
+              details: {
+                parsedCount: refreshResult.parsedCount,
+                upsertedCount: refreshResult.upsertedCount,
+                reason: sanityCheck.reason,
+              },
+            });
+          } catch (alertErr) {
+            console.error(`[RefreshOfficials] Failed to raise sanity alert:`, alertErr);
+          }
           continue;
         }
         
@@ -1221,6 +1285,18 @@ export async function checkAndRefreshIfChanged(force = false): Promise<SmartRefr
           String(err)
         );
         result.errors.push({ source, error: String(err) });
+        try {
+          const { recordScraperAlert } = await import("./scraperAlerts");
+          await recordScraperAlert({
+            source,
+            kind: "JOB_FAILED",
+            severity: "critical",
+            message: `${source} refresh job threw: ${String(err)}`,
+            details: { error: String(err) },
+          });
+        } catch (alertErr) {
+          console.error(`[RefreshOfficials] Failed to raise JOB_FAILED alert:`, alertErr);
+        }
       }
     }
     
