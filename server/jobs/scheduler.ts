@@ -18,7 +18,7 @@ import { refreshOtherTexasOfficials } from "./refreshOtherTexasOfficials";
 import { resolveAllMissingPersonIds } from "../lib/identityResolver";
 import { pollAllFeeds, getIsPollingRss } from "./pollRssFeeds";
 import { runDailyRefresh, getIsDailyRefreshing, msUntilNext5amChicago } from "./refreshDailyLegislative";
-import { processEventDateActions } from "../lib/prayerUtils";
+import { processEventDateActionsForAllUsers } from "../lib/prayerUtils";
 import { seedLegislativeFeeds } from "./seedLegislativeFeeds";
 import { db } from "../db";
 import { committees, legislativeEvents } from "@shared/schema";
@@ -294,10 +294,10 @@ function scheduleNextDailyRefresh(): void {
       console.error("[Scheduler/daily] Daily refresh failed:", err);
     }
     try {
-      await processEventDateActions();
-      console.log("[Scheduler/daily] processEventDateActions completed");
+      await processEventDateActionsForAllUsers();
+      console.log("[Scheduler/daily] processEventDateActionsForAllUsers completed");
     } catch (err) {
-      console.error("[Scheduler/daily] processEventDateActions failed:", err);
+      console.error("[Scheduler/daily] processEventDateActionsForAllUsers failed:", err);
     }
     // Schedule the next day's run after this one completes (or after defer chain)
     scheduleNextDailyRefresh();

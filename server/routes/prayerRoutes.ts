@@ -190,7 +190,7 @@ export function registerPrayerRoutes(app: Express) {
     try {
       const userId = req.userId!;
       autoArchiveAnswered(userId).catch(() => {});
-      processEventDateActions().catch(() => {});
+      processEventDateActions(userId).catch(() => {});
 
       const { status, categoryId, officialId, q, limit: lim, offset: off, sort } = req.query;
       const conditions: any[] = [eq(prayers.userId, userId)];
