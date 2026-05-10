@@ -7,6 +7,8 @@ import {
   searchWeb,
   type BillSummaryContext,
 } from "../services/groqService";
+import { requireUser } from "../middleware/userAuth";
+import { aiRateLimit } from "../middleware/aiRateLimit";
 import { db } from "../db";
 import {
   officialPublic,
@@ -24,7 +26,7 @@ export function registerAiRoutes(app: Express) {
   // POST /api/ai/parse-search
   // Body: { query: string }
   // Returns: NLSearchFilters
-  app.post("/api/ai/parse-search", async (req: Request, res: Response) => {
+  app.post("/api/ai/parse-search", requireUser, aiRateLimit, async (req: Request, res: Response) => {
     const { query } = req.body ?? {};
     if (!query?.trim()) {
       return res.status(400).json({ error: "query is required" });
@@ -39,7 +41,7 @@ export function registerAiRoutes(app: Express) {
   // POST /api/ai/summarize-bill
   // Body: BillSummaryContext
   // Returns: { summary: string }
-  app.post("/api/ai/summarize-bill", async (req: Request, res: Response) => {
+  app.post("/api/ai/summarize-bill", requireUser, aiRateLimit, async (req: Request, res: Response) => {
     const context = req.body as BillSummaryContext;
     if (!context?.billNumber || !context?.session) {
       return res.status(400).json({ error: "billNumber and session are required" });
@@ -60,7 +62,7 @@ export function registerAiRoutes(app: Express) {
   // POST /api/ai/ask
   // Body: { question: string }
   // Returns: { answer: string }
-  app.post("/api/ai/ask", async (req: Request, res: Response) => {
+  app.post("/api/ai/ask", requireUser, aiRateLimit, async (req: Request, res: Response) => {
     const { question } = req.body ?? {};
     if (!question?.trim()) {
       return res.status(400).json({ error: "question is required" });
