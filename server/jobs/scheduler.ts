@@ -264,8 +264,22 @@ function scheduleNextDailyRefresh(): void {
   const m = Math.floor((delay % 3600000) / 60000);
   console.log(`[Scheduler/daily] Next daily legislative refresh in ${h}h ${m}m (5:00 AM America/Chicago)`);
 
-  dailyTimer = setTimeout(async () => {
-    console.log("[Scheduler/daily] 5:00 AM trigger — running daily legislative refresh");
+  const fireDailyRefresh = async (): Promise<void> => {
+    // Cross-check heavy jobs. If anything else is mid-flight, defer literally
+    // 5 minutes (NOT reschedule to next 5 AM, which would skip today entirely).
+    if (
+      getIsPollingRss() ||
+      getIsDailyRefreshing() ||
+      getRefreshCycleInProgress() ||
+      getIsRefreshing() ||
+      getIsRefreshingGeoJSON() ||
+      getIsRefreshingCommittees()
+    ) {
+      console.log("[Scheduler/daily] Heavy job in progress — deferring 5 min");
+      dailyTimer = setTimeout(() => { fireDailyRefresh(); }, 5 * 60 * 1000);
+      return;
+    }
+    console.log("[Scheduler/daily] Trigger — running daily legislative refresh");
     lastDailyRefreshAt = new Date();
     try {
       await runDailyRefresh();
@@ -278,14 +292,27 @@ function scheduleNextDailyRefresh(): void {
     } catch (err) {
       console.error("[Scheduler/daily] processEventDateActions failed:", err);
     }
-    // Schedule the next day's run
+    // Schedule the next day's run after this one completes (or after defer chain)
     scheduleNextDailyRefresh();
-  }, delay);
+  };
+
+  dailyTimer = setTimeout(() => { fireDailyRefresh(); }, delay);
 }
 
 async function runRssPoll(): Promise<void> {
-  if (getIsPollingRss() || getIsDailyRefreshing()) {
-    console.log("[Scheduler/rss] Poll or daily refresh in progress, skipping");
+  // Cross-check ALL heavy jobs, not just RSS+daily. The weekly refresh cycle
+  // (officials/geo/committees) holds DB clients for many minutes; running an
+  // RSS poll concurrently used to drain the pool and trigger
+  // "timeout exceeded when trying to connect" errors across the app.
+  if (
+    getIsPollingRss() ||
+    getIsDailyRefreshing() ||
+    getRefreshCycleInProgress() ||
+    getIsRefreshing() ||
+    getIsRefreshingGeoJSON() ||
+    getIsRefreshingCommittees()
+  ) {
+    console.log("[Scheduler/rss] Heavy job in progress, skipping RSS poll");
     return;
   }
   lastRssPollAt = new Date();

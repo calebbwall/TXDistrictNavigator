@@ -6,7 +6,7 @@ channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "autoscale"
-build = ["npm", "run", "server:build"]
+build = ["bash", "-c", "npm run server:build && npx drizzle-kit push --force"]
 run = ["npm", "run", "server:prod"]
 
 [[ports]]
@@ -25,42 +25,43 @@ externalPort = 3000
 stack = "EXPO"
 
 [workflows]
-runButton = "Start App"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "Start App"
 author = "agent"
 mode = "sequential"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm install"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run dev"
-waitForPort = 8081
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm install && npx drizzle-kit push --force && npm run dev"
+waitForPort = 8081
 
 [[workflows.workflow]]
 name = "Start Production"
 author = "agent"
 mode = "sequential"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm install"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run server:build"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run server:prod"
-waitForPort = 8081
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm install && npm run server:build && npx drizzle-kit push --force && npm run server:prod"
+waitForPort = 8081
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start App"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start Production"

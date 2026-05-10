@@ -9,6 +9,21 @@ import { alerts } from "@shared/schema";
 import { and, eq, like } from "drizzle-orm";
 const app = express();
 
+// ── Process-level safety nets ──
+// Without these, a single rejected promise inside a background job (RSS poll,
+// daily refresh, hometown scrape, etc.) terminates the Node process and brings
+// the whole server down. Log loudly and keep running — the HTTP listener and
+// other jobs should be unaffected by a single async failure.
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Process] Unhandled promise rejection:", reason);
+  if (promise) {
+    console.error("[Process] Promise:", promise);
+  }
+});
+process.on("uncaughtException", (err) => {
+  console.error("[Process] Uncaught exception (server staying up):", err);
+});
+
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origins = new Set<string>();

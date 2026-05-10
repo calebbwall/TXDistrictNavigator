@@ -11,7 +11,7 @@
  */
 import * as cheerio from "cheerio";
 import * as crypto from "crypto";
-import { db } from "../db";
+import { db, withDbRetry } from "../db";
 import {
   rssFeeds,
   rssItems,
@@ -19,7 +19,7 @@ import {
   type RssFeed,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { refreshCommitteeHearings } from "./targetedRefresh";
+import { refreshCommitteeHearings, refreshChamberUpcomingHearings } from "./targetedRefresh";
 
 const MAX_CONCURRENT = 5;
 let isPolling = false;
@@ -139,17 +139,33 @@ function parseRssXml(xml: string): RssEntry[] {
 function parseHtmlPageAsItem(html: string, feedUrl: string): RssEntry | null {
   const $ = cheerio.load(html);
   const title = $("title").first().text().trim() || feedUrl;
+
+  // STABLE guid — must NOT include the page fingerprint. TLO ASP.NET pages
+  // change their VIEWSTATE/event-validation tokens on every render, so a
+  // fingerprint-in-guid produces a brand-new "item" on every poll. That used
+  // to fire the targeted-refresh storm (71 committee feeds × every poll =
+  // chamber-wide hearings page fetched 71× per hour, plus 71 false alerts
+  // from the bootstrap-cleanup safeguard). With a stable per-day guid the
+  // upsert path treats unchanged pages as no-ops; the per-row fingerprint
+  // (stored in rss_items.fingerprint) still detects content drift to update
+  // metadata without re-alerting.
   const fp = crypto.createHash("sha256").update(html).digest("hex").slice(0, 8);
-  // Daily guid so we create at most one item per day per page change
   const dateKey = new Date().toISOString().slice(0, 10);
   return {
-    guid: `${feedUrl}#${dateKey}-${fp}`,
+    guid: `${feedUrl}#${dateKey}`,
     title,
     link: feedUrl,
     summary: `Page content updated (fingerprint ${fp})`,
     publishedAt: new Date(),
   };
 }
+
+// Per-poll-cycle accumulator of chambers that need a hearings refresh.
+// Populated by processFeed() when committee-scoped feeds get new items;
+// drained once at the end of pollAllFeeds() so each chamber's
+// MeetingsUpcoming.aspx page is fetched at most ONCE per poll cycle —
+// regardless of how many committee feeds in that chamber changed.
+let pendingChamberRefreshes: Set<"H" | "S"> = new Set();
 
 // ---------- process a single feed ----------
 async function processFeed(
@@ -241,8 +257,20 @@ async function processFeed(
     // meaningful alerts (HEARING_POSTED, COMMITTEE_MEMBER_CHANGE, etc.) are
     // created by the targeted refresh jobs instead.
     if (!isFirstPoll) {
-      const scope = feed.scopeJson as { committeeId?: string } | null;
-      if (scope?.committeeId) {
+      const scope = feed.scopeJson as { committeeId?: string; chamber?: string } | null;
+      // Defer the actual targeted-refresh fetch until pollAllFeeds() finishes,
+      // collapsed by chamber. The new TLO endpoint
+      // (MeetingsUpcoming.aspx?chamber=H|S) returns the WHOLE chamber roster
+      // in one call, so per-committee fetches are wasteful and previously
+      // caused a 71×-amplification storm.
+      const chamberRaw = scope?.chamber;
+      if (chamberRaw === "TX_HOUSE") {
+        pendingChamberRefreshes.add("H");
+      } else if (chamberRaw === "TX_SENATE") {
+        pendingChamberRefreshes.add("S");
+      } else if (scope?.committeeId) {
+        // Fall back to the legacy resolver (DB lookup of committee chamber)
+        // only when the feed scope didn't carry the chamber explicitly.
         try {
           await refreshCommitteeHearings(scope.committeeId, 14);
         } catch (err) {
@@ -285,16 +313,17 @@ export async function pollAllFeeds(): Promise<{
   }
 
   isPolling = true;
+  pendingChamberRefreshes = new Set();
   const start = Date.now();
   console.log("[pollRss] BEGIN hourly RSS/HTML poll");
 
   const stats = { feeds304: 0, feedsNew: 0, items: 0 };
 
   try {
-    const feeds = await db
-      .select()
-      .from(rssFeeds)
-      .where(eq(rssFeeds.enabled, true));
+    const feeds = await withDbRetry(
+      () => db.select().from(rssFeeds).where(eq(rssFeeds.enabled, true)),
+      { label: "pollAllFeeds.list" },
+    );
 
     console.log(`[pollRss] Polling ${feeds.length} enabled feeds`);
 
@@ -303,6 +332,21 @@ export async function pollAllFeeds(): Promise<{
         console.error(`[pollRss] Error processing feed ${feed.id}:`, err),
       ),
     );
+
+    // Drain accumulated chamber refreshes — at most one per chamber per poll.
+    if (pendingChamberRefreshes.size > 0) {
+      console.log(
+        `[pollRss] Running collapsed chamber refresh for: ${[...pendingChamberRefreshes].join(", ")}`,
+      );
+      for (const chamber of pendingChamberRefreshes) {
+        try {
+          await refreshChamberUpcomingHearings(chamber, 30);
+        } catch (err) {
+          console.error(`[pollRss] Chamber ${chamber} refresh failed:`, err);
+        }
+      }
+    }
+    pendingChamberRefreshes = new Set();
 
     const duration = Date.now() - start;
     console.log(

@@ -448,9 +448,14 @@ export async function refreshChamberUpcomingHearings(
   const tag = `[targetedRefresh.chamberHearings.${chamber}]`;
 
   // Build cmteCode → DB committeeId map
-  const allCommittees = await db
-    .select({ id: committees.id, chamber: committees.chamber, sourceUrl: committees.sourceUrl })
-    .from(committees);
+  const { withDbRetry } = await import("../db");
+  const allCommittees = await withDbRetry(
+    () =>
+      db
+        .select({ id: committees.id, chamber: committees.chamber, sourceUrl: committees.sourceUrl })
+        .from(committees),
+    { label: `targetedRefresh.chamber.${chamber}.committees` },
+  );
   const codeToId = new Map<string, string>();
   for (const c of allCommittees) {
     const m = (c.sourceUrl ?? "").match(/CmteCode=([A-Z0-9]+)/i);

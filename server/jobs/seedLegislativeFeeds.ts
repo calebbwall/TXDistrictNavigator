@@ -37,6 +37,32 @@ export async function seedLegislativeFeeds(): Promise<{
     return { inserted: 0, skipped: 0 };
   }
 
+  // Defensive backfill: ensure every existing rss_feeds.scopeJson has the
+  // chamber field. Older rows seeded before the chamber-dedupe code may have
+  // only { committeeId, cmteCode }; without chamber, pollRssFeeds falls back
+  // to per-committee refreshes (re-introducing the 71× amplification storm).
+  const committeeIdToChamber = new Map(allCommittees.map((c) => [c.id, c.chamber]));
+  try {
+    const allFeeds = await db.select({ id: rssFeeds.id, scopeJson: rssFeeds.scopeJson }).from(rssFeeds);
+    let backfilled = 0;
+    for (const feed of allFeeds) {
+      const scope = feed.scopeJson as { committeeId?: string; chamber?: string; cmteCode?: string } | null;
+      if (scope?.committeeId && !scope.chamber) {
+        const chamber = committeeIdToChamber.get(scope.committeeId);
+        if (chamber) {
+          await db
+            .update(rssFeeds)
+            .set({ scopeJson: { ...scope, chamber } })
+            .where(eq(rssFeeds.id, feed.id));
+          backfilled++;
+        }
+      }
+    }
+    if (backfilled > 0) console.log(`${tag} Backfilled chamber on ${backfilled} feed(s)`);
+  } catch (err) {
+    console.error(`${tag} chamber backfill failed (non-fatal):`, err);
+  }
+
   // Get existing feed URLs to avoid re-querying DB per committee
   const existingFeeds = await db
     .select({ url: rssFeeds.url })

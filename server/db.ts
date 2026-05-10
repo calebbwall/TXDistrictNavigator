@@ -13,7 +13,12 @@ const pool = new Pool({
   connectionTimeoutMillis: 30000,
   idleTimeoutMillis: 30000,
   keepAlive: true,
-  max: 3,
+  // Raised from 3 → 10. The previous value caused "timeout exceeded when
+  // trying to checkout client" under normal load — multiple concurrent
+  // background jobs (RSS poller, daily refresh, committee refresh, request
+  // handlers) routinely needed more than 3 clients at once. Neon and most
+  // managed Postgres tiers tolerate 10–20 connections per app instance.
+  max: 10,
 });
 
 // Prevent unhandled 'error' events on idle clients (pool-level handler).
@@ -35,3 +40,53 @@ pool.on("connect", (client) => {
 
 export const db = drizzle(pool, { schema });
 export { pool };
+
+/**
+ * Retry helper for transient Postgres errors. Wraps a query function and
+ * retries on connection-level failures (pool checkout timeout, terminated
+ * connections, auth-handshake timeouts) with exponential backoff.
+ *
+ * Use this around critical background-job DB calls that should not abort
+ * the whole job on a single transient failure.
+ */
+const TRANSIENT_DB_ERROR_PATTERNS = [
+  /timeout exceeded when trying to connect/i,
+  /Connection terminated/i,
+  /Connection terminated unexpectedly/i,
+  /timeout expired/i,            // 08P01 / handshake timeouts
+  /SASL.*timeout/i,
+  /server closed the connection/i,
+  /ECONNRESET/i,
+  /ETIMEDOUT/i,
+];
+
+function isTransientDbError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return TRANSIENT_DB_ERROR_PATTERNS.some((re) => re.test(msg));
+}
+
+export async function withDbRetry<T>(
+  fn: () => Promise<T>,
+  opts: { retries?: number; baseDelayMs?: number; label?: string } = {},
+): Promise<T> {
+  const retries = opts.retries ?? 3;
+  const baseDelayMs = opts.baseDelayMs ?? 500;
+  const label = opts.label ?? "withDbRetry";
+
+  let attempt = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt++;
+      if (attempt > retries || !isTransientDbError(err)) {
+        throw err;
+      }
+      const delay = baseDelayMs * 2 ** (attempt - 1);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[${label}] Transient DB error (attempt ${attempt}/${retries}): ${msg} — retrying in ${delay}ms`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
