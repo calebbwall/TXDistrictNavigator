@@ -39,9 +39,19 @@ function applySchemaMigrations(): Promise<void> {
       if (code === 0) {
         console.log(`[Startup] Schema push OK (${ms}ms): ${out.split("\n").filter(Boolean).slice(-3).join(" | ")}`);
       } else {
-        console.error(`[Startup] Schema push FAILED (exit=${code}, ${ms}ms):\n${out}`);
-        // Don't crash — server should keep running so /status stays green.
-        // The failure log surfaces in deployment logs for the user to see.
+        // ── Migration failure policy ──
+        // Authoritative migration runs in TWO strict-fail places:
+        //   1. Deploy build hook: `npm run server:build && npx drizzle-kit push --force`
+        //      — non-zero exit fails the deploy, prod never starts on bad schema.
+        //   2. Workflow command: `... && npx drizzle-kit push --force && npm run dev`
+        //      — non-zero exit prevents the dev server from starting.
+        // This in-process startup push is a BEST-EFFORT safety net for code paths
+        // that bypass both (e.g., direct `tsx server/index.ts` or future tooling).
+        // We log loudly but do NOT exit — the HTTP listener is already bound and
+        // killing the process here would mask which startup mode was actually used.
+        // Deploy/dev failures fail loudly upstream; this branch only fires for
+        // edge-case startup modes the user explicitly chose.
+        console.error(`[Startup] Schema push FAILED (exit=${code}, ${ms}ms) — best-effort safety net only:\n${out}`);
       }
       resolve();
     });

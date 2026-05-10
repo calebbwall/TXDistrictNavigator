@@ -375,6 +375,30 @@ async function maybeRunStartupLegislativeRefresh(): Promise<void> {
 
     // If committees exist but events are missing (e.g., server restarted after
     // committees were scraped), run the daily refresh immediately without waiting.
+    // BUT: only if no other heavy job is in flight. The bootstrap path is the
+    // last remaining entry point that could overlap with the weekly refresh
+    // cycle (officials/geo/committees) — without this guard, a fresh-DB startup
+    // can dogpile the pool and trigger the same "timeout exceeded" failures
+    // we just fixed.
+    const HEAVY_DEFER_MAX = 30 * 60 * 1000; // give up after 30 min
+    const HEAVY_DEFER_INTERVAL = 60 * 1000; // re-check every minute
+    const heavyWaitStart = Date.now();
+    while (
+      getIsRefreshing() ||
+      getIsRefreshingGeoJSON() ||
+      getIsRefreshingCommittees() ||
+      getIsPollingRss() ||
+      getIsDailyRefreshing() ||
+      refreshCycleInProgress
+    ) {
+      if (Date.now() - heavyWaitStart >= HEAVY_DEFER_MAX) {
+        console.warn("[Scheduler/legislative] Bootstrap deferred 30 min — giving up; will run on next 5 AM cycle");
+        return;
+      }
+      console.log("[Scheduler/legislative] Heavy job in progress — deferring bootstrap daily refresh by 60s");
+      await sleep(HEAVY_DEFER_INTERVAL);
+    }
+
     console.log("[Scheduler/legislative] No events in DB — running startup daily refresh immediately");
     await runDailyRefresh();
   } catch (err) {
