@@ -65,3 +65,7 @@ args = "Start App"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Start Production"
+
+[postMerge]
+path = ".local/post-merge.sh"
+timeoutMs = 120000
