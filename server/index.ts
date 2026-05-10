@@ -42,7 +42,7 @@ function applySchemaMigrations(): Promise<void> {
     });
     child.on("error", (err) => {
       console.error("[Startup] Could not spawn drizzle-kit:", err);
-      resolve();
+      process.exit(1);
     });
   });
 }
