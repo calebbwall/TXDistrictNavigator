@@ -9,16 +9,9 @@ import { db } from "./db";
 import { alerts } from "@shared/schema";
 import { and, eq, like } from "drizzle-orm";
 
-/**
- * Apply Drizzle schema changes at startup. This is the LAST line of defense
- * against schema drift — even if someone bypasses the Replit workflow / deploy
- * build hook (e.g. by running `npm run dev` or `tsx server/index.ts` directly),
- * the schema gets pushed before any background job runs. `--force` skips the
- * interactive data-loss prompts (we already gate destructive migrations
- * separately).
- *
- * Idempotent: drizzle-kit prints "[i] No changes detected" when up-to-date.
- */
+// Apply Drizzle schema at startup so any direct entry point (npm run dev,
+// tsx, etc.) cannot serve traffic on a drifted schema. Fail-fast on error.
+// Skip with SKIP_STARTUP_DB_PUSH=1.
 function applySchemaMigrations(): Promise<void> {
   return new Promise((resolve) => {
     if (process.env.SKIP_STARTUP_DB_PUSH === "1") {
@@ -38,22 +31,14 @@ function applySchemaMigrations(): Promise<void> {
       const ms = Date.now() - t0;
       if (code === 0) {
         console.log(`[Startup] Schema push OK (${ms}ms): ${out.split("\n").filter(Boolean).slice(-3).join(" | ")}`);
+        resolve();
       } else {
-        // ── Migration failure policy ──
-        // Authoritative migration runs in TWO strict-fail places:
-        //   1. Deploy build hook: `npm run server:build && npx drizzle-kit push --force`
-        //      — non-zero exit fails the deploy, prod never starts on bad schema.
-        //   2. Workflow command: `... && npx drizzle-kit push --force && npm run dev`
-        //      — non-zero exit prevents the dev server from starting.
-        // This in-process startup push is a BEST-EFFORT safety net for code paths
-        // that bypass both (e.g., direct `tsx server/index.ts` or future tooling).
-        // We log loudly but do NOT exit — the HTTP listener is already bound and
-        // killing the process here would mask which startup mode was actually used.
-        // Deploy/dev failures fail loudly upstream; this branch only fires for
-        // edge-case startup modes the user explicitly chose.
-        console.error(`[Startup] Schema push FAILED (exit=${code}, ${ms}ms) — best-effort safety net only:\n${out}`);
+        // Fail-fast: any startup path (npm run dev, tsx server/index.ts, etc.)
+        // must refuse to serve traffic on a drifted schema. Set
+        // SKIP_STARTUP_DB_PUSH=1 to opt out (e.g., for tests).
+        console.error(`[Startup] Schema push FAILED (exit=${code}, ${ms}ms):\n${out}`);
+        process.exit(1);
       }
-      resolve();
     });
     child.on("error", (err) => {
       console.error("[Startup] Could not spawn drizzle-kit:", err);

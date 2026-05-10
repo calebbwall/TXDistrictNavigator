@@ -50,7 +50,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "set -e; npm install; npm run server:build; npx drizzle-kit push --force; if command -v lsof >/dev/null 2>&1 && lsof -iTCP:8081 -sTCP:LISTEN >/dev/null 2>&1; then echo \"[Start Production] Port 8081 already in use (Start App running) — exiting cleanly to avoid bind conflict.\"; exit 0; fi; npm run server:prod"
+args = "sleep 20; if command -v lsof >/dev/null 2>&1 && lsof -iTCP:8081 -sTCP:LISTEN >/dev/null 2>&1; then echo \"[Start Production] Port 8081 already bound — skipping (Start App is running).\"; exit 0; fi; set -e; npm install; npm run server:build; npx drizzle-kit push --force; if command -v lsof >/dev/null 2>&1 && lsof -iTCP:8081 -sTCP:LISTEN >/dev/null 2>&1; then echo \"[Start Production] Port 8081 bound during build — skipping bind.\"; exit 0; fi; npm run server:prod"
 waitForPort = 8081
 
 [[workflows.workflow]]

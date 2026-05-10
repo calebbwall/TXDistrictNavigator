@@ -140,22 +140,15 @@ function parseHtmlPageAsItem(html: string, feedUrl: string): RssEntry | null {
   const $ = cheerio.load(html);
   const title = $("title").first().text().trim() || feedUrl;
 
-  // STABLE guid — must NOT include the page fingerprint. TLO ASP.NET pages
-  // change their VIEWSTATE/event-validation tokens on every render, so a
-  // fingerprint-in-guid produces a brand-new "item" on every poll. That used
-  // to fire the targeted-refresh storm (71 committee feeds × every poll =
-  // chamber-wide hearings page fetched 71× per hour, plus 71 false alerts
-  // from the bootstrap-cleanup safeguard). With a stable per-day guid the
-  // upsert path treats unchanged pages as no-ops; the per-row fingerprint
-  // (stored in rss_items.fingerprint) still detects content drift to update
-  // metadata without re-alerting.
-  const fp = crypto.createHash("sha256").update(html).digest("hex").slice(0, 8);
+  // Strip ASP.NET volatile state before fingerprinting so the fp only flips
+  // on real content changes (not VIEWSTATE/EVENTVALIDATION/script churn).
+  $("input[type=hidden][name^='__']").remove();
+  $("script, noscript, style").remove();
+  const normalized = $("body").text().replace(/\s+/g, " ").trim();
+  const fp = crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 8);
   const dateKey = new Date().toISOString().slice(0, 10);
-  // publishedAt MUST be stable per (feed,day) because it is included in
-  // itemFingerprint(). Using `new Date()` would change the fingerprint on
-  // every poll even when the page content is identical, generating noisy
-  // DB updates and weakening real change detection. Anchoring to start of
-  // day (UTC) makes the fingerprint deterministic for the whole day.
+  // Stable per-day guid + publishedAt → itemFingerprint() is deterministic
+  // for unchanged pages, so the upsert path treats them as no-ops.
   return {
     guid: `${feedUrl}#${dateKey}`,
     title,

@@ -12,7 +12,7 @@
  */
 import * as cheerio from "cheerio";
 import * as crypto from "crypto";
-import { db } from "../db";
+import { db, withDbRetry } from "../db";
 import {
   committees,
   legislativeEvents,
@@ -448,7 +448,6 @@ export async function refreshChamberUpcomingHearings(
   const tag = `[targetedRefresh.chamberHearings.${chamber}]`;
 
   // Build cmteCode → DB committeeId map
-  const { withDbRetry } = await import("../db");
   const allCommittees = await withDbRetry(
     () =>
       db
