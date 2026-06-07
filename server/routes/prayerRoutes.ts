@@ -814,7 +814,9 @@ export function registerPrayerRoutes(app: Express) {
               ));
           }
         }
-      } catch (_) {}
+      } catch (err) {
+        console.error("[prayer-streak] Failed to update lastPrayedAt for daily picks:", err);
+      }
 
       res.json(updated);
     } catch (err: any) {

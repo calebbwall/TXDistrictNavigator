@@ -64,5 +64,7 @@ export async function processEventDateActions(userId: string): Promise<void> {
         }
       }
     }
-  } catch (_) {}
+  } catch (err) {
+    console.error("[processEventDateActions] error:", err);
+  }
 }

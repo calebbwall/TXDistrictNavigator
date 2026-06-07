@@ -649,15 +649,4 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
-  // Full legislative bootstrap: committees → RSS feeds → events
-  app.post("/api/admin/bootstrap-legislative", async (_req, res) => {
-    try {
-      const { triggerFullLegislativeBootstrap } = await import("../jobs/scheduler");
-      const result = await triggerFullLegislativeBootstrap();
-      res.json(result);
-    } catch (err) {
-      console.error("[Admin] Bootstrap legislative error:", err);
-      res.status(500).json({ error: "Bootstrap failed" });
-    }
-  });
 }
