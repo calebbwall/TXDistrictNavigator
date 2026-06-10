@@ -17,6 +17,7 @@ export const Colors = {
     border: "#E0E0E0",
     success: "#28A745",
     warning: "#FFC107",
+    error: "#DC3545",
     overlaySenate: "rgba(74, 144, 226, 0.4)",
     overlayHouse: "rgba(233, 75, 60, 0.4)",
     overlayCongress: "rgba(80, 200, 120, 0.4)",
@@ -45,6 +46,7 @@ export const Colors = {
     border: "#3A3A3A",
     success: "#28A745",
     warning: "#FFC107",
+    error: "#E5484D",
     overlaySenate: "rgba(74, 144, 226, 0.4)",
     overlayHouse: "rgba(233, 75, 60, 0.4)",
     overlayCongress: "rgba(80, 200, 120, 0.4)",
@@ -66,6 +68,7 @@ export const Spacing = {
   lg: 24,
   xl: 32,
   xxl: 48,
+  "2xl": 48,
   inputHeight: 48,
   buttonHeight: 52,
 };
@@ -76,6 +79,7 @@ export const BorderRadius = {
   md: 12,
   lg: 16,
   xl: 24,
+  "2xl": 32,
   full: 9999,
 };
 

@@ -245,8 +245,19 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
-  app.get("/api/admin/officials-counts", async (_req, res) => {
+  app.get("/api/admin/officials-counts", async (req, res) => {
     try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+
+      if (!providedToken || providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid or missing admin token" });
+      }
+
       const counts = await db
         .select({ source: officialPublic.source, count: sql<number>`count(*)::int` })
         .from(officialPublic)

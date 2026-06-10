@@ -60,7 +60,9 @@ export default function AddPrayerScreen() {
     params?.officialId ? [params.officialId] : []
   );
   const [selectedOfficialNames, setSelectedOfficialNames] = useState<string[]>(
-    params?.officialName ? [params.officialName] : []
+    // Kept index-aligned with selectedOfficialIds. If an officialId is passed
+    // without a name, use a placeholder so the two arrays never desync.
+    params?.officialId ? [params.officialName ?? "Selected official"] : []
   );
   const [showOfficialPicker, setShowOfficialPicker] = useState(false);
   const [officialSearch, setOfficialSearch] = useState("");
@@ -143,14 +145,16 @@ export default function AddPrayerScreen() {
   const currentCategoryName = categories.find((c) => c.id === categoryId)?.name ?? "None";
 
   const toggleOfficial = (official: OfficialItem) => {
-    setSelectedOfficialIds((prev) => {
-      if (prev.includes(official.id)) {
-        setSelectedOfficialNames((names) => names.filter((_, i) => prev[i] !== official.id));
-        return prev.filter((id) => id !== official.id);
-      }
+    // Mutate both index-aligned arrays from the same source of truth (the
+    // current ids) so names can never drift out of sync with ids.
+    const idx = selectedOfficialIds.indexOf(official.id);
+    if (idx >= 0) {
+      setSelectedOfficialIds((prev) => prev.filter((_, i) => i !== idx));
+      setSelectedOfficialNames((names) => names.filter((_, i) => i !== idx));
+    } else {
+      setSelectedOfficialIds((prev) => [...prev, official.id]);
       setSelectedOfficialNames((names) => [...names, official.fullName]);
-      return [...prev, official.id];
-    });
+    }
   };
 
   const getSourceLabel = (source: string) => {

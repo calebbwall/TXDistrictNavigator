@@ -326,11 +326,12 @@ export default function OfficialProfileScreen() {
     const parts: string[] = [`${official.fullName}`];
     if (official.party) parts[0] += ` (${official.party})`;
     if (official.officeType) {
-      const chamber = official.officeType === "TX_HOUSE" ? "TX House" : official.officeType === "TX_SENATE" ? "TX Senate" : official.officeType === "US_HOUSE" ? "US House" : official.officeType;
-      parts.push(`${chamber} — District ${official.districtNumber}`);
+      const chamber = getOfficeTypeLabel(official.officeType, official.roleTitle);
+      const districtSuffix = official.districtNumber ? ` — District ${official.districtNumber}` : "";
+      parts.push(`${chamber}${districtSuffix}`);
     }
-    if (official.capitolPhone) parts.push(`Capitol: ${formatPhone(official.capitolPhone)}`);
-    if (official.website) parts.push(`Website: ${official.website}`);
+    const capitolOffice = official.offices?.find((o) => o.officeKind === "capitol");
+    if (capitolOffice?.phone) parts.push(`Capitol: ${formatPhone(capitolOffice.phone)}`);
     try {
       await Share.share({ title: official.fullName, message: parts.join("\n") });
     } catch {}
@@ -1879,11 +1880,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     marginTop: Spacing.sm,
-  },
-  datePickerButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
   },
   inlineDatePicker: {
     marginTop: Spacing.xs,

@@ -72,7 +72,7 @@ function setupCors(app: express.Application) {
     }
 
     if (process.env.REPLIT_DOMAINS) {
-      process.env.REPLIT_DOMAINS.split(",").forEach((d) => {
+      process.env.REPLIT_DOMAINS.split(",").forEach((d: string) => {
         origins.add(`https://${d.trim()}`);
       });
     }
@@ -85,7 +85,10 @@ function setupCors(app: express.Application) {
         "Access-Control-Allow-Methods",
         "GET, POST, PUT, PATCH, DELETE, OPTIONS",
       );
-      res.header("Access-Control-Allow-Headers", "Content-Type");
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, x-user-token, x-admin-token, x-admin-secret",
+      );
       res.header("Access-Control-Allow-Credentials", "true");
     }
 
@@ -148,6 +151,20 @@ function getAppName(): string {
   }
 }
 
+// x-forwarded-proto / x-forwarded-host are attacker-controllable request
+// headers. They are interpolated into served HTML (landing page) and JSON
+// (manifest URLs), so restrict them to a strict charset before use — a value
+// failing validation falls back to a safe default. This closes a reflected
+// XSS hole without needing per-context escaping.
+function sanitizeProto(proto: string | undefined, fallback: string): string {
+  return proto === "http" || proto === "https" ? proto : fallback;
+}
+
+function sanitizeHost(host: string | undefined, fallback: string): string {
+  if (host && /^[A-Za-z0-9.-]+(:\d{1,5})?$/.test(host)) return host;
+  return fallback;
+}
+
 function rebaseUrl(url: string, baseUrl: string): string {
   // Works for both absolute URLs and relative paths (e.g. "./bundles/ios-xxx.js")
   try {
@@ -180,10 +197,11 @@ function serveExpoManifest(platform: string, req: Request, res: Response) {
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 
-  const forwardedProto = req.header("x-forwarded-proto");
-  const protocol = forwardedProto || req.protocol || "https";
-  const forwardedHost = req.header("x-forwarded-host");
-  const host = forwardedHost || req.get("host") || "";
+  const protocol = sanitizeProto(req.header("x-forwarded-proto"), req.protocol || "https");
+  const host = sanitizeHost(
+    req.header("x-forwarded-host"),
+    sanitizeHost(req.get("host"), ""),
+  );
   const requestBaseUrl = `${protocol}://${host}`;
   const hostWithoutProtocol = host;
 
@@ -234,10 +252,11 @@ function serveLandingPage({
   landingPageTemplate: string;
   appName: string;
 }) {
-  const forwardedProto = req.header("x-forwarded-proto");
-  const protocol = forwardedProto || req.protocol || "https";
-  const forwardedHost = req.header("x-forwarded-host");
-  const host = forwardedHost || req.get("host");
+  const protocol = sanitizeProto(req.header("x-forwarded-proto"), req.protocol || "https");
+  const host = sanitizeHost(
+    req.header("x-forwarded-host"),
+    sanitizeHost(req.get("host"), ""),
+  );
   const baseUrl = `${protocol}://${host}`;
   const expsUrl = `${host}`;
 

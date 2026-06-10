@@ -384,6 +384,10 @@ export function registerOfficialsRoutes(app: Express): void {
         return res.status(400).json({ error: "districts array is required" });
       }
 
+      if (districts.length > 500) {
+        return res.status(400).json({ error: "Too many districts requested (max 500)" });
+      }
+
       const results: MergedOfficial[] = [];
 
       for (const dist of districts) {

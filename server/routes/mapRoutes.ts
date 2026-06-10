@@ -190,6 +190,17 @@ export function registerMapRoutes(app: Express): void {
         return res.status(400).json({ error: "Invalid geometry: must be a Polygon" });
       }
 
+      // Cap polygon complexity — booleanIntersects against every district feature
+      // in three GeoJSON collections is CPU-heavy, so an unbounded vertex count is
+      // a cheap DoS vector.
+      const totalVertices = geometry.coordinates.reduce(
+        (sum: number, ring: unknown) => sum + (Array.isArray(ring) ? ring.length : 0),
+        0,
+      );
+      if (totalVertices > 1000) {
+        return res.status(400).json({ error: "Polygon too complex (max 1000 vertices)" });
+      }
+
       if (!overlays || typeof overlays !== "object") {
         return res.status(400).json({ error: "overlays object is required" });
       }
@@ -270,13 +281,46 @@ export function registerMapRoutes(app: Express): void {
         return res.status(403).json({ error: "Domain not allowed" });
       }
 
+      // redirect: "manual" — the allowlist above only validates the initial URL.
+      // Following redirects would let an allowlisted host bounce this request to
+      // an arbitrary (including internal) address, i.e. SSRF.
       const imageResponse = await fetch(url, {
+        redirect: "manual",
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
           "Referer": `https://${parsedUrl.hostname}/`,
         },
       });
+
+      if (imageResponse.status >= 300 && imageResponse.status < 400) {
+        const location = imageResponse.headers.get("location") ?? "";
+        let redirectHost: string | null = null;
+        try {
+          redirectHost = new URL(location, url).hostname;
+        } catch {}
+        if (!redirectHost || !allowedDomains.includes(redirectHost)) {
+          return res.status(403).json({ error: "Redirect target not allowed" });
+        }
+        const redirected = await fetch(new URL(location, url).toString(), {
+          redirect: "manual",
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          },
+        });
+        if (!redirected.ok) {
+          return res.status(redirected.status >= 300 && redirected.status < 400 ? 403 : redirected.status).json({ error: "Failed to fetch image" });
+        }
+        const redirContentType = redirected.headers.get("content-type") || "image/jpeg";
+        const redirBuffer = Buffer.from(await redirected.arrayBuffer());
+        res.set({
+          "Content-Type": redirContentType,
+          "Cache-Control": "public, max-age=604800, immutable",
+          "Content-Length": String(redirBuffer.length),
+        });
+        return res.send(redirBuffer);
+      }
 
       if (!imageResponse.ok) {
         return res.status(imageResponse.status).json({ error: "Failed to fetch image" });
