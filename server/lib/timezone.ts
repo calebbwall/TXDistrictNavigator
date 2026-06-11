@@ -15,6 +15,30 @@ export function zonedWallTimeToUtc(
   return new Date(guess - offset);
 }
 
+/**
+ * Calendar date key (YYYY-MM-DD) for the given instant as seen on a wall clock
+ * in the given IANA timezone, optionally shifted by whole calendar days.
+ * Day shifting is pure calendar math (UTC-based), so it is immune to DST
+ * transitions: "yesterday" relative to the day after fall-back is still
+ * exactly one calendar day earlier.
+ */
+export function zonedDateKey(
+  timeZone: string,
+  now: Date = new Date(),
+  offsetDays = 0,
+): string {
+  // en-CA formats as YYYY-MM-DD
+  const formatted = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  if (offsetDays === 0) return formatted;
+  const [y, m, d] = formatted.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
+}
+
 function tzOffsetMs(date: Date, timeZone: string): number {
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone,
