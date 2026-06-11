@@ -431,13 +431,10 @@ export async function resolveAllMissingPersonIds(): Promise<{
 
   let created = 0;
   if (toCreate.length > 0) {
-    const inserted = await db
-      .insert(persons)
-      .values(toCreate)
-      .returning({
-        id: persons.id,
-        fullNameCanonical: persons.fullNameCanonical,
-      });
+    const inserted = await db.insert(persons).values(toCreate).returning({
+      id: persons.id,
+      fullNameCanonical: persons.fullNameCanonical,
+    });
     created = inserted.length;
     for (const p of inserted) {
       personByCanonical.set(p.fullNameCanonical, p.id);

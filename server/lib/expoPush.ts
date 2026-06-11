@@ -8,6 +8,7 @@
  */
 import { db } from "../db";
 import { pushTokens } from "@shared/schema";
+import { EXPO_PUSH_TIMEOUT_MS } from "./timeouts";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const CHUNK_SIZE = 100; // Expo max per request (single-user: loop always runs once)
@@ -32,6 +33,7 @@ async function sendChunk(messages: ExpoPushMessage[]): Promise<void> {
   try {
     const res = await fetch(EXPO_PUSH_URL, {
       method: "POST",
+      signal: AbortSignal.timeout(EXPO_PUSH_TIMEOUT_MS),
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",

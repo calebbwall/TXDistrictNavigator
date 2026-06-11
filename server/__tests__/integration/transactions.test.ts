@@ -18,7 +18,6 @@ import {
   db,
 } from "./helpers";
 import {
-  committees,
   committeeMemberships,
   committeeRefreshState,
   legislativeEvents,

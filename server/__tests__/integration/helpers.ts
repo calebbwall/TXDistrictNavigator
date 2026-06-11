@@ -155,7 +155,7 @@ export interface TestServer {
 
 /** Start an Express app composed from the given route registrars. */
 export async function startApp(
-  ...registrars: Array<(app: Express) => void | Promise<void>>
+  ...registrars: ((app: Express) => void | Promise<void>)[]
 ): Promise<TestServer> {
   const app = express();
   app.use(express.json({ limit: "10mb" }));

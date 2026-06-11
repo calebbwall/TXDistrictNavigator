@@ -30,9 +30,10 @@ import {
   type InsertBillAction,
   type InsertAlert,
 } from "@shared/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { sendPushToAll } from "../lib/expoPush";
 import { zonedWallTimeToUtc } from "../lib/timezone";
+import { SCRAPER_FETCH_TIMEOUT_MS } from "../lib/timeouts";
 
 const TX_TIMEZONE = "America/Chicago";
 const MONTH_NAMES: Record<string, number> = {
@@ -63,6 +64,8 @@ export async function fetchWithRetry(
     try {
       const response = await fetch(url, {
         ...options,
+        // Fresh signal per attempt so a hung TLO socket can't stall a refresh.
+        signal: options.signal ?? AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
         headers: {
           "User-Agent": "TXDistrictNavigator/1.0 (Legislative Data Sync)",
           ...options.headers,
