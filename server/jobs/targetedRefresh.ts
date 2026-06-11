@@ -967,7 +967,9 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
 }
 
 // ---------- helpers ----------
-async function findOrCreateBill(billNumber: string): Promise<string | null> {
+export async function findOrCreateBill(
+  billNumber: string,
+): Promise<string | null> {
   const clean = billNumber.trim().toUpperCase();
 
   const existing = await db

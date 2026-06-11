@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { persons, officialPublic, personLinks } from "../../shared/schema";
-import { eq, and, isNull, isNotNull, sql } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql } from "drizzle-orm";
 import { createHash } from "crypto";
 
 /**
@@ -377,39 +377,97 @@ export async function resolveAllMissingPersonIds(): Promise<{
     `[Identity] Found ${officialsWithoutPerson.length} officials without personId`,
   );
 
-  let resolved = 0;
+  // Batched resolution. The previous loop issued a resolvePersonId (explicit
+  // link check + person select + optional insert) plus an UPDATE per official
+  // — roughly 4N queries for N missing officials. This path keeps the same
+  // semantics (explicit person_links take precedence over canonical-name
+  // matching) in a constant number of queries.
+  const officialIds = officialsWithoutPerson.map((o) => o.id);
+  const links = await db
+    .select({
+      officialPublicId: personLinks.officialPublicId,
+      personId: personLinks.personId,
+    })
+    .from(personLinks)
+    .where(inArray(personLinks.officialPublicId, officialIds));
+  const linkByOfficial = new Map(
+    links.map((l) => [l.officialPublicId, l.personId]),
+  );
 
-  // Count persons before/after instead of re-querying per official: the old
-  // per-iteration "is new" check selected the person that resolvePersonId had
-  // just returned, which always exists — so `created` always equaled
-  // `resolved` (and cost one extra query per official).
-  const countPersons = async () => {
-    const [row] = await db
-      .select({ cnt: sql<number>`count(*)::int` })
-      .from(persons);
-    return row?.cnt ?? 0;
-  };
-  const personsBefore = await countPersons();
+  const unlinked = officialsWithoutPerson.filter(
+    (o) => !linkByOfficial.has(o.id),
+  );
+  const canonicalByOfficial = new Map(
+    unlinked.map((o) => [o.id, normalizeName(o.fullName)]),
+  );
+  const canonicalNames = [...new Set(canonicalByOfficial.values())];
 
-  for (const official of officialsWithoutPerson) {
-    const personId = await resolvePersonId(
-      official.fullName,
-      official.fullName,
-      official.id,
-    );
+  const existingPersons = canonicalNames.length
+    ? await db
+        .select({
+          id: persons.id,
+          fullNameCanonical: persons.fullNameCanonical,
+        })
+        .from(persons)
+        .where(inArray(persons.fullNameCanonical, canonicalNames))
+    : [];
+  const personByCanonical = new Map(
+    existingPersons.map((p) => [p.fullNameCanonical, p.id]),
+  );
 
-    await db
-      .update(officialPublic)
-      .set({ personId })
-      .where(eq(officialPublic.id, official.id));
-
-    resolved++;
+  const toCreate: { fullNameCanonical: string; fullNameDisplay: string }[] = [];
+  const plannedCanonicals = new Set<string>();
+  for (const o of unlinked) {
+    const canonical = canonicalByOfficial.get(o.id)!;
+    if (personByCanonical.has(canonical) || plannedCanonicals.has(canonical)) {
+      continue;
+    }
+    plannedCanonicals.add(canonical);
+    toCreate.push({
+      fullNameCanonical: canonical,
+      fullNameDisplay: o.fullName,
+    });
   }
 
-  const created = Math.max(0, (await countPersons()) - personsBefore);
+  let created = 0;
+  if (toCreate.length > 0) {
+    const inserted = await db
+      .insert(persons)
+      .values(toCreate)
+      .returning({
+        id: persons.id,
+        fullNameCanonical: persons.fullNameCanonical,
+      });
+    created = inserted.length;
+    for (const p of inserted) {
+      personByCanonical.set(p.fullNameCanonical, p.id);
+    }
+    console.log(`[Identity] Created ${created} new person records`);
+  }
+
+  const assignments: { officialId: string; personId: string }[] = [];
+  for (const o of officialsWithoutPerson) {
+    const personId =
+      linkByOfficial.get(o.id) ??
+      personByCanonical.get(canonicalByOfficial.get(o.id)!);
+    if (personId) assignments.push({ officialId: o.id, personId });
+  }
+
+  if (assignments.length > 0) {
+    const valueRows = sql.join(
+      assignments.map((a) => sql`(${a.officialId}, ${a.personId})`),
+      sql`, `,
+    );
+    await db.execute(sql`
+      UPDATE official_public AS op
+      SET person_id = v.person_id
+      FROM (VALUES ${valueRows}) AS v(id, person_id)
+      WHERE op.id = v.id
+    `);
+  }
 
   console.log(
-    `[Identity] Resolved ${resolved} personIds, created ${created} new person records`,
+    `[Identity] Resolved ${assignments.length} personIds, created ${created} new person records`,
   );
-  return { resolved, created };
+  return { resolved: assignments.length, created };
 }

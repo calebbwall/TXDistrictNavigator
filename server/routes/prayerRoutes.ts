@@ -30,8 +30,9 @@ import { zonedWallTimeToUtc } from "../lib/timezone";
 
 export { processEventDateActions };
 
-function getTodayDateKey(): string {
-  const now = new Date();
+// The optional `now` parameter exists for tests (DST and midnight-boundary
+// coverage); production callers always use the real clock.
+export function getTodayDateKey(now: Date = new Date()): string {
   const chicagoStr = now.toLocaleString("en-US", {
     timeZone: "America/Chicago",
   });
@@ -42,21 +43,11 @@ function getTodayDateKey(): string {
   return `${y}-${m}-${d}`;
 }
 
-function getYesterdayDateKey(): string {
-  const now = new Date();
-  const chicagoStr = now.toLocaleString("en-US", {
-    timeZone: "America/Chicago",
-  });
-  const chicagoDate = new Date(chicagoStr);
-  chicagoDate.setDate(chicagoDate.getDate() - 1);
-  const y = chicagoDate.getFullYear();
-  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
-  const d = String(chicagoDate.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+function getYesterdayDateKey(now: Date = new Date()): string {
+  return getDateKeyNDaysAgo(1, now);
 }
 
-function getDateKeyNDaysAgo(n: number): string {
-  const now = new Date();
+export function getDateKeyNDaysAgo(n: number, now: Date = new Date()): string {
   const chicagoStr = now.toLocaleString("en-US", {
     timeZone: "America/Chicago",
   });
