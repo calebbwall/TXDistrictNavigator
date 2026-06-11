@@ -53,14 +53,19 @@ function getToday(): string {
 async function exportMileageToCsv(
   entries: MileageEntry[],
   fromDate: string,
-  toDate: string
+  toDate: string,
 ): Promise<void> {
   const filtered = entries
-    .filter((e) => e.date >= fromDate && e.date <= toDate && e.status === "completed")
+    .filter(
+      (e) => e.date >= fromDate && e.date <= toDate && e.status === "completed",
+    )
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (filtered.length === 0) {
-    Alert.alert("No Entries", "No completed mileage entries found for the selected date range.");
+    Alert.alert(
+      "No Entries",
+      "No completed mileage entries found for the selected date range.",
+    );
     return;
   }
 
@@ -68,7 +73,7 @@ async function exportMileageToCsv(
   const rows = filtered
     .map(
       (e) =>
-        `"${e.date}","${e.description.replace(/"/g, '""')}",${e.startMileage},${e.endMileage ?? ""},${e.totalMiles ?? ""}`
+        `"${e.date}","${e.description.replace(/"/g, '""')}",${e.startMileage},${e.endMileage ?? ""},${e.totalMiles ?? ""}`,
     )
     .join("\n");
   const totalMiles = filtered.reduce((sum, e) => sum + (e.totalMiles ?? 0), 0);
@@ -90,7 +95,10 @@ async function exportMileageToCsv(
       await Share.share({ message: csv, title: "Mileage Export" });
     }
   } catch (error) {
-    Alert.alert("Export Failed", "Could not export mileage data. Please try again.");
+    Alert.alert(
+      "Export Failed",
+      "Could not export mileage data. Please try again.",
+    );
     console.error("[Mileage] Export error:", error);
   }
 }
@@ -115,7 +123,7 @@ export default function MileageTrackerScreen() {
   useFocusEffect(
     useCallback(() => {
       loadEntries();
-    }, [loadEntries])
+    }, [loadEntries]),
   );
 
   const handleRefresh = useCallback(async () => {
@@ -140,10 +148,10 @@ export default function MileageTrackerScreen() {
               await loadEntries();
             },
           },
-        ]
+        ],
       );
     },
-    [loadEntries]
+    [loadEntries],
   );
 
   const handleExport = useCallback(async () => {
@@ -153,9 +161,11 @@ export default function MileageTrackerScreen() {
 
   const totalMilesAll = entries.reduce(
     (sum, e) => sum + (e.status === "completed" ? (e.totalMiles ?? 0) : 0),
-    0
+    0,
   );
-  const inProgressCount = entries.filter((e) => e.status === "in_progress").length;
+  const inProgressCount = entries.filter(
+    (e) => e.status === "in_progress",
+  ).length;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -163,13 +173,23 @@ export default function MileageTrackerScreen() {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: headerHeight + Spacing.lg, paddingBottom: tabBarHeight + Spacing.xl },
+          {
+            paddingTop: headerHeight + Spacing.lg,
+            paddingBottom: tabBarHeight + Spacing.xl,
+          },
         ]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
       >
         {/* Summary + Actions Row */}
         <View style={styles.topRow}>
-          <View style={[styles.summaryCard, { backgroundColor: theme.cardBackground }]}>
+          <View
+            style={[
+              styles.summaryCard,
+              { backgroundColor: theme.cardBackground },
+            ]}
+          >
             <ThemedText type="caption" style={{ color: theme.secondaryText }}>
               Total Miles
             </ThemedText>
@@ -177,8 +197,12 @@ export default function MileageTrackerScreen() {
               {totalMilesAll.toFixed(1)}
             </ThemedText>
             {inProgressCount > 0 && (
-              <ThemedText type="caption" style={{ color: "#F59E0B", marginTop: 2 }}>
-                {inProgressCount} trip{inProgressCount > 1 ? "s" : ""} in progress
+              <ThemedText
+                type="caption"
+                style={{ color: "#F59E0B", marginTop: 2 }}
+              >
+                {inProgressCount} trip{inProgressCount > 1 ? "s" : ""} in
+                progress
               </ThemedText>
             )}
           </View>
@@ -191,19 +215,32 @@ export default function MileageTrackerScreen() {
               }}
             >
               <Feather name="plus" size={18} color="#fff" />
-              <ThemedText type="caption" style={{ color: "#fff", marginLeft: 4 }}>
+              <ThemedText
+                type="caption"
+                style={{ color: "#fff", marginLeft: 4 }}
+              >
                 Add
               </ThemedText>
             </Pressable>
             <Pressable
-              style={[styles.actionBtn, { backgroundColor: theme.cardBackground, borderWidth: 1, borderColor: theme.border }]}
+              style={[
+                styles.actionBtn,
+                {
+                  backgroundColor: theme.cardBackground,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                },
+              ]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setShowExportModal(true);
               }}
             >
               <Feather name="download" size={18} color={theme.primary} />
-              <ThemedText type="caption" style={{ color: theme.primary, marginLeft: 4 }}>
+              <ThemedText
+                type="caption"
+                style={{ color: theme.primary, marginLeft: 4 }}
+              >
                 Export
               </ThemedText>
             </Pressable>
@@ -218,7 +255,11 @@ export default function MileageTrackerScreen() {
                 { backgroundColor: theme.backgroundDefault },
               ]}
             >
-              <Feather name="navigation" size={40} color={theme.secondaryText} />
+              <Feather
+                name="navigation"
+                size={40}
+                color={theme.secondaryText}
+              />
             </View>
             <ThemedText type="h3" style={{ marginBottom: Spacing.sm }}>
               No Entries Yet
@@ -234,27 +275,51 @@ export default function MileageTrackerScreen() {
           entries.map((entry) => (
             <Pressable
               key={entry.id}
-              onPress={() => navigation.navigate("MileageEntry", { entryId: entry.id })}
+              onPress={() =>
+                navigation.navigate("MileageEntry", { entryId: entry.id })
+              }
               onLongPress={() => handleDelete(entry)}
               style={({ pressed }) => [
                 styles.entryCard,
-                { backgroundColor: theme.cardBackground, opacity: pressed ? 0.85 : 1 },
+                {
+                  backgroundColor: theme.cardBackground,
+                  opacity: pressed ? 0.85 : 1,
+                },
               ]}
             >
               <View style={styles.entryHeader}>
-                <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.secondaryText }}
+                >
                   {formatDate(entry.date)}
                 </ThemedText>
                 <View style={styles.badgeRow}>
                   {entry.status === "in_progress" ? (
-                    <View style={[styles.inProgressBadge, { backgroundColor: "#F59E0B20" }]}>
-                      <ThemedText type="caption" style={{ color: "#F59E0B", fontWeight: "600" }}>
+                    <View
+                      style={[
+                        styles.inProgressBadge,
+                        { backgroundColor: "#F59E0B20" },
+                      ]}
+                    >
+                      <ThemedText
+                        type="caption"
+                        style={{ color: "#F59E0B", fontWeight: "600" }}
+                      >
                         In Progress
                       </ThemedText>
                     </View>
                   ) : (
-                    <View style={[styles.milesBadge, { backgroundColor: theme.primary + "20" }]}>
-                      <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                    <View
+                      style={[
+                        styles.milesBadge,
+                        { backgroundColor: theme.primary + "20" },
+                      ]}
+                    >
+                      <ThemedText
+                        type="caption"
+                        style={{ color: theme.primary, fontWeight: "600" }}
+                      >
                         {(entry.totalMiles ?? 0).toFixed(1)} mi
                       </ThemedText>
                     </View>
@@ -298,11 +363,18 @@ export default function MileageTrackerScreen() {
 
               <View style={styles.entryFooter}>
                 {entry.status === "in_progress" && (
-                  <ThemedText type="caption" style={{ color: "#F59E0B", marginRight: Spacing.xs }}>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: "#F59E0B", marginRight: Spacing.xs }}
+                  >
                     Tap to complete
                   </ThemedText>
                 )}
-                <Feather name="chevron-right" size={16} color={theme.secondaryText} />
+                <Feather
+                  name="chevron-right"
+                  size={16}
+                  color={theme.secondaryText}
+                />
               </View>
             </Pressable>
           ))
@@ -321,7 +393,10 @@ export default function MileageTrackerScreen() {
           onPress={() => setShowExportModal(false)}
         >
           <Pressable
-            style={[styles.modalCard, { backgroundColor: theme.cardBackground }]}
+            style={[
+              styles.modalCard,
+              { backgroundColor: theme.cardBackground },
+            ]}
             onPress={() => {}}
           >
             <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
@@ -353,7 +428,10 @@ export default function MileageTrackerScreen() {
               keyboardType="numbers-and-punctuation"
             />
 
-            <ThemedText type="caption" style={[styles.inputLabel, { marginTop: Spacing.sm }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.inputLabel, { marginTop: Spacing.sm }]}
+            >
               To (YYYY-MM-DD)
             </ThemedText>
             <TextInput
@@ -374,7 +452,10 @@ export default function MileageTrackerScreen() {
 
             <View style={styles.modalButtons}>
               <Pressable
-                style={[styles.modalBtn, { borderColor: theme.border, borderWidth: 1 }]}
+                style={[
+                  styles.modalBtn,
+                  { borderColor: theme.border, borderWidth: 1 },
+                ]}
                 onPress={() => setShowExportModal(false)}
               >
                 <ThemedText type="body">Cancel</ThemedText>
@@ -383,7 +464,12 @@ export default function MileageTrackerScreen() {
                 style={[styles.modalBtn, { backgroundColor: theme.primary }]}
                 onPress={handleExport}
               >
-                <Feather name="download" size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Feather
+                  name="download"
+                  size={16}
+                  color="#fff"
+                  style={{ marginRight: 6 }}
+                />
                 <ThemedText type="body" style={{ color: "#fff" }}>
                   Export CSV
                 </ThemedText>

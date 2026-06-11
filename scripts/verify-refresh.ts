@@ -4,21 +4,25 @@ import { eq, sql } from "drizzle-orm";
 import { refreshAllOfficials } from "../server/jobs/refreshOfficials";
 
 async function main() {
-  console.log("=== Verification Script: Testing refresh doesn't overwrite private data ===\n");
+  console.log(
+    "=== Verification Script: Testing refresh doesn't overwrite private data ===\n",
+  );
 
   console.log("Step 1: Run initial refresh to populate data...");
   await refreshAllOfficials();
 
-  const [firstOfficial] = await db.select()
-    .from(officialPublic)
-    .limit(1);
+  const [firstOfficial] = await db.select().from(officialPublic).limit(1);
 
   if (!firstOfficial) {
-    console.error("ERROR: No officials found after refresh. Verification failed.");
+    console.error(
+      "ERROR: No officials found after refresh. Verification failed.",
+    );
     process.exit(1);
   }
 
-  console.log(`\nStep 2: Found official: ${firstOfficial.fullName} (ID: ${firstOfficial.id})`);
+  console.log(
+    `\nStep 2: Found official: ${firstOfficial.fullName} (ID: ${firstOfficial.id})`,
+  );
 
   const testNote = `Test note created at ${new Date().toISOString()} - DO NOT DELETE`;
   const testPhone = "555-TEST-001";
@@ -29,13 +33,15 @@ async function main() {
   console.log(`  - Personal Phone: "${testPhone}"`);
   console.log(`  - Tags: ${JSON.stringify(testTags)}`);
 
-  const [existingPrivate] = await db.select()
+  const [existingPrivate] = await db
+    .select()
     .from(officialPrivate)
     .where(eq(officialPrivate.officialPublicId, firstOfficial.id))
     .limit(1);
 
   if (existingPrivate) {
-    await db.update(officialPrivate)
+    await db
+      .update(officialPrivate)
       .set({
         notes: testNote,
         personalPhone: testPhone,
@@ -52,7 +58,8 @@ async function main() {
     });
   }
 
-  const [verifyCreated] = await db.select()
+  const [verifyCreated] = await db
+    .select()
     .from(officialPrivate)
     .where(eq(officialPrivate.officialPublicId, firstOfficial.id))
     .limit(1);
@@ -68,7 +75,8 @@ async function main() {
 
   console.log("\nStep 5: Verifying private data was preserved...");
 
-  const [afterRefresh] = await db.select()
+  const [afterRefresh] = await db
+    .select()
     .from(officialPrivate)
     .where(eq(officialPrivate.officialPublicId, firstOfficial.id))
     .limit(1);
@@ -81,20 +89,26 @@ async function main() {
   const errors: string[] = [];
 
   if (afterRefresh.notes !== testNote) {
-    errors.push(`Notes changed: expected "${testNote}", got "${afterRefresh.notes}"`);
+    errors.push(
+      `Notes changed: expected "${testNote}", got "${afterRefresh.notes}"`,
+    );
   }
 
   if (afterRefresh.personalPhone !== testPhone) {
-    errors.push(`Personal phone changed: expected "${testPhone}", got "${afterRefresh.personalPhone}"`);
+    errors.push(
+      `Personal phone changed: expected "${testPhone}", got "${afterRefresh.personalPhone}"`,
+    );
   }
 
   if (JSON.stringify(afterRefresh.tags) !== JSON.stringify(testTags)) {
-    errors.push(`Tags changed: expected ${JSON.stringify(testTags)}, got ${JSON.stringify(afterRefresh.tags)}`);
+    errors.push(
+      `Tags changed: expected ${JSON.stringify(testTags)}, got ${JSON.stringify(afterRefresh.tags)}`,
+    );
   }
 
   if (errors.length > 0) {
     console.error("\nERROR: Private data was modified during refresh!");
-    errors.forEach(e => console.error(`  - ${e}`));
+    errors.forEach((e) => console.error(`  - ${e}`));
     process.exit(1);
   }
 
@@ -106,8 +120,12 @@ async function main() {
 
   const baseUrl = process.env.API_BASE_URL || "http://localhost:5000";
   try {
-    const response = await fetch(`${baseUrl}/api/officials/${firstOfficial.id}`);
-    const data = await response.json() as { official?: { private?: { notes?: string } } };
+    const response = await fetch(
+      `${baseUrl}/api/officials/${firstOfficial.id}`,
+    );
+    const data = (await response.json()) as {
+      official?: { private?: { notes?: string } };
+    };
 
     if (data.official?.private?.notes !== testNote) {
       console.error("ERROR: Merged endpoint does not include private notes!");
@@ -118,15 +136,22 @@ async function main() {
 
     console.log("  - Merged endpoint correctly includes private data");
   } catch (err) {
-    console.warn("  - Could not verify API endpoint (server may not be running)");
-    console.warn("  - Manual verification: GET /api/officials/:id should include private field");
+    console.warn(
+      "  - Could not verify API endpoint (server may not be running)",
+    );
+    console.warn(
+      "  - Manual verification: GET /api/officials/:id should include private field",
+    );
   }
 
   console.log("\n=== VERIFICATION PASSED ===");
-  console.log("Private data is preserved across refreshes and properly merged in API responses.");
+  console.log(
+    "Private data is preserved across refreshes and properly merged in API responses.",
+  );
 
   console.log("\nStep 7: Cleaning up test data...");
-  await db.update(officialPrivate)
+  await db
+    .update(officialPrivate)
     .set({
       notes: null,
       personalPhone: null,
@@ -138,7 +163,7 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error("Verification script failed:", err);
   process.exit(1);
 });

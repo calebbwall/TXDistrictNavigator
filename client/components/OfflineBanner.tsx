@@ -11,22 +11,19 @@ interface OfflineBannerProps {
   message?: string;
 }
 
-export function OfflineBanner({ 
-  visible, 
-  message = "Offline — showing saved data" 
+export function OfflineBanner({
+  visible,
+  message = "Offline — showing saved data",
 }: OfflineBannerProps) {
   const { theme } = useTheme();
-  
+
   if (!visible) return null;
 
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(200)}
-      style={[
-        styles.container,
-        { backgroundColor: theme.warning + "E6" },
-      ]}
+      style={[styles.container, { backgroundColor: theme.warning + "E6" }]}
     >
       <Feather name="wifi-off" size={16} color="#000" />
       <ThemedText style={styles.text}>{message}</ThemedText>

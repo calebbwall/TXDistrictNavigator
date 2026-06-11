@@ -1,4 +1,9 @@
-import React, { useState, useCallback, useEffect, useLayoutEffect } from "react";
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+} from "react";
 import {
   View,
   ScrollView,
@@ -45,9 +50,7 @@ async function copyToAppStorage(uri: string): Promise<string> {
   return dest.uri;
 }
 
-async function promptPhotoSource(
-  setUri: (uri: string) => void
-): Promise<void> {
+async function promptPhotoSource(setUri: (uri: string) => void): Promise<void> {
   const persistUri = async (rawUri: string): Promise<string> => {
     try {
       return await copyToAppStorage(rawUri);
@@ -63,7 +66,7 @@ async function promptPhotoSource(
       if (status !== "granted") {
         Alert.alert(
           "Permission Required",
-          "Camera access is needed to take a photo."
+          "Camera access is needed to take a photo.",
         );
         return;
       }
@@ -73,11 +76,12 @@ async function promptPhotoSource(
         setUri(persisted);
       }
     } else if (index === 1) {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
         Alert.alert(
           "Permission Required",
-          "Photo library access is needed to select a photo."
+          "Photo library access is needed to select a photo.",
         );
         return;
       }
@@ -98,7 +102,7 @@ async function promptPhotoSource(
         options: ["Take Photo", "Choose from Library", "Cancel"],
         cancelButtonIndex: 2,
       },
-      handleChoice
+      handleChoice,
     );
   } else {
     Alert.alert("Add Photo", undefined, [
@@ -136,7 +140,8 @@ export default function MileageEntryScreen() {
       setDate(found.date);
       setDescription(found.description);
       setStartMileage(String(found.startMileage));
-      if (found.endMileage !== undefined) setEndMileage(String(found.endMileage));
+      if (found.endMileage !== undefined)
+        setEndMileage(String(found.endMileage));
       setStartPhotoUri(found.startPhotoUri);
       setEndPhotoUri(found.endPhotoUri);
     }
@@ -169,8 +174,7 @@ export default function MileageEntryScreen() {
       : null;
 
   // Validation depends on mode
-  const isStartValid =
-    description.trim().length > 0 && !isNaN(startNum);
+  const isStartValid = description.trim().length > 0 && !isNaN(startNum);
   const isCompleteValid =
     !isNaN(endNum) && !isNaN(startNum) && endNum >= startNum;
   const isEditValid =
@@ -248,10 +252,10 @@ export default function MileageEntryScreen() {
   const buttonLabel = saving
     ? "Saving…"
     : isNew
-    ? "Start Trip"
-    : isInProgress
-    ? "Complete Trip"
-    : "Save Changes";
+      ? "Start Trip"
+      : isInProgress
+        ? "Complete Trip"
+        : "Save Changes";
 
   return (
     <KeyboardAvoidingView
@@ -262,21 +266,42 @@ export default function MileageEntryScreen() {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: headerHeight + Spacing.lg, paddingBottom: tabBarHeight + Spacing.xl },
+          {
+            paddingTop: headerHeight + Spacing.lg,
+            paddingBottom: tabBarHeight + Spacing.xl,
+          },
         ]}
         keyboardShouldPersistTaps="handled"
       >
         {/* ── Mode B: Complete Trip — show read-only start summary at top ── */}
         {isInProgress && existing && (
           <>
-            <View style={[styles.summaryCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-              <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+            <View
+              style={[
+                styles.summaryCard,
+                {
+                  backgroundColor: theme.cardBackground,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <ThemedText
+                type="caption"
+                style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
+              >
                 Trip Started
               </ThemedText>
-              <ThemedText type="body" style={{ fontWeight: "600" }} numberOfLines={2}>
+              <ThemedText
+                type="body"
+                style={{ fontWeight: "600" }}
+                numberOfLines={2}
+              >
                 {existing.description}
               </ThemedText>
-              <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: 2 }}>
+              <ThemedText
+                type="caption"
+                style={{ color: theme.secondaryText, marginTop: 2 }}
+              >
                 {existing.date} · {existing.startMileage} mi start
               </ThemedText>
               {existing.startPhotoUri && (
@@ -288,7 +313,10 @@ export default function MileageEntryScreen() {
               )}
             </View>
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
-            <ThemedText type="caption" style={[styles.sectionLabel, { color: theme.secondaryText }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.sectionLabel, { color: theme.secondaryText }]}
+            >
               Now add your ending details
             </ThemedText>
           </>
@@ -297,7 +325,10 @@ export default function MileageEntryScreen() {
         {/* ── Mode A & C: Date ── */}
         {(isNew || isCompleted) && (
           <View style={styles.fieldGroup}>
-            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.label, { color: theme.secondaryText }]}
+            >
               Date
             </ThemedText>
             <TextInput
@@ -307,7 +338,11 @@ export default function MileageEntryScreen() {
               placeholderTextColor={theme.secondaryText}
               style={[
                 styles.input,
-                { backgroundColor: theme.cardBackground, color: theme.text, borderColor: theme.border },
+                {
+                  backgroundColor: theme.cardBackground,
+                  color: theme.text,
+                  borderColor: theme.border,
+                },
               ]}
               keyboardType="numbers-and-punctuation"
             />
@@ -317,7 +352,10 @@ export default function MileageEntryScreen() {
         {/* ── Mode A & C: Description ── */}
         {(isNew || isCompleted) && (
           <View style={styles.fieldGroup}>
-            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.label, { color: theme.secondaryText }]}
+            >
               Where are you going and what is this for?
             </ThemedText>
             <TextInput
@@ -331,7 +369,11 @@ export default function MileageEntryScreen() {
               style={[
                 styles.input,
                 styles.textArea,
-                { backgroundColor: theme.cardBackground, color: theme.text, borderColor: theme.border },
+                {
+                  backgroundColor: theme.cardBackground,
+                  color: theme.text,
+                  borderColor: theme.border,
+                },
               ]}
             />
           </View>
@@ -340,7 +382,10 @@ export default function MileageEntryScreen() {
         {/* ── Starting Mileage (Mode A & C) ── */}
         {(isNew || isCompleted) && (
           <View style={styles.fieldGroup}>
-            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.label, { color: theme.secondaryText }]}
+            >
               Starting Mileage
             </ThemedText>
             <View style={styles.mileageInputWrap}>
@@ -353,10 +398,17 @@ export default function MileageEntryScreen() {
                 style={[
                   styles.input,
                   styles.mileageInput,
-                  { backgroundColor: theme.cardBackground, color: theme.text, borderColor: theme.border },
+                  {
+                    backgroundColor: theme.cardBackground,
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
                 ]}
               />
-              <ThemedText type="caption" style={[styles.miLabel, { color: theme.secondaryText }]}>
+              <ThemedText
+                type="caption"
+                style={[styles.miLabel, { color: theme.secondaryText }]}
+              >
                 mi
               </ThemedText>
             </View>
@@ -366,18 +418,31 @@ export default function MileageEntryScreen() {
         {/* ── Start Odometer Photo (Mode A & C) ── */}
         {(isNew || isCompleted) && (
           <View style={styles.fieldGroup}>
-            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.label, { color: theme.secondaryText }]}
+            >
               Starting Odometer Photo
             </ThemedText>
             {startPhotoUri ? (
               <View style={styles.photoPreview}>
-                <Image source={{ uri: startPhotoUri }} style={styles.photoFull} contentFit="cover" />
+                <Image
+                  source={{ uri: startPhotoUri }}
+                  style={styles.photoFull}
+                  contentFit="cover"
+                />
                 <Pressable
                   onPress={() => setStartPhotoUri(undefined)}
-                  style={[styles.removePhotoBtn, { backgroundColor: theme.cardBackground }]}
+                  style={[
+                    styles.removePhotoBtn,
+                    { backgroundColor: theme.cardBackground },
+                  ]}
                 >
                   <Feather name="x" size={16} color={theme.secondaryText} />
-                  <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: 4 }}>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.secondaryText, marginLeft: 4 }}
+                  >
                     Remove
                   </ThemedText>
                 </Pressable>
@@ -385,10 +450,19 @@ export default function MileageEntryScreen() {
             ) : (
               <Pressable
                 onPress={() => promptPhotoSource(setStartPhotoUri)}
-                style={[styles.photoButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+                style={[
+                  styles.photoButton,
+                  {
+                    backgroundColor: theme.cardBackground,
+                    borderColor: theme.border,
+                  },
+                ]}
               >
                 <Feather name="camera" size={22} color={theme.primary} />
-                <ThemedText type="body" style={{ color: theme.primary, marginTop: Spacing.xs }}>
+                <ThemedText
+                  type="body"
+                  style={{ color: theme.primary, marginTop: Spacing.xs }}
+                >
                   Add Start Photo
                 </ThemedText>
               </Pressable>
@@ -399,7 +473,10 @@ export default function MileageEntryScreen() {
         {/* ── Ending Mileage (Mode B & C) ── */}
         {(isInProgress || isCompleted) && (
           <View style={styles.fieldGroup}>
-            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.label, { color: theme.secondaryText }]}
+            >
               Ending Mileage
             </ThemedText>
             <View style={styles.mileageInputWrap}>
@@ -422,7 +499,10 @@ export default function MileageEntryScreen() {
                   },
                 ]}
               />
-              <ThemedText type="caption" style={[styles.miLabel, { color: theme.secondaryText }]}>
+              <ThemedText
+                type="caption"
+                style={[styles.miLabel, { color: theme.secondaryText }]}
+              >
                 mi
               </ThemedText>
             </View>
@@ -435,7 +515,12 @@ export default function MileageEntryScreen() {
             <View
               style={[
                 styles.totalCard,
-                { backgroundColor: totalMiles !== null ? theme.primary + "15" : theme.cardBackground },
+                {
+                  backgroundColor:
+                    totalMiles !== null
+                      ? theme.primary + "15"
+                      : theme.cardBackground,
+                },
               ]}
             >
               <ThemedText type="caption" style={{ color: theme.secondaryText }}>
@@ -443,38 +528,60 @@ export default function MileageEntryScreen() {
               </ThemedText>
               <ThemedText
                 type="h2"
-                style={{ color: totalMiles !== null ? theme.primary : theme.secondaryText }}
+                style={{
+                  color:
+                    totalMiles !== null ? theme.primary : theme.secondaryText,
+                }}
               >
                 {totalMiles !== null ? `${totalMiles.toFixed(1)} mi` : "—"}
               </ThemedText>
             </View>
 
-            {endMileage && !isNaN(endNum) && endNum < (existing?.startMileage ?? startNum) && (
-              <ThemedText
-                type="caption"
-                style={{ color: "#FF3B30", marginBottom: Spacing.md, textAlign: "center" }}
-              >
-                Ending mileage must be greater than starting mileage.
-              </ThemedText>
-            )}
+            {endMileage &&
+              !isNaN(endNum) &&
+              endNum < (existing?.startMileage ?? startNum) && (
+                <ThemedText
+                  type="caption"
+                  style={{
+                    color: "#FF3B30",
+                    marginBottom: Spacing.md,
+                    textAlign: "center",
+                  }}
+                >
+                  Ending mileage must be greater than starting mileage.
+                </ThemedText>
+              )}
           </>
         )}
 
         {/* ── End Odometer Photo (Mode B & C) ── */}
         {(isInProgress || isCompleted) && (
           <View style={styles.fieldGroup}>
-            <ThemedText type="caption" style={[styles.label, { color: theme.secondaryText }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.label, { color: theme.secondaryText }]}
+            >
               Ending Odometer Photo
             </ThemedText>
             {endPhotoUri ? (
               <View style={styles.photoPreview}>
-                <Image source={{ uri: endPhotoUri }} style={styles.photoFull} contentFit="cover" />
+                <Image
+                  source={{ uri: endPhotoUri }}
+                  style={styles.photoFull}
+                  contentFit="cover"
+                />
                 <Pressable
                   onPress={() => setEndPhotoUri(undefined)}
-                  style={[styles.removePhotoBtn, { backgroundColor: theme.cardBackground }]}
+                  style={[
+                    styles.removePhotoBtn,
+                    { backgroundColor: theme.cardBackground },
+                  ]}
                 >
                   <Feather name="x" size={16} color={theme.secondaryText} />
-                  <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: 4 }}>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.secondaryText, marginLeft: 4 }}
+                  >
                     Remove
                   </ThemedText>
                 </Pressable>
@@ -482,10 +589,19 @@ export default function MileageEntryScreen() {
             ) : (
               <Pressable
                 onPress={() => promptPhotoSource(setEndPhotoUri)}
-                style={[styles.photoButton, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+                style={[
+                  styles.photoButton,
+                  {
+                    backgroundColor: theme.cardBackground,
+                    borderColor: theme.border,
+                  },
+                ]}
               >
                 <Feather name="camera" size={22} color={theme.primary} />
-                <ThemedText type="body" style={{ color: theme.primary, marginTop: Spacing.xs }}>
+                <ThemedText
+                  type="body"
+                  style={{ color: theme.primary, marginTop: Spacing.xs }}
+                >
                   Add End Photo
                 </ThemedText>
               </Pressable>
@@ -500,13 +616,23 @@ export default function MileageEntryScreen() {
           style={({ pressed }) => [
             styles.saveButton,
             {
-              backgroundColor: !saveDisabled ? theme.primary : theme.backgroundSecondary,
+              backgroundColor: !saveDisabled
+                ? theme.primary
+                : theme.backgroundSecondary,
               opacity: pressed ? 0.85 : 1,
             },
           ]}
         >
           <Feather
-            name={saving ? "loader" : isNew ? "play" : isInProgress ? "check-circle" : "check"}
+            name={
+              saving
+                ? "loader"
+                : isNew
+                  ? "play"
+                  : isInProgress
+                    ? "check-circle"
+                    : "check"
+            }
             size={18}
             color={!saveDisabled ? "#fff" : theme.secondaryText}
           />
@@ -532,7 +658,11 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: Spacing.lg },
   fieldGroup: { marginBottom: Spacing.lg },
   label: { marginBottom: Spacing.xs },
-  sectionLabel: { marginBottom: Spacing.lg, textTransform: "uppercase", letterSpacing: 0.5 },
+  sectionLabel: {
+    marginBottom: Spacing.lg,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   input: {
     borderWidth: 1,
     borderRadius: BorderRadius.md,

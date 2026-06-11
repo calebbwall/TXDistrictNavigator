@@ -82,19 +82,29 @@ export default function LegislativeStackNavigator() {
       <Stack.Screen
         name="LegislativeDashboard"
         component={LegislativeDashboardScreen}
-        options={({ }) => ({
+        options={({}) => ({
           headerTitle: () => {
             const { theme } = useTheme();
             const today = new Date().toLocaleDateString("en-US", {
-              weekday: "long", month: "long", day: "numeric",
+              weekday: "long",
+              month: "long",
+              day: "numeric",
               timeZone: "America/Chicago",
             });
             return (
               <View style={{ alignItems: "center" }}>
-                <Text style={{ fontWeight: "700", fontSize: 17, color: theme.text }}>
+                <Text
+                  style={{ fontWeight: "700", fontSize: 17, color: theme.text }}
+                >
                   Legislative Calendar
                 </Text>
-                <Text style={{ fontSize: 12, color: theme.secondaryText, marginTop: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: theme.secondaryText,
+                    marginTop: 1,
+                  }}
+                >
                   {today}
                 </Text>
               </View>

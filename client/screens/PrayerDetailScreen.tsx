@@ -78,7 +78,9 @@ export default function PrayerDetailScreen() {
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [eventDate, setEventDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [autoAfterEventAction, setAutoAfterEventAction] = useState<"none" | "markAnswered" | "archive">("none");
+  const [autoAfterEventAction, setAutoAfterEventAction] = useState<
+    "none" | "markAnswered" | "archive"
+  >("none");
   const [autoAfterEventDaysOffset, setAutoAfterEventDaysOffset] = useState(0);
   const [showAutoActionPicker, setShowAutoActionPicker] = useState(false);
   const [customPeopleNames, setCustomPeopleNames] = useState<string[]>([]);
@@ -95,7 +97,9 @@ export default function PrayerDetailScreen() {
   const { data: officialsData } = useQuery<{ officials: OfficialItem[] }>({
     queryKey: ["/api/officials"],
   });
-  const officialsMap = new Map((officialsData?.officials ?? []).map((o) => [o.id, o.fullName]));
+  const officialsMap = new Map(
+    (officialsData?.officials ?? []).map((o) => [o.id, o.fullName]),
+  );
 
   useEffect(() => {
     if (prayer) {
@@ -105,14 +109,22 @@ export default function PrayerDetailScreen() {
       setPinnedDaily(prayer.pinnedDaily);
       setPriority(prayer.priority);
       setEventDate(prayer.eventDate ? new Date(prayer.eventDate) : null);
-      setAutoAfterEventAction((prayer.autoAfterEventAction as "none" | "markAnswered" | "archive") || "none");
+      setAutoAfterEventAction(
+        (prayer.autoAfterEventAction as "none" | "markAnswered" | "archive") ||
+          "none",
+      );
       setAutoAfterEventDaysOffset(prayer.autoAfterEventDaysOffset || 0);
       setCustomPeopleNames(prayer.customPeopleNames ?? []);
       setHasChanges(false);
     }
   }, [prayer]);
 
-  const autoActionLabel = autoAfterEventAction === "markAnswered" ? "Mark Answered" : autoAfterEventAction === "archive" ? "Archive" : "No Action";
+  const autoActionLabel =
+    autoAfterEventAction === "markAnswered"
+      ? "Mark Answered"
+      : autoAfterEventAction === "archive"
+        ? "Archive"
+        : "No Action";
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -138,11 +150,15 @@ export default function PrayerDetailScreen() {
 
   const answerMutation = useMutation({
     mutationFn: async (answerNote: string) => {
-      await apiRequest("POST", `/api/prayers/${prayerId}/answer`, { answerNote });
+      await apiRequest("POST", `/api/prayers/${prayerId}/answer`, {
+        answerNote,
+      });
     },
     onSuccess: () => {
       invalidatePrayerQueries(queryClient);
-      showToast("Prayer answered", { undoAction: () => reopenMutation.mutate() });
+      showToast("Prayer answered", {
+        undoAction: () => reopenMutation.mutate(),
+      });
     },
   });
 
@@ -162,7 +178,9 @@ export default function PrayerDetailScreen() {
     },
     onSuccess: () => {
       invalidatePrayerQueries(queryClient);
-      showToast("Prayer archived", { undoAction: () => unarchiveMutation.mutate() });
+      showToast("Prayer archived", {
+        undoAction: () => unarchiveMutation.mutate(),
+      });
     },
   });
 
@@ -205,29 +223,29 @@ export default function PrayerDetailScreen() {
           },
         ],
         "plain-text",
-        ""
+        "",
       );
     } else {
-      Alert.alert(
-        "Mark as Answered",
-        "Mark this prayer as answered?",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Mark Answered",
-            onPress: () => {
-              answerMutation.mutate("");
-            },
+      Alert.alert("Mark as Answered", "Mark this prayer as answered?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Mark Answered",
+          onPress: () => {
+            answerMutation.mutate("");
           },
-        ]
-      );
+        },
+      ]);
     }
   };
 
   const handleDelete = () => {
     Alert.alert("Delete Prayer", "This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate() },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteMutation.mutate(),
+      },
     ]);
   };
 
@@ -247,26 +265,31 @@ export default function PrayerDetailScreen() {
     });
   };
 
-  const currentCategoryName = categories?.find((c) => c.id === categoryId)?.name ?? "None";
+  const currentCategoryName =
+    categories?.find((c) => c.id === categoryId)?.name ?? "None";
   const statusColor =
     prayer?.status === "OPEN"
       ? theme.primary
       : prayer?.status === "ANSWERED"
-      ? theme.success
-      : theme.secondaryText;
+        ? theme.success
+        : theme.secondaryText;
   const statusLabel =
     prayer?.status === "OPEN"
       ? "Active"
       : prayer?.status === "ANSWERED"
-      ? "Answered"
-      : "Archived";
+        ? "Answered"
+        : "Archived";
 
   if (isLoading) {
     return (
       <View
         style={[
           styles.container,
-          { backgroundColor: theme.backgroundRoot, justifyContent: "center", alignItems: "center" },
+          {
+            backgroundColor: theme.backgroundRoot,
+            justifyContent: "center",
+            alignItems: "center",
+          },
         ]}
       >
         <ActivityIndicator size="large" />
@@ -279,7 +302,11 @@ export default function PrayerDetailScreen() {
       <View
         style={[
           styles.container,
-          { backgroundColor: theme.backgroundRoot, justifyContent: "center", alignItems: "center" },
+          {
+            backgroundColor: theme.backgroundRoot,
+            justifyContent: "center",
+            alignItems: "center",
+          },
         ]}
       >
         <ThemedText type="body" style={{ color: theme.secondaryText }}>
@@ -298,15 +325,23 @@ export default function PrayerDetailScreen() {
         paddingBottom: insets.bottom + Spacing.xxl,
       }}
     >
-      <View style={[styles.statusBadge, { backgroundColor: statusColor + "20" }]}>
+      <View
+        style={[styles.statusBadge, { backgroundColor: statusColor + "20" }]}
+      >
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        <ThemedText type="caption" style={{ color: statusColor, fontWeight: "600" }}>
+        <ThemedText
+          type="caption"
+          style={{ color: statusColor, fontWeight: "600" }}
+        >
           {statusLabel}
         </ThemedText>
       </View>
 
       <View style={{ marginTop: Spacing.lg }}>
-        <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
+        >
           Title
         </ThemedText>
         <TextInput
@@ -329,7 +364,10 @@ export default function PrayerDetailScreen() {
       </View>
 
       <View style={{ marginTop: Spacing.md }}>
-        <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
+        >
           Body
         </ThemedText>
         <TextInput
@@ -355,7 +393,10 @@ export default function PrayerDetailScreen() {
       </View>
 
       <View style={{ marginTop: Spacing.md }}>
-        <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
+        >
           Category
         </ThemedText>
         <Pressable
@@ -378,11 +419,16 @@ export default function PrayerDetailScreen() {
           />
         </Pressable>
         {showCategoryPicker ? (
-          <Card elevation={2} style={{ marginTop: Spacing.xs, padding: Spacing.sm }}>
+          <Card
+            elevation={2}
+            style={{ marginTop: Spacing.xs, padding: Spacing.sm }}
+          >
             <Pressable
               style={[
                 styles.categoryOption,
-                categoryId === null ? { backgroundColor: theme.primary + "15" } : null,
+                categoryId === null
+                  ? { backgroundColor: theme.primary + "15" }
+                  : null,
               ]}
               onPress={() => {
                 setCategoryId(null);
@@ -404,7 +450,9 @@ export default function PrayerDetailScreen() {
                 key={cat.id}
                 style={[
                   styles.categoryOption,
-                  categoryId === cat.id ? { backgroundColor: theme.primary + "15" } : null,
+                  categoryId === cat.id
+                    ? { backgroundColor: theme.primary + "15" }
+                    : null,
                 ]}
                 onPress={() => {
                   setCategoryId(cat.id);
@@ -427,7 +475,10 @@ export default function PrayerDetailScreen() {
       </View>
 
       <View style={{ marginTop: Spacing.md }}>
-        <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
+        >
           Officials
         </ThemedText>
         <View style={styles.chipsContainer}>
@@ -437,8 +488,16 @@ export default function PrayerDetailScreen() {
                 key={oid}
                 style={[styles.chip, { backgroundColor: theme.primary + "12" }]}
               >
-                <Feather name="user" size={12} color={theme.primary} style={{ marginRight: 4 }} />
-                <ThemedText type="small" style={{ color: theme.primary, fontWeight: "500" }}>
+                <Feather
+                  name="user"
+                  size={12}
+                  color={theme.primary}
+                  style={{ marginRight: 4 }}
+                />
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.primary, fontWeight: "500" }}
+                >
                   {officialsMap.get(oid) || oid}
                 </ThemedText>
               </View>
@@ -452,10 +511,22 @@ export default function PrayerDetailScreen() {
       </View>
 
       <View style={{ marginTop: Spacing.md }}>
-        <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
+        >
           Custom People
         </ThemedText>
-        <View style={[styles.dropdownButton, { backgroundColor: theme.inputBackground, borderColor: theme.border, gap: Spacing.sm }]}>
+        <View
+          style={[
+            styles.dropdownButton,
+            {
+              backgroundColor: theme.inputBackground,
+              borderColor: theme.border,
+              gap: Spacing.sm,
+            },
+          ]}
+        >
           <TextInput
             style={[{ flex: 1, color: theme.text, fontSize: 15, padding: 0 }]}
             placeholder="Add a person's name..."
@@ -483,19 +554,51 @@ export default function PrayerDetailScreen() {
             }}
             hitSlop={8}
           >
-            <Feather name="plus-circle" size={20} color={customPersonInput.trim().length > 0 ? theme.primary : theme.border} />
+            <Feather
+              name="plus-circle"
+              size={20}
+              color={
+                customPersonInput.trim().length > 0
+                  ? theme.primary
+                  : theme.border
+              }
+            />
           </Pressable>
         </View>
         {customPeopleNames.length > 0 ? (
           <View style={[styles.chipsContainer, { marginTop: Spacing.sm }]}>
             {customPeopleNames.map((name, idx) => (
-              <View key={idx} style={[styles.chip, { backgroundColor: theme.backgroundSecondary || theme.primary + "10", flexDirection: "row", alignItems: "center" }]}>
-                <Feather name="user" size={12} color={theme.text} style={{ marginRight: 4 }} />
-                <ThemedText type="small" style={{ color: theme.text, fontWeight: "500" }}>
+              <View
+                key={idx}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor:
+                      theme.backgroundSecondary || theme.primary + "10",
+                    flexDirection: "row",
+                    alignItems: "center",
+                  },
+                ]}
+              >
+                <Feather
+                  name="user"
+                  size={12}
+                  color={theme.text}
+                  style={{ marginRight: 4 }}
+                />
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.text, fontWeight: "500" }}
+                >
                   {name}
                 </ThemedText>
                 <Pressable
-                  onPress={() => { setCustomPeopleNames((prev) => prev.filter((_, i) => i !== idx)); markChanged(); }}
+                  onPress={() => {
+                    setCustomPeopleNames((prev) =>
+                      prev.filter((_, i) => i !== idx),
+                    );
+                    markChanged();
+                  }}
                   hitSlop={8}
                   style={{ marginLeft: 4 }}
                 >
@@ -507,20 +610,57 @@ export default function PrayerDetailScreen() {
         ) : null}
       </View>
 
-      <Card elevation={1} style={{ marginTop: Spacing.lg, padding: Spacing.md }}>
-        <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+      <Card
+        elevation={1}
+        style={{ marginTop: Spacing.lg, padding: Spacing.md }}
+      >
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
+        >
           Event Date
         </ThemedText>
         <Pressable
-          style={[styles.dropdownButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+          style={[
+            styles.dropdownButton,
+            {
+              backgroundColor: theme.inputBackground,
+              borderColor: theme.border,
+            },
+          ]}
           onPress={() => setShowDatePicker(true)}
         >
-          <Feather name="calendar" size={16} color={eventDate ? theme.warning : theme.secondaryText} style={{ marginRight: Spacing.sm }} />
-          <ThemedText type="body" style={{ color: eventDate ? theme.text : theme.secondaryText, flex: 1 }}>
-            {eventDate ? eventDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "No event date"}
+          <Feather
+            name="calendar"
+            size={16}
+            color={eventDate ? theme.warning : theme.secondaryText}
+            style={{ marginRight: Spacing.sm }}
+          />
+          <ThemedText
+            type="body"
+            style={{
+              color: eventDate ? theme.text : theme.secondaryText,
+              flex: 1,
+            }}
+          >
+            {eventDate
+              ? eventDate.toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "No event date"}
           </ThemedText>
           {eventDate ? (
-            <Pressable onPress={() => { setEventDate(null); setAutoAfterEventAction("none"); markChanged(); }} hitSlop={8}>
+            <Pressable
+              onPress={() => {
+                setEventDate(null);
+                setAutoAfterEventAction("none");
+                markChanged();
+              }}
+              hitSlop={8}
+            >
               <Feather name="x-circle" size={16} color={theme.secondaryText} />
             </Pressable>
           ) : null}
@@ -529,21 +669,39 @@ export default function PrayerDetailScreen() {
           Platform.OS === "web" ? (
             <View style={{ marginTop: Spacing.sm }}>
               <TextInput
-                style={[styles.textInput, { color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+                style={[
+                  styles.textInput,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.border,
+                  },
+                ]}
                 value={eventDate ? eventDate.toISOString().split("T")[0] : ""}
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor={theme.secondaryText}
                 onChangeText={(text) => {
                   const parsed = new Date(text + "T12:00:00");
-                  if (!isNaN(parsed.getTime()) && text.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                  if (
+                    !isNaN(parsed.getTime()) &&
+                    text.match(/^\d{4}-\d{2}-\d{2}$/)
+                  ) {
                     setEventDate(parsed);
                     markChanged();
                   }
                 }}
                 keyboardType="default"
               />
-              <Pressable onPress={() => setShowDatePicker(false)} style={{ alignSelf: "flex-end", marginTop: Spacing.xs }}>
-                <ThemedText type="body" style={{ color: theme.primary, fontWeight: "600" }}>Done</ThemedText>
+              <Pressable
+                onPress={() => setShowDatePicker(false)}
+                style={{ alignSelf: "flex-end", marginTop: Spacing.xs }}
+              >
+                <ThemedText
+                  type="body"
+                  style={{ color: theme.primary, fontWeight: "600" }}
+                >
+                  Done
+                </ThemedText>
               </Pressable>
             </View>
           ) : (
@@ -553,45 +711,89 @@ export default function PrayerDetailScreen() {
               display={Platform.OS === "ios" ? "inline" : "default"}
               onChange={(ev, date) => {
                 if (Platform.OS === "android") setShowDatePicker(false);
-                if (date) { setEventDate(date); markChanged(); }
+                if (date) {
+                  setEventDate(date);
+                  markChanged();
+                }
               }}
               themeVariant="dark"
             />
           )
         ) : null}
         {Platform.OS === "ios" && showDatePicker ? (
-          <Pressable onPress={() => setShowDatePicker(false)} style={{ alignSelf: "flex-end", marginTop: Spacing.xs }}>
-            <ThemedText type="body" style={{ color: theme.primary, fontWeight: "600" }}>Done</ThemedText>
+          <Pressable
+            onPress={() => setShowDatePicker(false)}
+            style={{ alignSelf: "flex-end", marginTop: Spacing.xs }}
+          >
+            <ThemedText
+              type="body"
+              style={{ color: theme.primary, fontWeight: "600" }}
+            >
+              Done
+            </ThemedText>
           </Pressable>
         ) : null}
 
         {eventDate ? (
           <View style={{ marginTop: Spacing.md }}>
-            <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+            <ThemedText
+              type="caption"
+              style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}
+            >
               After Event
             </ThemedText>
             <Pressable
-              style={[styles.dropdownButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+              style={[
+                styles.dropdownButton,
+                {
+                  backgroundColor: theme.inputBackground,
+                  borderColor: theme.border,
+                },
+              ]}
               onPress={() => setShowAutoActionPicker(!showAutoActionPicker)}
             >
               <ThemedText type="body" style={{ color: theme.text, flex: 1 }}>
                 {autoActionLabel}
               </ThemedText>
-              <Feather name={showAutoActionPicker ? "chevron-up" : "chevron-down"} size={18} color={theme.secondaryText} />
+              <Feather
+                name={showAutoActionPicker ? "chevron-up" : "chevron-down"}
+                size={18}
+                color={theme.secondaryText}
+              />
             </Pressable>
             {showAutoActionPicker ? (
-              <Card elevation={2} style={{ marginTop: Spacing.xs, padding: Spacing.sm }}>
-                {([
+              <Card
+                elevation={2}
+                style={{ marginTop: Spacing.xs, padding: Spacing.sm }}
+              >
+                {[
                   { key: "none" as const, label: "No Action" },
                   { key: "markAnswered" as const, label: "Mark Answered" },
                   { key: "archive" as const, label: "Archive" },
-                ]).map((opt) => (
+                ].map((opt) => (
                   <Pressable
                     key={opt.key}
-                    style={[styles.categoryOption, autoAfterEventAction === opt.key ? { backgroundColor: theme.primary + "15" } : null]}
-                    onPress={() => { setAutoAfterEventAction(opt.key); setShowAutoActionPicker(false); markChanged(); }}
+                    style={[
+                      styles.categoryOption,
+                      autoAfterEventAction === opt.key
+                        ? { backgroundColor: theme.primary + "15" }
+                        : null,
+                    ]}
+                    onPress={() => {
+                      setAutoAfterEventAction(opt.key);
+                      setShowAutoActionPicker(false);
+                      markChanged();
+                    }}
                   >
-                    <ThemedText type="body" style={{ color: autoAfterEventAction === opt.key ? theme.primary : theme.text }}>
+                    <ThemedText
+                      type="body"
+                      style={{
+                        color:
+                          autoAfterEventAction === opt.key
+                            ? theme.primary
+                            : theme.text,
+                      }}
+                    >
                       {opt.label}
                     </ThemedText>
                   </Pressable>
@@ -601,26 +803,52 @@ export default function PrayerDetailScreen() {
 
             {autoAfterEventAction !== "none" ? (
               <View style={{ marginTop: Spacing.sm }}>
-                <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+                <ThemedText
+                  type="caption"
+                  style={{
+                    color: theme.secondaryText,
+                    marginBottom: Spacing.xs,
+                  }}
+                >
                   Days after event to trigger ({autoAfterEventDaysOffset})
                 </ThemedText>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.sm }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: Spacing.sm,
+                  }}
+                >
                   <Pressable
-                    onPress={() => { setAutoAfterEventDaysOffset(Math.max(0, autoAfterEventDaysOffset - 1)); markChanged(); }}
+                    onPress={() => {
+                      setAutoAfterEventDaysOffset(
+                        Math.max(0, autoAfterEventDaysOffset - 1),
+                      );
+                      markChanged();
+                    }}
                     style={[styles.stepperBtn, { borderColor: theme.border }]}
                   >
                     <Feather name="minus" size={16} color={theme.text} />
                   </Pressable>
-                  <ThemedText type="body" style={{ minWidth: 30, textAlign: "center" }}>
+                  <ThemedText
+                    type="body"
+                    style={{ minWidth: 30, textAlign: "center" }}
+                  >
                     {autoAfterEventDaysOffset}
                   </ThemedText>
                   <Pressable
-                    onPress={() => { setAutoAfterEventDaysOffset(autoAfterEventDaysOffset + 1); markChanged(); }}
+                    onPress={() => {
+                      setAutoAfterEventDaysOffset(autoAfterEventDaysOffset + 1);
+                      markChanged();
+                    }}
                     style={[styles.stepperBtn, { borderColor: theme.border }]}
                   >
                     <Feather name="plus" size={16} color={theme.text} />
                   </Pressable>
-                  <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.secondaryText }}
+                  >
                     days after event
                   </ThemedText>
                 </View>
@@ -630,7 +858,10 @@ export default function PrayerDetailScreen() {
         ) : null}
       </Card>
 
-      <Card elevation={1} style={{ marginTop: Spacing.lg, padding: Spacing.md }}>
+      <Card
+        elevation={1}
+        style={{ marginTop: Spacing.lg, padding: Spacing.md }}
+      >
         <View style={styles.toggleRow}>
           <View style={{ flex: 1 }}>
             <ThemedText type="body">Pin to Daily</ThemedText>
@@ -677,7 +908,10 @@ export default function PrayerDetailScreen() {
         </Button>
       ) : null}
 
-      <Card elevation={1} style={{ marginTop: Spacing.lg, padding: Spacing.md }}>
+      <Card
+        elevation={1}
+        style={{ marginTop: Spacing.lg, padding: Spacing.md }}
+      >
         <ThemedText type="h3" style={{ marginBottom: Spacing.sm }}>
           Actions
         </ThemedText>
@@ -685,17 +919,35 @@ export default function PrayerDetailScreen() {
         {prayer.status === "OPEN" ? (
           <View>
             <Pressable
-              style={[styles.actionBtn, { borderColor: theme.primary, backgroundColor: theme.primary + "10", marginTop: Spacing.sm }]}
+              style={[
+                styles.actionBtn,
+                {
+                  borderColor: theme.primary,
+                  backgroundColor: theme.primary + "10",
+                  marginTop: Spacing.sm,
+                },
+              ]}
               onPress={handleMarkAnswered}
               disabled={answerMutation.isPending}
             >
-              <Feather name="check" size={16} color={theme.primary} style={{ marginRight: Spacing.xs }} />
-              <ThemedText type="body" style={{ color: theme.primary, fontWeight: "600" }}>
+              <Feather
+                name="check"
+                size={16}
+                color={theme.primary}
+                style={{ marginRight: Spacing.xs }}
+              />
+              <ThemedText
+                type="body"
+                style={{ color: theme.primary, fontWeight: "600" }}
+              >
                 {answerMutation.isPending ? "Saving..." : "Mark Answered"}
               </ThemedText>
             </Pressable>
             <Pressable
-              style={[styles.outlineBtn, { borderColor: theme.border, marginTop: Spacing.sm }]}
+              style={[
+                styles.outlineBtn,
+                { borderColor: theme.border, marginTop: Spacing.sm },
+              ]}
               onPress={() => archiveMutation.mutate()}
             >
               <ThemedText type="body" style={{ color: theme.secondaryText }}>
@@ -707,10 +959,16 @@ export default function PrayerDetailScreen() {
           <View>
             {prayer.answerNote ? (
               <View style={{ marginBottom: Spacing.md }}>
-                <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.secondaryText }}
+                >
                   Answer Note
                 </ThemedText>
-                <ThemedText type="body" style={{ marginTop: Spacing.xs, lineHeight: 22 }}>
+                <ThemedText
+                  type="body"
+                  style={{ marginTop: Spacing.xs, lineHeight: 22 }}
+                >
                   {prayer.answerNote}
                 </ThemedText>
               </View>
@@ -760,37 +1018,55 @@ export default function PrayerDetailScreen() {
         )}
       </Card>
 
-      <Card elevation={1} style={{ marginTop: Spacing.lg, padding: Spacing.md }}>
+      <Card
+        elevation={1}
+        style={{ marginTop: Spacing.lg, padding: Spacing.md }}
+      >
         <ThemedText type="h3" style={{ marginBottom: Spacing.sm }}>
           Dates
         </ThemedText>
         <View style={styles.dateRow}>
           <Feather name="calendar" size={14} color={theme.secondaryText} />
-          <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+          <ThemedText
+            type="caption"
+            style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
+          >
             Created: {formatDate(prayer.createdAt)}
           </ThemedText>
         </View>
         <View style={styles.dateRow}>
           <Feather name="check-circle" size={14} color={theme.secondaryText} />
-          <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+          <ThemedText
+            type="caption"
+            style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
+          >
             Answered: {formatDate(prayer.answeredAt)}
           </ThemedText>
         </View>
         <View style={styles.dateRow}>
           <Feather name="archive" size={14} color={theme.secondaryText} />
-          <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+          <ThemedText
+            type="caption"
+            style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
+          >
             Archived: {formatDate(prayer.archivedAt)}
           </ThemedText>
         </View>
         <View style={styles.dateRow}>
           <Feather name="eye" size={14} color={theme.secondaryText} />
-          <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+          <ThemedText
+            type="caption"
+            style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
+          >
             Last Shown: {formatDate(prayer.lastShownAt)}
           </ThemedText>
         </View>
         <View style={styles.dateRow}>
           <Feather name="heart" size={14} color={theme.secondaryText} />
-          <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+          <ThemedText
+            type="caption"
+            style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
+          >
             Last Prayed: {formatDate(prayer.lastPrayedAt)}
           </ThemedText>
         </View>
@@ -798,7 +1074,10 @@ export default function PrayerDetailScreen() {
 
       <Pressable style={styles.deleteRow} onPress={handleDelete}>
         <Feather name="trash-2" size={16} color={theme.secondary} />
-        <ThemedText type="caption" style={{ color: theme.secondary, marginLeft: Spacing.xs }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondary, marginLeft: Spacing.xs }}
+        >
           Delete Prayer
         </ThemedText>
       </Pressable>

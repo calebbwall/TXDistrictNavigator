@@ -1,4 +1,10 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -20,7 +26,10 @@ import { useQuery } from "@tanstack/react-query";
 import { OfficialCard } from "@/components/OfficialCard";
 import { ThemedText } from "@/components/ThemedText";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { PlaceSearchModal, PlaceCandidate } from "@/components/PlaceSearchModal";
+import {
+  PlaceSearchModal,
+  PlaceCandidate,
+} from "@/components/PlaceSearchModal";
 import { useTheme } from "@/hooks/useTheme";
 import { useNetwork } from "@/hooks/useNetwork";
 import { BorderRadius, Spacing } from "@/constants/theme";
@@ -94,7 +103,10 @@ export default function BrowseOfficialsScreen() {
   const [selectedSource, setSelectedSource] = useState<SourceType>("TX_HOUSE");
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [placeInfo, setPlaceInfo] = useState<{ name: string; districts: DistrictHit[] } | null>(null);
+  const [placeInfo, setPlaceInfo] = useState<{
+    name: string;
+    districts: DistrictHit[];
+  } | null>(null);
   const [cachedData, setCachedData] = useState<OfficialsCacheData | null>(null);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const [showPlaceSearch, setShowPlaceSearch] = useState(false);
@@ -120,7 +132,7 @@ export default function BrowseOfficialsScreen() {
 
   const queryKey = useMemo(
     () => ["/api/officials", selectedSource, debouncedSearch],
-    [selectedSource, debouncedSearch]
+    [selectedSource, debouncedSearch],
   );
 
   const { data, isLoading, isFetching, refetch, isError } = useQuery<{
@@ -132,43 +144,49 @@ export default function BrowseOfficialsScreen() {
     queryFn: async () => {
       setPlaceInfo(null);
       setShowOfflineBanner(false);
-      
+
       if (!debouncedSearch.trim()) {
         const apiSource = selectedSource;
         const url = new URL("/api/officials", getApiUrl());
         url.searchParams.set("source", apiSource);
-        
+
         try {
           const response = await fetch(url.toString());
           if (!response.ok) throw new Error("Failed to fetch officials");
           const result = await response.json();
-          
+
           const normalized = result.officials.map(apiOfficialToNormalized);
           const isValid = await validateCacheData(normalized, cachedData);
-          
+
           if (isValid && normalized.length > 0) {
             const newCache: OfficialsCacheData = {
               officials: normalized,
               source: apiSource,
               timestamp: new Date().toISOString(),
               counts: {
-                txHouse: normalized.filter((o: Official) => o.source === "TX_HOUSE").length,
-                txSenate: normalized.filter((o: Official) => o.source === "TX_SENATE").length,
-                usHouse: normalized.filter((o: Official) => o.source === "US_HOUSE").length,
+                txHouse: normalized.filter(
+                  (o: Official) => o.source === "TX_HOUSE",
+                ).length,
+                txSenate: normalized.filter(
+                  (o: Official) => o.source === "TX_SENATE",
+                ).length,
+                usHouse: normalized.filter(
+                  (o: Official) => o.source === "US_HOUSE",
+                ).length,
                 total: normalized.length,
               },
             };
             setCachedOfficials("ALL", newCache);
             setCachedData(newCache);
           }
-          
+
           return result;
         } catch (err) {
           setShowOfflineBanner(true);
           if (cachedData?.officials) {
             let filtered = cachedData.officials;
             if (selectedSource !== "ALL") {
-              filtered = filtered.filter(o => o.source === selectedSource);
+              filtered = filtered.filter((o) => o.source === selectedSource);
             }
             return { officials: filtered, count: filtered.length };
           }
@@ -180,7 +198,9 @@ export default function BrowseOfficialsScreen() {
       console.log(`[Browse] Searching for: "${query}"`);
 
       if (isNameSearch(query) || selectedSource === "OTHER_TX") {
-        console.log(`[Browse] Name/statewide search: "${query}" - fetching all for client-side filter`);
+        console.log(
+          `[Browse] Name/statewide search: "${query}" - fetching all for client-side filter`,
+        );
         const url = new URL("/api/officials", getApiUrl());
         url.searchParams.set("source", selectedSource);
         const response = await fetch(url.toString());
@@ -195,55 +215,78 @@ export default function BrowseOfficialsScreen() {
 
         if (placeRes.ok) {
           const place: PlaceResult = await placeRes.json();
-          console.log(`[Browse] Place found: ${place.name} (${place.lat}, ${place.lng}) [cache=${place.fromCache}]`);
+          console.log(
+            `[Browse] Place found: ${place.name} (${place.lat}, ${place.lng}) [cache=${place.fromCache}]`,
+          );
 
-          const districtsRes = await fetch(new URL("/api/lookup/districts-at-point", getApiUrl()).toString(), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ lat: place.lat, lng: place.lng }),
-          });
+          const districtsRes = await fetch(
+            new URL("/api/lookup/districts-at-point", getApiUrl()).toString(),
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ lat: place.lat, lng: place.lng }),
+            },
+          );
 
           if (!districtsRes.ok) {
-            console.log("[Browse] Districts lookup failed, falling back to text search");
+            console.log(
+              "[Browse] Districts lookup failed, falling back to text search",
+            );
             throw new Error("Districts lookup failed");
           }
 
-          const { hits } = await districtsRes.json() as { hits: DistrictHit[] };
-          console.log(`[Browse] Districts found: ${hits.map(h => `${h.source}:${h.districtNumber}`).join(", ")}`);
+          const { hits } = (await districtsRes.json()) as {
+            hits: DistrictHit[];
+          };
+          console.log(
+            `[Browse] Districts found: ${hits.map((h) => `${h.source}:${h.districtNumber}`).join(", ")}`,
+          );
 
           if (hits.length === 0) {
-            console.log("[Browse] No districts found at location, falling back to text search");
+            console.log(
+              "[Browse] No districts found at location, falling back to text search",
+            );
             throw new Error("No districts found");
           }
 
-          const filteredHits = selectedSource === "ALL" 
-            ? hits 
-            : hits.filter(h => h.source === selectedSource);
+          const filteredHits =
+            selectedSource === "ALL"
+              ? hits
+              : hits.filter((h) => h.source === selectedSource);
 
           if (filteredHits.length === 0) {
             setPlaceInfo({ name: place.name, districts: hits });
             return { officials: [], count: 0, vacancyCount: 0 };
           }
 
-          const officialsRes = await fetch(new URL("/api/officials/by-districts", getApiUrl()).toString(), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ districts: filteredHits }),
-          });
+          const officialsRes = await fetch(
+            new URL("/api/officials/by-districts", getApiUrl()).toString(),
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ districts: filteredHits }),
+            },
+          );
 
           if (!officialsRes.ok) {
-            console.log("[Browse] Officials by-districts failed, falling back to text search");
+            console.log(
+              "[Browse] Officials by-districts failed, falling back to text search",
+            );
             throw new Error("Officials lookup failed");
           }
 
           const officialsData = await officialsRes.json();
-          console.log(`[Browse] Found ${officialsData.count} officials for place "${place.name}"`);
+          console.log(
+            `[Browse] Found ${officialsData.count} officials for place "${place.name}"`,
+          );
 
           setPlaceInfo({ name: place.name, districts: filteredHits });
           return officialsData;
         }
 
-        console.log(`[Browse] No place found, using text search for "${query}"`);
+        console.log(
+          `[Browse] No place found, using text search for "${query}"`,
+        );
       } catch (err) {
         console.log(`[Browse] Place lookup error, falling back to text search`);
       }
@@ -264,15 +307,17 @@ export default function BrowseOfficialsScreen() {
   }, [data]);
 
   // Load private notes for address-based search
-  const [privateNotesMap, setPrivateNotesMap] = useState<Record<string, PrivateNotes>>({});
-  
+  const [privateNotesMap, setPrivateNotesMap] = useState<
+    Record<string, PrivateNotes>
+  >({});
+
   useEffect(() => {
     getAllPrivateNotes().then(setPrivateNotesMap);
   }, []);
-  
+
   // Merge private notes with officials for search index
   const officialsWithPrivate: Official[] = useMemo(() => {
-    return allOfficials.map(official => {
+    return allOfficials.map((official) => {
       const notes = privateNotesMap[official.id];
       if (notes) {
         return {
@@ -307,7 +352,7 @@ export default function BrowseOfficialsScreen() {
     if (isNameSearch(debouncedSearch)) {
       const results = searchOfficials(searchIndex, debouncedSearch, 50);
       if (results.length > 0) {
-        return results.map(r => r.official);
+        return results.map((r) => r.official);
       }
     }
 
@@ -337,11 +382,19 @@ export default function BrowseOfficialsScreen() {
       addRecentViewed(official.source, official.districtNumber);
       navigation.navigate("OfficialProfile", { officialId: official.id });
     },
-    [navigation]
+    [navigation],
   );
 
   const renderStatewideItem = useCallback(
-    ({ item, index, section }: { item: NormalizedOfficial; index: number; section: OfficialSection }) => {
+    ({
+      item,
+      index,
+      section,
+    }: {
+      item: NormalizedOfficial;
+      index: number;
+      section: OfficialSection;
+    }) => {
       let showSubgroupHeader = false;
       let subgroupLabel: string | null = null;
 
@@ -361,8 +414,16 @@ export default function BrowseOfficialsScreen() {
       return (
         <View>
           {showSubgroupHeader && subgroupLabel ? (
-            <View style={[styles.subgroupHeader, { backgroundColor: theme.backgroundRoot }]}>
-              <ThemedText type="caption" style={[styles.subgroupTitle, { color: theme.secondaryText }]}>
+            <View
+              style={[
+                styles.subgroupHeader,
+                { backgroundColor: theme.backgroundRoot },
+              ]}
+            >
+              <ThemedText
+                type="caption"
+                style={[styles.subgroupTitle, { color: theme.secondaryText }]}
+              >
                 {subgroupLabel}
               </ThemedText>
             </View>
@@ -376,28 +437,41 @@ export default function BrowseOfficialsScreen() {
         </View>
       );
     },
-    [theme, handleOfficialPress]
+    [theme, handleOfficialPress],
   );
 
   const renderStatewideHeader = useCallback(
     ({ section }: { section: OfficialSection }) => (
-      <View style={[styles.statewideSectionHeader, { backgroundColor: theme.backgroundRoot }]}>
-        <ThemedText type="h3" style={{ fontWeight: "700" }}>{section.title}</ThemedText>
-        <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: 2 }}>
+      <View
+        style={[
+          styles.statewideSectionHeader,
+          { backgroundColor: theme.backgroundRoot },
+        ]}
+      >
+        <ThemedText type="h3" style={{ fontWeight: "700" }}>
+          {section.title}
+        </ThemedText>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondaryText, marginTop: 2 }}
+        >
           {section.description}
         </ThemedText>
       </View>
     ),
-    [theme]
+    [theme],
   );
 
   const renderItem = useCallback(
     ({ item }: { item: Official }) => (
       <View style={styles.listItem}>
-        <OfficialCard official={item} onPress={() => handleOfficialPress(item)} />
+        <OfficialCard
+          official={item}
+          onPress={() => handleOfficialPress(item)}
+        />
       </View>
     ),
-    [handleOfficialPress]
+    [handleOfficialPress],
   );
 
   const keyExtractor = useCallback((item: Official) => item.id, []);
@@ -411,19 +485,27 @@ export default function BrowseOfficialsScreen() {
     if (selectedSource === "OTHER_TX") {
       return `${count} official${count !== 1 ? "s" : ""}`;
     }
-    const vacancyCount = officials.filter(o => o.isVacant).length;
-    const vacancyText = vacancyCount > 0
-      ? ` (${vacancyCount} ${vacancyCount === 1 ? "vacancy" : "vacancies"})`
-      : "";
+    const vacancyCount = officials.filter((o) => o.isVacant).length;
+    const vacancyText =
+      vacancyCount > 0
+        ? ` (${vacancyCount} ${vacancyCount === 1 ? "vacancy" : "vacancies"})`
+        : "";
     return `${count} member${count !== 1 ? "s" : ""}${vacancyText}`;
   }, [isLoading, data, officials, debouncedSearch, selectedSource]);
 
   const placeLabel = useMemo(() => {
     if (!placeInfo) return null;
-    const districtNames = placeInfo.districts.map(d => {
-      const chamber = d.source === "TX_HOUSE" ? "House" : d.source === "TX_SENATE" ? "Senate" : "Congress";
-      return `${chamber} ${d.districtNumber}`;
-    }).join(", ");
+    const districtNames = placeInfo.districts
+      .map((d) => {
+        const chamber =
+          d.source === "TX_HOUSE"
+            ? "House"
+            : d.source === "TX_SENATE"
+              ? "Senate"
+              : "Congress";
+        return `${chamber} ${d.districtNumber}`;
+      })
+      .join(", ");
     return { name: placeInfo.name, districts: districtNames };
   }, [placeInfo]);
 
@@ -452,130 +534,166 @@ export default function BrowseOfficialsScreen() {
     );
   }, [isLoading, theme, isDark, debouncedSearch]);
 
-  const ListHeaderComponent = useMemo(() => (
-    <View style={[styles.listHeader, { backgroundColor: theme.backgroundRoot }]}>
-      <OfflineBanner visible={isOffline || showOfflineBanner} />
+  const ListHeaderComponent = useMemo(
+    () => (
+      <View
+        style={[styles.listHeader, { backgroundColor: theme.backgroundRoot }]}
+      >
+        <OfflineBanner visible={isOffline || showOfflineBanner} />
 
-      {/* 1. Filter tiles - 2-row layout */}
-      {/* Row 1: TX House + TX Senate (most-used, larger) */}
-      <View style={styles.filterRow}>
-        {(["TX_HOUSE", "TX_SENATE"] as SourceType[]).map((source) => (
-          <Pressable
-            key={source}
-            style={[
-              styles.filterButtonLarge,
-              {
-                backgroundColor: selectedSource === source ? theme.primary : theme.inputBackground,
-                borderColor: selectedSource === source ? theme.primary : theme.border,
-              },
-            ]}
-            onPress={() => handleSourceChange(source)}
-          >
-            <ThemedText
-              type="body"
-              style={{ color: selectedSource === source ? "#FFFFFF" : theme.text, fontWeight: "600" }}
+        {/* 1. Filter tiles - 2-row layout */}
+        {/* Row 1: TX House + TX Senate (most-used, larger) */}
+        <View style={styles.filterRow}>
+          {(["TX_HOUSE", "TX_SENATE"] as SourceType[]).map((source) => (
+            <Pressable
+              key={source}
+              style={[
+                styles.filterButtonLarge,
+                {
+                  backgroundColor:
+                    selectedSource === source
+                      ? theme.primary
+                      : theme.inputBackground,
+                  borderColor:
+                    selectedSource === source ? theme.primary : theme.border,
+                },
+              ]}
+              onPress={() => handleSourceChange(source)}
             >
-              {SOURCE_LABELS[source]}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </View>
-      {/* Row 2: US House + Statewide + All (smaller) */}
-      <View style={[styles.filterRow, { marginTop: Spacing.xs }]}>
-        {(["US_HOUSE", "OTHER_TX", "ALL"] as SourceType[]).map((source) => (
-          <Pressable
-            key={source}
+              <ThemedText
+                type="body"
+                style={{
+                  color: selectedSource === source ? "#FFFFFF" : theme.text,
+                  fontWeight: "600",
+                }}
+              >
+                {SOURCE_LABELS[source]}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
+        {/* Row 2: US House + Statewide + All (smaller) */}
+        <View style={[styles.filterRow, { marginTop: Spacing.xs }]}>
+          {(["US_HOUSE", "OTHER_TX", "ALL"] as SourceType[]).map((source) => (
+            <Pressable
+              key={source}
+              style={[
+                styles.filterButtonSmall,
+                {
+                  backgroundColor:
+                    selectedSource === source
+                      ? theme.primary
+                      : theme.inputBackground,
+                  borderColor:
+                    selectedSource === source ? theme.primary : theme.border,
+                },
+              ]}
+              onPress={() => handleSourceChange(source)}
+            >
+              <ThemedText
+                type="caption"
+                style={{
+                  color: selectedSource === source ? "#FFFFFF" : theme.text,
+                  fontWeight: selectedSource === source ? "600" : "400",
+                }}
+              >
+                {SOURCE_LABELS[source]}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* 2. Counts/summary row - SECOND */}
+        <View style={styles.countLabelRow}>
+          <ThemedText
+            type="caption"
+            style={[styles.countLabel, { color: theme.secondaryText }]}
+          >
+            {countLabel}
+          </ThemedText>
+          {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
+            <View style={styles.searchingIndicator}>
+              <ActivityIndicator size="small" color={theme.primary} />
+              <ThemedText
+                type="caption"
+                style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
+              >
+                Searching...
+              </ThemedText>
+            </View>
+          ) : null}
+        </View>
+
+        {/* 3. Search bar row - THIRD */}
+        <View style={styles.searchRow}>
+          <View
             style={[
-              styles.filterButtonSmall,
+              styles.searchInputContainer,
               {
-                backgroundColor: selectedSource === source ? theme.primary : theme.inputBackground,
-                borderColor: selectedSource === source ? theme.primary : theme.border,
+                backgroundColor: theme.inputBackground,
+                borderColor: theme.border,
+                borderWidth: 1,
               },
             ]}
-            onPress={() => handleSourceChange(source)}
           >
+            <Feather name="search" size={18} color={theme.secondaryText} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
+              placeholderTextColor={theme.secondaryText}
+              value={searchText}
+              onChangeText={setSearchText}
+              returnKeyType="search"
+            />
+            {searchText.length > 0 ? (
+              <Pressable onPress={() => setSearchText("")}>
+                <Feather name="x" size={18} color={theme.secondaryText} />
+              </Pressable>
+            ) : null}
+          </View>
+          {selectedSource !== "OTHER_TX" ? (
+            <Pressable
+              onPress={() => setShowPlaceSearch(true)}
+              style={({ pressed }) => [
+                styles.placeSearchButton,
+                { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              <Feather name="map-pin" size={20} color="#FFFFFF" />
+            </Pressable>
+          ) : null}
+        </View>
+
+        {/* 4. Place label (if searching by location) */}
+        {placeLabel ? (
+          <View style={styles.placeLabelContainer}>
+            <Feather name="map-pin" size={14} color={theme.primary} />
             <ThemedText
               type="caption"
-              style={{ color: selectedSource === source ? "#FFFFFF" : theme.text, fontWeight: selectedSource === source ? "600" : "400" }}
+              style={{ color: theme.primary, fontWeight: "600" }}
             >
-              {SOURCE_LABELS[source]}
+              {placeLabel.name}
             </ThemedText>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* 2. Counts/summary row - SECOND */}
-      <View style={styles.countLabelRow}>
-        <ThemedText
-          type="caption"
-          style={[styles.countLabel, { color: theme.secondaryText }]}
-        >
-          {countLabel}
-        </ThemedText>
-        {searchText !== debouncedSearch && searchText.trim().length > 0 ? (
-          <View style={styles.searchingIndicator}>
-            <ActivityIndicator size="small" color={theme.primary} />
-            <ThemedText type="caption" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
-              Searching...
+            <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+              {placeLabel.districts}
             </ThemedText>
           </View>
         ) : null}
       </View>
-
-      {/* 3. Search bar row - THIRD */}
-      <View style={styles.searchRow}>
-        <View
-          style={[
-            styles.searchInputContainer,
-            {
-              backgroundColor: theme.inputBackground,
-              borderColor: theme.border,
-              borderWidth: 1,
-            },
-          ]}
-        >
-          <Feather name="search" size={18} color={theme.secondaryText} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder={SEARCH_PLACEHOLDERS[selectedSource]}
-            placeholderTextColor={theme.secondaryText}
-            value={searchText}
-            onChangeText={setSearchText}
-            returnKeyType="search"
-          />
-          {searchText.length > 0 ? (
-            <Pressable onPress={() => setSearchText("")}>
-              <Feather name="x" size={18} color={theme.secondaryText} />
-            </Pressable>
-          ) : null}
-        </View>
-        {selectedSource !== "OTHER_TX" ? (
-          <Pressable
-            onPress={() => setShowPlaceSearch(true)}
-            style={({ pressed }) => [
-              styles.placeSearchButton,
-              { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
-            ]}
-          >
-            <Feather name="map-pin" size={20} color="#FFFFFF" />
-          </Pressable>
-        ) : null}
-      </View>
-
-      {/* 4. Place label (if searching by location) */}
-      {placeLabel ? (
-        <View style={styles.placeLabelContainer}>
-          <Feather name="map-pin" size={14} color={theme.primary} />
-          <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
-            {placeLabel.name}
-          </ThemedText>
-          <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-            {placeLabel.districts}
-          </ThemedText>
-        </View>
-      ) : null}
-    </View>
-  ), [isOffline, showOfflineBanner, selectedSource, theme, placeLabel, countLabel, searchText, debouncedSearch, handleSourceChange, navigation]);
+    ),
+    [
+      isOffline,
+      showOfflineBanner,
+      selectedSource,
+      theme,
+      placeLabel,
+      countLabel,
+      searchText,
+      debouncedSearch,
+      handleSourceChange,
+      navigation,
+    ],
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -604,7 +722,9 @@ export default function BrowseOfficialsScreen() {
           }
           showsVerticalScrollIndicator
           removeClippedSubviews={false}
-          SectionSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
+          SectionSeparatorComponent={() => (
+            <View style={{ height: Spacing.sm }} />
+          )}
         />
       ) : (
         <FlatList

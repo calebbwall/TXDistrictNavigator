@@ -1,32 +1,32 @@
 /**
  * Refresh job for Other Texas Officials (statewide offices + courts).
- * 
+ *
  * This job:
  * 1. Fetches officials from authoritative web sources
  * 2. Compares fingerprint to detect changes
  * 3. Resolves/creates person records for identity continuity
  * 4. Upserts official records with personId linking
  * 5. Deactivates officials no longer in the data
- * 
+ *
  * Sources:
  * - Texas Secretary of State Elected Officials table
  * - Texas Supreme Court official roster
  * - Texas Court of Criminal Appeals official roster
  */
 
-import { db } from '../db';
-import { officialPublic, refreshState } from '../../shared/schema';
-import { eq, and, sql } from 'drizzle-orm';
-import { 
-  fetchAllOtherTexasOfficials, 
+import { db } from "../db";
+import { officialPublic, refreshState } from "../../shared/schema";
+import { eq, and, sql } from "drizzle-orm";
+import {
+  fetchAllOtherTexasOfficials,
   getAllStaticOfficials,
   generateOtherTxSourceMemberId,
-  type OtherTexasOfficialData 
-} from '../data/otherTexasOfficials';
-import { resolvePersonId } from '../lib/identityResolver';
+  type OtherTexasOfficialData,
+} from "../data/otherTexasOfficials";
+import { resolvePersonId } from "../lib/identityResolver";
 
 // Use the enum value for refresh_state.source
-const SOURCE_VALUE = 'OTHER_TX' as const;
+const SOURCE_VALUE = "OTHER_TX" as const;
 
 export interface OtherTxRefreshResult {
   success: boolean;
@@ -59,22 +59,25 @@ async function getStoredFingerprint(): Promise<string | null> {
     .from(refreshState)
     .where(eq(refreshState.source, SOURCE_VALUE))
     .limit(1);
-  
+
   return result[0]?.fingerprint || null;
 }
 
 /**
  * Update stored fingerprint in refresh_state.
  */
-async function updateStoredFingerprint(fingerprint: string, changed: boolean): Promise<void> {
+async function updateStoredFingerprint(
+  fingerprint: string,
+  changed: boolean,
+): Promise<void> {
   const now = new Date();
-  
+
   const existing = await db
     .select()
     .from(refreshState)
     .where(eq(refreshState.source, SOURCE_VALUE))
     .limit(1);
-  
+
   if (existing.length > 0) {
     await db
       .update(refreshState)
@@ -85,14 +88,12 @@ async function updateStoredFingerprint(fingerprint: string, changed: boolean): P
       })
       .where(eq(refreshState.source, SOURCE_VALUE));
   } else {
-    await db
-      .insert(refreshState)
-      .values({
-        source: SOURCE_VALUE,
-        fingerprint,
-        lastCheckedAt: now,
-        lastChangedAt: changed ? now : null,
-      });
+    await db.insert(refreshState).values({
+      source: SOURCE_VALUE,
+      fingerprint,
+      lastCheckedAt: now,
+      lastChangedAt: changed ? now : null,
+    });
   }
 }
 
@@ -100,11 +101,11 @@ async function updateStoredFingerprint(fingerprint: string, changed: boolean): P
  * Refresh Other Texas Officials from authoritative web sources.
  */
 export async function refreshOtherTexasOfficials(
-  options: { force?: boolean } = {}
+  options: { force?: boolean } = {},
 ): Promise<OtherTxRefreshResult> {
   const startTime = Date.now();
-  console.log('[RefreshOtherTX] Starting refresh...');
-  
+  console.log("[RefreshOtherTX] Starting refresh...");
+
   const breakdown = {
     executive: 0,
     secretaryOfState: 0,
@@ -112,34 +113,42 @@ export async function refreshOtherTexasOfficials(
     criminalAppeals: 0,
     usSenate: 0,
   };
-  
+
   try {
     // Fetch officials from web sources
     const scrapedData = await fetchAllOtherTexasOfficials();
     const { officials, fingerprint, sources } = scrapedData;
-    
+
     // Check fingerprint for changes
     const storedFingerprint = await getStoredFingerprint();
     const fingerprintChanged = storedFingerprint !== fingerprint;
-    
+
     if (!fingerprintChanged && !options.force) {
-      console.log('[RefreshOtherTX] No changes detected (fingerprint match)');
+      console.log("[RefreshOtherTX] No changes detected (fingerprint match)");
       await updateStoredFingerprint(fingerprint, false);
-      
+
       // Count existing officials for breakdown
       const existing = await db
         .select()
         .from(officialPublic)
-        .where(and(eq(officialPublic.source, 'OTHER_TX'), eq(officialPublic.active, true)));
-      
+        .where(
+          and(
+            eq(officialPublic.source, "OTHER_TX"),
+            eq(officialPublic.active, true),
+          ),
+        );
+
       for (const o of existing) {
-        if (o.roleTitle?.includes('Supreme Court')) breakdown.supremeCourt++;
-        else if (o.roleTitle?.includes('Criminal Appeals')) breakdown.criminalAppeals++;
-        else if (o.roleTitle?.includes('Secretary of State')) breakdown.secretaryOfState++;
-        else if (o.roleTitle?.includes('United States Senator')) breakdown.usSenate++;
+        if (o.roleTitle?.includes("Supreme Court")) breakdown.supremeCourt++;
+        else if (o.roleTitle?.includes("Criminal Appeals"))
+          breakdown.criminalAppeals++;
+        else if (o.roleTitle?.includes("Secretary of State"))
+          breakdown.secretaryOfState++;
+        else if (o.roleTitle?.includes("United States Senator"))
+          breakdown.usSenate++;
         else breakdown.executive++;
       }
-      
+
       return {
         success: true,
         fingerprint,
@@ -151,46 +160,58 @@ export async function refreshOtherTexasOfficials(
         sources,
       };
     }
-    
-    console.log(`[RefreshOtherTX] Changes detected, processing ${officials.length} officials...`);
-    
+
+    console.log(
+      `[RefreshOtherTX] Changes detected, processing ${officials.length} officials...`,
+    );
+
     // Get existing OTHER_TX officials
     const existingOfficials = await db
       .select()
       .from(officialPublic)
-      .where(eq(officialPublic.source, 'OTHER_TX'));
-    
+      .where(eq(officialPublic.source, "OTHER_TX"));
+
     const existingBySourceId = new Map(
-      existingOfficials.map(o => [o.sourceMemberId, o])
+      existingOfficials.map((o) => [o.sourceMemberId, o]),
     );
-    
+
     // Track which source member IDs we're processing
     const processedSourceIds = new Set<string>();
     let upsertedCount = 0;
-    
+
     // Process each official
     for (const official of officials) {
       const sourceMemberId = generateOtherTxSourceMemberId(
         official.roleTitle,
         official.fullName,
-        official.category
+        official.category,
       );
       processedSourceIds.add(sourceMemberId);
-      
+
       // Update breakdown counts
       switch (official.category) {
-        case 'SUPREME_COURT': breakdown.supremeCourt++; break;
-        case 'CRIMINAL_APPEALS': breakdown.criminalAppeals++; break;
-        case 'SECRETARY_OF_STATE': breakdown.secretaryOfState++; break;
-        case 'EXECUTIVE': breakdown.executive++; break;
-        case 'US_SENATE': breakdown.usSenate++; break;
+        case "SUPREME_COURT":
+          breakdown.supremeCourt++;
+          break;
+        case "CRIMINAL_APPEALS":
+          breakdown.criminalAppeals++;
+          break;
+        case "SECRETARY_OF_STATE":
+          breakdown.secretaryOfState++;
+          break;
+        case "EXECUTIVE":
+          breakdown.executive++;
+          break;
+        case "US_SENATE":
+          breakdown.usSenate++;
+          break;
       }
-      
+
       // Resolve person identity
       const personId = await resolvePersonId(official.fullName);
-      
+
       const existing = existingBySourceId.get(sourceMemberId);
-      
+
       if (existing) {
         // Update existing record
         await db
@@ -211,30 +232,28 @@ export async function refreshOtherTexasOfficials(
           .where(eq(officialPublic.id, existing.id));
       } else {
         // Insert new record
-        await db
-          .insert(officialPublic)
-          .values({
-            personId,
-            source: 'OTHER_TX',
-            sourceMemberId,
-            chamber: 'STATEWIDE',
-            district: 'STATEWIDE',
-            fullName: official.fullName,
-            roleTitle: official.roleTitle,
-            party: official.party,
-            photoUrl: official.photoUrl,
-            capitolAddress: official.capitolAddress,
-            capitolPhone: official.capitolPhone,
-            website: official.website,
-            email: official.email,
-            active: true,
-            lastRefreshedAt: new Date(),
-          });
+        await db.insert(officialPublic).values({
+          personId,
+          source: "OTHER_TX",
+          sourceMemberId,
+          chamber: "STATEWIDE",
+          district: "STATEWIDE",
+          fullName: official.fullName,
+          roleTitle: official.roleTitle,
+          party: official.party,
+          photoUrl: official.photoUrl,
+          capitolAddress: official.capitolAddress,
+          capitolPhone: official.capitolPhone,
+          website: official.website,
+          email: official.email,
+          active: true,
+          lastRefreshedAt: new Date(),
+        });
       }
-      
+
       upsertedCount++;
     }
-    
+
     // Deactivate officials no longer in source data
     let deactivatedCount = 0;
     for (const [sourceMemberId, existing] of existingBySourceId) {
@@ -244,22 +263,24 @@ export async function refreshOtherTexasOfficials(
           .set({ active: false })
           .where(eq(officialPublic.id, existing.id));
         deactivatedCount++;
-        console.log(`[RefreshOtherTX] Deactivated: ${existing.fullName} (${existing.roleTitle})`);
+        console.log(
+          `[RefreshOtherTX] Deactivated: ${existing.fullName} (${existing.roleTitle})`,
+        );
       }
     }
-    
+
     // Update stored fingerprint
     await updateStoredFingerprint(fingerprint, true);
-    
+
     const duration = Date.now() - startTime;
     console.log(
-      `[RefreshOtherTX] Complete: ${upsertedCount} upserted, ${deactivatedCount} deactivated (${duration}ms)`
+      `[RefreshOtherTX] Complete: ${upsertedCount} upserted, ${deactivatedCount} deactivated (${duration}ms)`,
     );
     console.log(
       `[RefreshOtherTX] Breakdown: ${breakdown.executive} executive, ${breakdown.secretaryOfState} SoS, ` +
-      `${breakdown.supremeCourt} Supreme Court, ${breakdown.criminalAppeals} Criminal Appeals`
+        `${breakdown.supremeCourt} Supreme Court, ${breakdown.criminalAppeals} Criminal Appeals`,
     );
-    
+
     return {
       success: true,
       fingerprint,
@@ -271,11 +292,11 @@ export async function refreshOtherTexasOfficials(
       sources,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[RefreshOtherTX] Error:', message);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[RefreshOtherTX] Error:", message);
     return {
       success: false,
-      fingerprint: '',
+      fingerprint: "",
       changed: false,
       upsertedCount: 0,
       deactivatedCount: 0,
@@ -299,7 +320,12 @@ export async function wasOtherTxCheckedThisWeek(): Promise<boolean> {
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(officialPublic)
-    .where(and(eq(officialPublic.source, 'OTHER_TX'), eq(officialPublic.active, true)));
+    .where(
+      and(
+        eq(officialPublic.source, "OTHER_TX"),
+        eq(officialPublic.active, true),
+      ),
+    );
   return count > 0;
 }
 
@@ -309,10 +335,14 @@ export async function wasOtherTxCheckedThisWeek(): Promise<boolean> {
 export async function maybeRunOtherTxRefresh(): Promise<void> {
   const alreadySeeded = await wasOtherTxCheckedThisWeek();
   if (alreadySeeded) {
-    console.log('[RefreshOtherTX] Officials already in DB, skipping startup seed');
+    console.log(
+      "[RefreshOtherTX] Officials already in DB, skipping startup seed",
+    );
     return;
   }
-  console.log('[RefreshOtherTX] No OTHER_TX officials found — running startup seed');
+  console.log(
+    "[RefreshOtherTX] No OTHER_TX officials found — running startup seed",
+  );
   await refreshOtherTexasOfficials({ force: true });
 }
 
@@ -329,7 +359,7 @@ export async function getOtherTxRefreshState(): Promise<{
     .from(refreshState)
     .where(eq(refreshState.source, SOURCE_VALUE))
     .limit(1);
-  
+
   if (!result[0]) {
     return {
       lastCheckedAt: null,
@@ -337,7 +367,7 @@ export async function getOtherTxRefreshState(): Promise<{
       fingerprint: null,
     };
   }
-  
+
   return {
     lastCheckedAt: result[0].lastCheckedAt,
     lastChangedAt: result[0].lastChangedAt,

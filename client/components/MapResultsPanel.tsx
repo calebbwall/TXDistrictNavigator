@@ -48,9 +48,14 @@ interface OfficialCardItemProps {
   isFirst: boolean;
 }
 
-function OfficialCardItem({ official, onPress, isFirst }: OfficialCardItemProps) {
+function OfficialCardItem({
+  official,
+  onPress,
+  isFirst,
+}: OfficialCardItemProps) {
   const { theme } = useTheme();
-  const layerType = official.officeType === "us_house" ? "us_congress" : official.officeType;
+  const layerType =
+    official.officeType === "us_house" ? "us_congress" : official.officeType;
   const badgeColor = LAYER_COLORS[layerType]?.stroke || "#666";
 
   return (
@@ -68,7 +73,10 @@ function OfficialCardItem({ official, onPress, isFirst }: OfficialCardItemProps)
     >
       <View style={styles.cardHeader}>
         <View style={[styles.districtBadge, { backgroundColor: badgeColor }]}>
-          <ThemedText type="small" style={{ color: "#FFFFFF", fontWeight: "600" }}>
+          <ThemedText
+            type="small"
+            style={{ color: "#FFFFFF", fontWeight: "600" }}
+          >
             {getOfficeTypeLabel(official.officeType, official.roleTitle)}
           </ThemedText>
         </View>
@@ -91,10 +99,15 @@ function OfficialCardItem({ official, onPress, isFirst }: OfficialCardItemProps)
         >
           {official.fullName}
         </ThemedText>
-        {!official.isVacant && official.party ? <PartyBadge party={official.party} size="small" /> : null}
+        {!official.isVacant && official.party ? (
+          <PartyBadge party={official.party} size="small" />
+        ) : null}
       </View>
       {official.capitolPhone ? (
-        <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }}>
+        <ThemedText
+          type="small"
+          style={{ color: theme.secondaryText, marginTop: 2 }}
+        >
           {official.capitolPhone}
         </ThemedText>
       ) : null}
@@ -113,15 +126,20 @@ export function MapResultsPanel({
   const { debugEnabled } = useDebugFlags();
   const insets = useSafeAreaInsets();
   const isExpanded = useSharedValue(officials.length > 2);
-  const panelHeight = useSharedValue(officials.length > 2 ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT);
+  const panelHeight = useSharedValue(
+    officials.length > 2 ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT,
+  );
 
   const toggleExpand = useCallback(() => {
     const newExpanded = !isExpanded.value;
     isExpanded.value = newExpanded;
-    panelHeight.value = withTiming(newExpanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT, {
-      duration: ANIMATION_DURATION,
-      easing: Easing.out(Easing.cubic),
-    });
+    panelHeight.value = withTiming(
+      newExpanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT,
+      {
+        duration: ANIMATION_DURATION,
+        easing: Easing.out(Easing.cubic),
+      },
+    );
   }, [isExpanded, panelHeight]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -140,7 +158,7 @@ export function MapResultsPanel({
         isFirst={index === 0}
       />
     ),
-    [onOfficialPress]
+    [onOfficialPress],
   );
 
   const keyExtractor = useCallback((item: Official) => item.id, []);
@@ -150,31 +168,41 @@ export function MapResultsPanel({
       <View style={styles.listHeader}>
         {debugEnabled ? (
           <View style={styles.debugRow}>
-            <ThemedText type="small" style={{ color: "#0f0", fontFamily: "monospace", fontSize: 10 }}>
+            <ThemedText
+              type="small"
+              style={{ color: "#0f0", fontFamily: "monospace", fontSize: 10 }}
+            >
               Hits: {hits.length} | Officials: {officials.length}
             </ThemedText>
           </View>
         ) : null}
       </View>
     ),
-    [debugEnabled, hits.length, officials.length]
+    [debugEnabled, hits.length, officials.length],
   );
 
   const ListEmpty = useCallback(
     () => (
       <View style={styles.emptyState}>
         <Feather name="info" size={24} color={theme.secondaryText} />
-        <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.sm, textAlign: "center" }}>
+        <ThemedText
+          type="body"
+          style={{
+            color: theme.secondaryText,
+            marginTop: Spacing.sm,
+            textAlign: "center",
+          }}
+        >
           No officials found in this area
         </ThemedText>
       </View>
     ),
-    [theme]
+    [theme],
   );
 
   // Ensure minimum bottom margin even if insets.bottom is 0
   const bottomMargin = Math.max(insets.bottom, Spacing.lg) + Spacing.md;
-  
+
   return (
     <Animated.View
       style={[
@@ -190,10 +218,14 @@ export function MapResultsPanel({
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <View style={styles.headerLeft}>
           <ThemedText type="h3" style={{ color: theme.text }}>
-            {officials.length} {officials.length === 1 ? "Official" : "Officials"}
+            {officials.length}{" "}
+            {officials.length === 1 ? "Official" : "Officials"}
           </ThemedText>
           {hits.length > officials.length ? (
-            <ThemedText type="small" style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}>
+            <ThemedText
+              type="small"
+              style={{ color: theme.secondaryText, marginLeft: Spacing.xs }}
+            >
               ({hits.length} districts)
             </ThemedText>
           ) : null}
@@ -202,14 +234,20 @@ export function MapResultsPanel({
           {onClearDrawing ? (
             <Pressable
               onPress={onClearDrawing}
-              style={[styles.headerButton, { backgroundColor: theme.cardBackground }]}
+              style={[
+                styles.headerButton,
+                { backgroundColor: theme.cardBackground },
+              ]}
             >
               <Feather name="trash-2" size={16} color={theme.secondaryText} />
             </Pressable>
           ) : null}
           <Pressable
             onPress={toggleExpand}
-            style={[styles.headerButton, { backgroundColor: theme.cardBackground }]}
+            style={[
+              styles.headerButton,
+              { backgroundColor: theme.cardBackground },
+            ]}
           >
             <Animated.View style={chevronStyle}>
               <Feather name="chevron-up" size={20} color={theme.text} />
@@ -217,7 +255,10 @@ export function MapResultsPanel({
           </Pressable>
           <Pressable
             onPress={onClose}
-            style={[styles.headerButton, { backgroundColor: theme.cardBackground }]}
+            style={[
+              styles.headerButton,
+              { backgroundColor: theme.cardBackground },
+            ]}
           >
             <Feather name="x" size={20} color={theme.secondaryText} />
           </Pressable>

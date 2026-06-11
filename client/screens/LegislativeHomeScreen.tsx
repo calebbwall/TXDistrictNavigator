@@ -44,8 +44,14 @@ interface LegislativeEvent {
   billCount: number;
   witnessCount: number | null;
 }
-interface EventsResponse { events: LegislativeEvent[]; total: number }
-interface AlertsResponse { alerts: unknown[]; unreadCount: number }
+interface EventsResponse {
+  events: LegislativeEvent[];
+  total: number;
+}
+interface AlertsResponse {
+  alerts: unknown[];
+  unreadCount: number;
+}
 
 // ── date helpers ──
 function formatDateCompact(iso: string | null): string {
@@ -53,16 +59,33 @@ function formatDateCompact(iso: string | null): string {
   const d = new Date(iso);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const diff = Math.round((new Date(d).setHours(0, 0, 0, 0) - today.getTime()) / 86400000);
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" });
+  const diff = Math.round(
+    (new Date(d).setHours(0, 0, 0, 0) - today.getTime()) / 86400000,
+  );
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "America/Chicago",
+  });
   if (diff === 0) return `Today ${time}`;
   if (diff === 1) return `Tomorrow ${time}`;
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" }) + ` ${time}`;
+  return (
+    d.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      timeZone: "America/Chicago",
+    }) + ` ${time}`
+  );
 }
 
 function dayGroup(iso: string | null): "today-tomorrow" | "week" | "later" {
   if (!iso) return "later";
-  const diff = Math.round((new Date(iso).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  const diff = Math.round(
+    (new Date(iso).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) /
+      86400000,
+  );
   if (diff <= 1) return "today-tomorrow";
   if (diff <= 7) return "week";
   return "later";
@@ -102,18 +125,31 @@ function NavCard({
         <ThemedText type="body" style={{ fontWeight: "700" }}>
           {title}
         </ThemedText>
-        <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }}>
+        <ThemedText
+          type="small"
+          style={{ color: theme.secondaryText, marginTop: 2 }}
+        >
           {subtitle}
         </ThemedText>
       </View>
       {badge ? (
-        <View style={[styles.navCardBadge, { backgroundColor: (badgeColor ?? color) }]}>
+        <View
+          style={[
+            styles.navCardBadge,
+            { backgroundColor: badgeColor ?? color },
+          ]}
+        >
           <ThemedText type="small" style={{ color: "#fff", fontWeight: "700" }}>
             {badge}
           </ThemedText>
         </View>
       ) : null}
-      <Feather name="chevron-right" size={20} color={theme.secondaryText} style={{ marginLeft: Spacing.xs }} />
+      <Feather
+        name="chevron-right"
+        size={20}
+        color={theme.secondaryText}
+        style={{ marginLeft: Spacing.xs }}
+      />
     </Pressable>
   );
 }
@@ -127,7 +163,8 @@ function MiniEventRow({
   onPress: () => void;
 }) {
   const { theme } = useTheme();
-  const isSenate = event.chamber === "TX_SENATE" || event.committeeChamber === "TX_SENATE";
+  const isSenate =
+    event.chamber === "TX_SENATE" || event.committeeChamber === "TX_SENATE";
   const accent = isSenate ? "#4A90E2" : "#E94B3C";
 
   return (
@@ -149,8 +186,16 @@ function MiniEventRow({
         </ThemedText>
       </View>
       {event.billCount > 0 ? (
-        <View style={[styles.miniBillBadge, { backgroundColor: theme.primary + "18" }]}>
-          <ThemedText type="small" style={{ color: theme.primary, fontWeight: "700" }}>
+        <View
+          style={[
+            styles.miniBillBadge,
+            { backgroundColor: theme.primary + "18" },
+          ]}
+        >
+          <ThemedText
+            type="small"
+            style={{ color: theme.primary, fontWeight: "700" }}
+          >
             {event.billCount}
           </ThemedText>
         </View>
@@ -166,7 +211,13 @@ function SectionLabel({ children }: { children: string }) {
   return (
     <ThemedText
       type="caption"
-      style={{ color: theme.secondaryText, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: Spacing.sm }}
+      style={{
+        color: theme.secondaryText,
+        fontWeight: "700",
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+        marginBottom: Spacing.sm,
+      }}
     >
       {children}
     </ThemedText>
@@ -179,31 +230,39 @@ export default function LegislativeHomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const headerHeight = useHeaderHeight();
   let tabBarHeight = 0;
-  try { tabBarHeight = useBottomTabBarHeight(); } catch { tabBarHeight = 80; }
+  try {
+    tabBarHeight = useBottomTabBarHeight();
+  } catch {
+    tabBarHeight = 80;
+  }
 
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: alertsData, refetch: refetchAlerts } = useQuery<AlertsResponse>({
-    queryKey: ["/api/alerts", { unreadOnly: true }],
-    queryFn: async () => {
-      const url = new URL("/api/alerts?unreadOnly=true", getApiUrl());
-      const res = await fetch(url.toString());
-      if (!res.ok) return { alerts: [], unreadCount: 0 };
-      return res.json();
+  const { data: alertsData, refetch: refetchAlerts } = useQuery<AlertsResponse>(
+    {
+      queryKey: ["/api/alerts", { unreadOnly: true }],
+      queryFn: async () => {
+        const url = new URL("/api/alerts?unreadOnly=true", getApiUrl());
+        const res = await fetch(url.toString());
+        if (!res.ok) return { alerts: [], unreadCount: 0 };
+        return res.json();
+      },
+      staleTime: 60_000,
     },
-    staleTime: 60_000,
-  });
+  );
 
-  const { data: eventsData, refetch: refetchEvents } = useQuery<EventsResponse>({
-    queryKey: ["/api/events/upcoming", "home-preview"],
-    queryFn: async () => {
-      const url = new URL("/api/events/upcoming?days=14", getApiUrl());
-      const res = await fetch(url.toString());
-      if (!res.ok) return { events: [], total: 0 };
-      return res.json();
+  const { data: eventsData, refetch: refetchEvents } = useQuery<EventsResponse>(
+    {
+      queryKey: ["/api/events/upcoming", "home-preview"],
+      queryFn: async () => {
+        const url = new URL("/api/events/upcoming?days=14", getApiUrl());
+        const res = await fetch(url.toString());
+        if (!res.ok) return { events: [], total: 0 };
+        return res.json();
+      },
+      staleTime: 5 * 60_000,
     },
-    staleTime: 5 * 60_000,
-  });
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -212,17 +271,22 @@ export default function LegislativeHomeScreen() {
   }, [refetchAlerts, refetchEvents]);
 
   const events = eventsData?.events ?? [];
-  const todayTomorrow = events.filter((e) => dayGroup(e.startsAt) === "today-tomorrow");
+  const todayTomorrow = events.filter(
+    (e) => dayGroup(e.startsAt) === "today-tomorrow",
+  );
   const thisWeek = events.filter((e) => dayGroup(e.startsAt) === "week");
-  const previewEvents = todayTomorrow.slice(0, 3).length > 0
-    ? todayTomorrow.slice(0, 3)
-    : thisWeek.slice(0, 3);
+  const previewEvents =
+    todayTomorrow.slice(0, 3).length > 0
+      ? todayTomorrow.slice(0, 3)
+      : thisWeek.slice(0, 3);
 
   const unreadCount = alertsData?.unreadCount ?? 0;
   const totalUpcoming = events.length;
 
   // Unique committees in the events list (for subtitle)
-  const committeeSet = new Set(events.map((e) => e.committeeName).filter(Boolean));
+  const committeeSet = new Set(
+    events.map((e) => e.committeeName).filter(Boolean),
+  );
 
   return (
     <ScrollView
@@ -233,7 +297,11 @@ export default function LegislativeHomeScreen() {
         paddingHorizontal: Spacing.md,
       }}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={theme.primary}
+        />
       }
     >
       {/* ── Navigation cards ── */}
@@ -269,9 +337,7 @@ export default function LegislativeHomeScreen() {
           icon="bell"
           color={unreadCount > 0 ? theme.warning : theme.secondaryText}
           title="Alerts"
-          subtitle={
-            unreadCount > 0 ? `${unreadCount} unread` : "No new alerts"
-          }
+          subtitle={unreadCount > 0 ? `${unreadCount} unread` : "No new alerts"}
           badge={unreadCount > 0 ? String(unreadCount) : null}
           badgeColor={theme.warning}
           onPress={() => navigation.navigate("Alerts")}
@@ -285,8 +351,13 @@ export default function LegislativeHomeScreen() {
             <SectionLabel>
               {todayTomorrow.length > 0 ? "Today & Tomorrow" : "This Week"}
             </SectionLabel>
-            <Pressable onPress={() => navigation.navigate("LegislativeDashboard")}>
-              <ThemedText type="small" style={{ color: theme.primary, fontWeight: "600" }}>
+            <Pressable
+              onPress={() => navigation.navigate("LegislativeDashboard")}
+            >
+              <ThemedText
+                type="small"
+                style={{ color: theme.primary, fontWeight: "600" }}
+              >
                 See all
               </ThemedText>
             </Pressable>
@@ -304,12 +375,18 @@ export default function LegislativeHomeScreen() {
                 }
               />
             ))}
-            {(todayTomorrow.length > 3 || thisWeek.length > 3) ? (
+            {todayTomorrow.length > 3 || thisWeek.length > 3 ? (
               <Pressable
                 onPress={() => navigation.navigate("LegislativeDashboard")}
-                style={[styles.moreRow, { backgroundColor: theme.backgroundSecondary }]}
+                style={[
+                  styles.moreRow,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
               >
-                <ThemedText type="small" style={{ color: theme.primary, fontWeight: "600" }}>
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.primary, fontWeight: "600" }}
+                >
                   View all {totalUpcoming} hearings →
                 </ThemedText>
               </Pressable>
@@ -322,11 +399,26 @@ export default function LegislativeHomeScreen() {
       {previewEvents.length === 0 && !refreshing ? (
         <View style={styles.emptyState}>
           <Feather name="calendar" size={48} color={theme.secondaryText} />
-          <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.md, textAlign: "center" }}>
+          <ThemedText
+            type="body"
+            style={{
+              color: theme.secondaryText,
+              marginTop: Spacing.md,
+              textAlign: "center",
+            }}
+          >
             No upcoming hearings found
           </ThemedText>
-          <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}>
-            Data refreshes daily at 5 AM Central.{"\n"}Tap Committees to browse all committee pages.
+          <ThemedText
+            type="small"
+            style={{
+              color: theme.secondaryText,
+              marginTop: Spacing.xs,
+              textAlign: "center",
+            }}
+          >
+            Data refreshes daily at 5 AM Central.{"\n"}Tap Committees to browse
+            all committee pages.
           </ThemedText>
         </View>
       ) : null}

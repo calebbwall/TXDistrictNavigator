@@ -1,6 +1,8 @@
 import { getApiUrl } from "./query-client";
 
-export function getProxiedPhotoUrl(photoUrl: string | null | undefined): string | null {
+export function getProxiedPhotoUrl(
+  photoUrl: string | null | undefined,
+): string | null {
   if (!photoUrl) return null;
 
   if (photoUrl.startsWith("/")) {

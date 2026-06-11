@@ -18,7 +18,11 @@ import type { FocusDistrictParams } from "@/navigation/MapStackNavigator";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 
 export type MainTabParamList = {
-  MapTab: NavigatorScreenParams<{ Map: { focusDistrict?: FocusDistrictParams } | undefined }> | undefined;
+  MapTab:
+    | NavigatorScreenParams<{
+        Map: { focusDistrict?: FocusDistrictParams } | undefined;
+      }>
+    | undefined;
   BrowseTab: undefined;
   PrayerTab: undefined;
   ProfileTab: undefined;
@@ -29,7 +33,8 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 function AskAIFab() {
   const { theme } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   return (
     <Pressable

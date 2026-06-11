@@ -85,7 +85,9 @@ interface ParsedWitness {
   billNumber: string | null;
 }
 
-function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitness[] {
+function parseWitnessesFromHtml(
+  $: ReturnType<typeof cheerio.load>,
+): ParsedWitness[] {
   const results: ParsedWitness[] = [];
 
   $("table").each((_, table) => {
@@ -94,13 +96,19 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
     let hasPositionCell = false;
     rows.each((_, row) => {
       if (hasPositionCell) return;
-      $(row).find("td").each((_, td) => {
-        if (WITNESS_POSITION_RE.test($(td).text().trim())) hasPositionCell = true;
-      });
+      $(row)
+        .find("td")
+        .each((_, td) => {
+          if (WITNESS_POSITION_RE.test($(td).text().trim()))
+            hasPositionCell = true;
+        });
     });
     if (!hasPositionCell) return;
 
-    let posCol = -1, nameCol = -1, orgCol = -1, billCol = -1;
+    let posCol = -1,
+      nameCol = -1,
+      orgCol = -1,
+      billCol = -1;
     const headerCells = $(rows[0]).find("th");
     if (headerCells.length > 0) {
       headerCells.each((idx, th) => {
@@ -116,10 +124,15 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
       const cells = $(row).find("td");
       if (cells.length < 2) return;
       const texts = cells.map((_, td) => $(td).text().trim()).get();
-      const posIdx = posCol >= 0 ? posCol : texts.findIndex(t => WITNESS_POSITION_RE.test(t));
+      const posIdx =
+        posCol >= 0
+          ? posCol
+          : texts.findIndex((t) => WITNESS_POSITION_RE.test(t));
       if (posIdx < 0 || posIdx >= texts.length) return;
       const rawPosition = texts[posIdx].toUpperCase();
-      const position = ["FOR", "AGAINST", "ON"].includes(rawPosition) ? rawPosition : null;
+      const position = ["FOR", "AGAINST", "ON"].includes(rawPosition)
+        ? rawPosition
+        : null;
       const rest = texts.filter((_, i) => i !== posIdx);
       let fullName: string | null = null;
       let organization: string | null = null;
@@ -131,23 +144,41 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
       } else {
         for (const t of rest) {
           const bm = t.match(WITNESS_BILL_RE);
-          if (bm && !billNumber) { billNumber = bm[1].replace(/\s+/g, "").toUpperCase(); continue; }
-          if (!fullName && t.length >= 2) { fullName = t; continue; }
-          if (!organization && t.length >= 2) { organization = t; }
+          if (bm && !billNumber) {
+            billNumber = bm[1].replace(/\s+/g, "").toUpperCase();
+            continue;
+          }
+          if (!fullName && t.length >= 2) {
+            fullName = t;
+            continue;
+          }
+          if (!organization && t.length >= 2) {
+            organization = t;
+          }
         }
       }
       if (!fullName || fullName.length < 2) return;
       if (billNumber) billNumber = billNumber.replace(/\s+/g, "").toUpperCase();
-      results.push({ fullName, organization: organization || null, position, billNumber: billNumber || null });
+      results.push({
+        fullName,
+        organization: organization || null,
+        position,
+        billNumber: billNumber || null,
+      });
     });
   });
 
   if (results.length > 0) return results;
 
   const fullText = $("body").text();
-  const sectionMatch = fullText.match(/WITNESS(?:ES)?(?:\s+LIST)?\s*[:\n]([\s\S]{1,4000})/i);
+  const sectionMatch = fullText.match(
+    /WITNESS(?:ES)?(?:\s+LIST)?\s*[:\n]([\s\S]{1,4000})/i,
+  );
   if (!sectionMatch) return results;
-  const lines = sectionMatch[1].split(/[\n\r]+/).map((l: string) => l.trim()).filter(Boolean);
+  const lines = sectionMatch[1]
+    .split(/[\n\r]+/)
+    .map((l: string) => l.trim())
+    .filter(Boolean);
   let currentPosition: string | null = null;
   for (const line of lines) {
     const posMatch = line.match(/^(FOR|AGAINST|ON(?:\s+THE\s+BILL)?)[:\s]*$/i);
@@ -166,7 +197,9 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
       fullName,
       organization: organization || null,
       position: currentPosition,
-      billNumber: billMatch ? billMatch[1].replace(/\s+/g, "").toUpperCase() : null,
+      billNumber: billMatch
+        ? billMatch[1].replace(/\s+/g, "").toUpperCase()
+        : null,
     });
   }
   return results;
@@ -190,9 +223,24 @@ function testFingerprint(): void {
 
 function testItemFingerprint(): void {
   console.log("\n[test] itemFingerprint()");
-  const fp1 = itemFingerprint(["Title", "https://example.com", null, "2025-01-01"]);
-  const fp2 = itemFingerprint(["Title", "https://example.com", null, "2025-01-01"]);
-  const fp3 = itemFingerprint(["Title Changed", "https://example.com", null, "2025-01-01"]);
+  const fp1 = itemFingerprint([
+    "Title",
+    "https://example.com",
+    null,
+    "2025-01-01",
+  ]);
+  const fp2 = itemFingerprint([
+    "Title",
+    "https://example.com",
+    null,
+    "2025-01-01",
+  ]);
+  const fp3 = itemFingerprint([
+    "Title Changed",
+    "https://example.com",
+    null,
+    "2025-01-01",
+  ]);
   assertEqual(fp1, fp2, "stable fingerprint with identical data");
   assert(fp1 !== fp3, "title change → different fingerprint");
   // null filtering
@@ -231,15 +279,35 @@ function testBillNumberExtraction(): void {
 
 function testParsedActionType(): void {
   console.log("\n[test] parsedActionType()");
-  assertEqual(parsedActionType("Referred to House Appropriations"), "COMMITTEE_REFERRAL", "referred to");
-  assertEqual(parsedActionType("Passed 2nd reading favorable"), "PASSED", "passed/favorable");
-  assertEqual(parsedActionType("Failed — unfavorable report"), "FAILED", "failed/unfavorable");
+  assertEqual(
+    parsedActionType("Referred to House Appropriations"),
+    "COMMITTEE_REFERRAL",
+    "referred to",
+  );
+  assertEqual(
+    parsedActionType("Passed 2nd reading favorable"),
+    "PASSED",
+    "passed/favorable",
+  );
+  assertEqual(
+    parsedActionType("Failed — unfavorable report"),
+    "FAILED",
+    "failed/unfavorable",
+  );
   assertEqual(parsedActionType("Filed in the House"), "FILED", "filed");
   assertEqual(parsedActionType("Signed by the Governor"), "SIGNED", "signed");
   assertEqual(parsedActionType("Vetoed by Governor"), "VETOED", "vetoed");
-  assertEqual(parsedActionType("Set for public hearing"), "HEARING_SCHEDULED", "hearing");
+  assertEqual(
+    parsedActionType("Set for public hearing"),
+    "HEARING_SCHEDULED",
+    "hearing",
+  );
   assertEqual(parsedActionType("Members voted on amendment"), "VOTE", "vote");
-  assertEqual(parsedActionType("General calendar action"), "ACTION", "fallback");
+  assertEqual(
+    parsedActionType("General calendar action"),
+    "ACTION",
+    "fallback",
+  );
 }
 
 function testFingerprintDateParsing(): void {
@@ -328,17 +396,30 @@ function testWitnessParsingText(): void {
     <p>Dave White, Self</p>
   </body>`;
   const w = parseWitnessesFromHtmlStr(html);
-  assert(w.length >= 4, `text fallback: extracts at least 4 witnesses (got ${w.length})`);
-  const jane = w.find(x => x.fullName === "Jane Smith");
+  assert(
+    w.length >= 4,
+    `text fallback: extracts at least 4 witnesses (got ${w.length})`,
+  );
+  const jane = w.find((x) => x.fullName === "Jane Smith");
   assert(jane !== undefined, "text fallback: finds Jane Smith");
   assertEqual(jane?.position ?? null, "FOR", "text fallback: FOR position");
-  assertEqual(jane?.organization ?? null, "Texas Chamber of Commerce", "text fallback: organization");
+  assertEqual(
+    jane?.organization ?? null,
+    "Texas Chamber of Commerce",
+    "text fallback: organization",
+  );
 
-  const alice = w.find(x => x.fullName === "Alice Brown");
-  assertEqual(alice?.position ?? null, "AGAINST", "text fallback: AGAINST position");
+  const alice = w.find((x) => x.fullName === "Alice Brown");
+  assertEqual(
+    alice?.position ?? null,
+    "AGAINST",
+    "text fallback: AGAINST position",
+  );
 
   // Page with no witness section returns empty
-  const wEmpty = parseWitnessesFromHtmlStr("<body><p>No witnesses here.</p></body>");
+  const wEmpty = parseWitnessesFromHtmlStr(
+    "<body><p>No witnesses here.</p></body>",
+  );
   assertEqual(wEmpty.length, 0, "no witness section → empty array");
 }
 

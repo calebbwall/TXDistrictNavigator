@@ -17,7 +17,11 @@ import {
 import { refreshOtherTexasOfficials } from "./refreshOtherTexasOfficials";
 import { resolveAllMissingPersonIds } from "../lib/identityResolver";
 import { pollAllFeeds, getIsPollingRss } from "./pollRssFeeds";
-import { runDailyRefresh, getIsDailyRefreshing, msUntilNext5amChicago } from "./refreshDailyLegislative";
+import {
+  runDailyRefresh,
+  getIsDailyRefreshing,
+  msUntilNext5amChicago,
+} from "./refreshDailyLegislative";
 import { processEventDateActionsForAllUsers } from "../lib/prayerUtils";
 import { seedLegislativeFeeds } from "./seedLegislativeFeeds";
 import { db } from "../db";
@@ -42,7 +46,7 @@ const RSS_POLL_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
 
 /**
  * Run a full refresh cycle with explicit ordering and logging.
- * 
+ *
  * Refresh Order:
  * 1. Legislature + US House officials
  * 2. Other Texas Officials (statewide offices)
@@ -55,51 +59,61 @@ async function runRefreshCycle(): Promise<void> {
     console.log("[Scheduler] Refresh cycle already in progress, skipping");
     return;
   }
-  
+
   refreshCycleInProgress = true;
   const cycleStart = Date.now();
-  
+
   console.log("========================================");
   console.log("[Scheduler] BEGIN refresh cycle");
   console.log("========================================");
-  
+
   try {
     // Step 1: Refresh Legislature + US House officials
-    console.log("[Scheduler] Step 1/6: Refreshing Legislature + US House officials...");
+    console.log(
+      "[Scheduler] Step 1/6: Refreshing Legislature + US House officials...",
+    );
     await checkAndRefreshIfChanged(false);
-    
+
     // Step 2: Refresh Other Texas Officials
     console.log("[Scheduler] Step 2/6: Refreshing Other Texas Officials...");
     await refreshOtherTexasOfficials({ force: false });
-    
+
     // Step 3: Resolve personIds for all active officials
-    console.log("[Scheduler] Step 3/6: Resolving personIds for active officials...");
+    console.log(
+      "[Scheduler] Step 3/6: Resolving personIds for active officials...",
+    );
     const identityResult = await resolveAllMissingPersonIds();
-    console.log(`[Scheduler] Identity resolution: ${identityResult.resolved} resolved, ${identityResult.created} new persons`);
-    
+    console.log(
+      `[Scheduler] Identity resolution: ${identityResult.resolved} resolved, ${identityResult.created} new persons`,
+    );
+
     // Step 4: Refresh GeoJSON district boundaries
-    console.log("[Scheduler] Step 4/6: Refreshing GeoJSON district boundaries...");
+    console.log(
+      "[Scheduler] Step 4/6: Refreshing GeoJSON district boundaries...",
+    );
     await checkAndRefreshGeoJSONIfChanged(false);
-    
+
     // Step 5: Refresh Committees
     console.log("[Scheduler] Step 5/6: Refreshing Committees...");
     await checkAndRefreshCommitteesIfChanged(false);
-    
+
     // Step 6: Backfill hometowns from Texas Tribune
     console.log("[Scheduler] Step 6/6: Backfilling hometowns...");
     try {
-      const { bulkFillHometowns } = await import("../scripts/bulkFillHometowns");
+      const { bulkFillHometowns } =
+        await import("../scripts/bulkFillHometowns");
       const hometownResult = await bulkFillHometowns();
-      console.log(`[Scheduler] Hometown backfill: filled=${hometownResult.filled}, skipped=${hometownResult.skipped}`);
+      console.log(
+        `[Scheduler] Hometown backfill: filled=${hometownResult.filled}, skipped=${hometownResult.skipped}`,
+      );
     } catch (err) {
       console.error("[Scheduler] Hometown backfill failed:", err);
     }
-    
+
     const cycleDuration = Date.now() - cycleStart;
     console.log("========================================");
     console.log(`[Scheduler] END refresh cycle (${cycleDuration}ms)`);
     console.log("========================================");
-    
   } catch (err) {
     console.error("[Scheduler] Error during refresh cycle:", err);
     console.log("========================================");
@@ -129,7 +143,7 @@ async function schedulerTick(): Promise<void> {
     }
 
     const inWindow = isInMondayCheckWindow();
-    
+
     if (!inWindow) {
       return;
     }
@@ -144,18 +158,21 @@ async function schedulerTick(): Promise<void> {
     const officialsChecked = await wasCheckedThisWeek();
     const geoJSONChecked = await wasGeoJSONCheckedThisWeek();
     const committeesChecked = await wasCommitteesCheckedThisWeek();
-    
+
     if (officialsChecked && geoJSONChecked && committeesChecked) {
-      console.log("[Scheduler] All sources already checked this week, skipping");
+      console.log(
+        "[Scheduler] All sources already checked this week, skipping",
+      );
       return;
     }
 
-    console.log("[Scheduler] Monday check window detected, starting full refresh cycle...");
+    console.log(
+      "[Scheduler] Monday check window detected, starting full refresh cycle...",
+    );
     lastCheckWindowRun = new Date();
-    
+
     // Run full refresh cycle with explicit ordering
     await runRefreshCycle();
-    
   } catch (err) {
     console.error("[Scheduler] Error during tick:", err);
   }
@@ -164,14 +181,17 @@ async function schedulerTick(): Promise<void> {
 /**
  * Export for admin endpoints to trigger full refresh cycle manually.
  */
-export async function triggerFullRefreshCycle(): Promise<{ success: boolean; error?: string }> {
+export async function triggerFullRefreshCycle(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
   try {
     await runRefreshCycle();
     return { success: true };
   } catch (err) {
-    return { 
-      success: false, 
-      error: err instanceof Error ? err.message : 'Unknown error' 
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error",
     };
   }
 }
@@ -186,7 +206,9 @@ export function startOfficialsRefreshScheduler(): void {
     return;
   }
 
-  console.log(`[Scheduler] Starting officials refresh scheduler (check every ${CHECK_INTERVAL_MS / 60000} minutes)`);
+  console.log(
+    `[Scheduler] Starting officials refresh scheduler (check every ${CHECK_INTERVAL_MS / 60000} minutes)`,
+  );
 
   schedulerInterval = setInterval(schedulerTick, CHECK_INTERVAL_MS);
 
@@ -201,7 +223,9 @@ export function startOfficialsRefreshScheduler(): void {
         .select({ count: sql<number>`count(*)::int` })
         .from(officialPublic);
       if (count === 0) {
-        console.log("[Scheduler] Officials table is empty — running immediate full refresh cycle");
+        console.log(
+          "[Scheduler] Officials table is empty — running immediate full refresh cycle",
+        );
         await runRefreshCycle();
       }
     } catch (err) {
@@ -269,7 +293,9 @@ function scheduleNextDailyRefresh(): void {
   const delay = msUntilNext5amChicago();
   const h = Math.floor(delay / 3600000);
   const m = Math.floor((delay % 3600000) / 60000);
-  console.log(`[Scheduler/daily] Next daily legislative refresh in ${h}h ${m}m (5:00 AM America/Chicago)`);
+  console.log(
+    `[Scheduler/daily] Next daily legislative refresh in ${h}h ${m}m (5:00 AM America/Chicago)`,
+  );
 
   const fireDailyRefresh = async (): Promise<void> => {
     // Cross-check heavy jobs. If anything else is mid-flight, defer literally
@@ -283,10 +309,17 @@ function scheduleNextDailyRefresh(): void {
       getIsRefreshingCommittees()
     ) {
       console.log("[Scheduler/daily] Heavy job in progress — deferring 5 min");
-      dailyTimer = setTimeout(() => { fireDailyRefresh(); }, 5 * 60 * 1000);
+      dailyTimer = setTimeout(
+        () => {
+          fireDailyRefresh();
+        },
+        5 * 60 * 1000,
+      );
       return;
     }
-    console.log("[Scheduler/daily] Trigger — running daily legislative refresh");
+    console.log(
+      "[Scheduler/daily] Trigger — running daily legislative refresh",
+    );
     lastDailyRefreshAt = new Date();
     try {
       await runDailyRefresh();
@@ -295,15 +328,22 @@ function scheduleNextDailyRefresh(): void {
     }
     try {
       await processEventDateActionsForAllUsers();
-      console.log("[Scheduler/daily] processEventDateActionsForAllUsers completed");
+      console.log(
+        "[Scheduler/daily] processEventDateActionsForAllUsers completed",
+      );
     } catch (err) {
-      console.error("[Scheduler/daily] processEventDateActionsForAllUsers failed:", err);
+      console.error(
+        "[Scheduler/daily] processEventDateActionsForAllUsers failed:",
+        err,
+      );
     }
     // Schedule the next day's run after this one completes (or after defer chain)
     scheduleNextDailyRefresh();
   };
 
-  dailyTimer = setTimeout(() => { fireDailyRefresh(); }, delay);
+  dailyTimer = setTimeout(() => {
+    fireDailyRefresh();
+  }, delay);
 }
 
 async function runRssPoll(): Promise<void> {
@@ -347,11 +387,15 @@ async function maybeRunStartupLegislativeRefresh(): Promise<void> {
       if (committeeCount > 0) break; // committees are in DB — proceed
 
       if (Date.now() - started >= MAX_WAIT_MS) {
-        console.log("[Scheduler/legislative] Timed out waiting for committees — skipping startup event seed");
+        console.log(
+          "[Scheduler/legislative] Timed out waiting for committees — skipping startup event seed",
+        );
         return;
       }
 
-      console.log("[Scheduler/legislative] Committees not yet seeded, waiting 30s...");
+      console.log(
+        "[Scheduler/legislative] Committees not yet seeded, waiting 30s...",
+      );
       await sleep(POLL_INTERVAL_MS);
     }
 
@@ -359,7 +403,9 @@ async function maybeRunStartupLegislativeRefresh(): Promise<void> {
     try {
       const { inserted } = await seedLegislativeFeeds();
       if (inserted > 0) {
-        console.log(`[Scheduler/legislative] Seeded ${inserted} RSS feed(s) after committee refresh`);
+        console.log(
+          `[Scheduler/legislative] Seeded ${inserted} RSS feed(s) after committee refresh`,
+        );
       }
     } catch (err) {
       console.error("[Scheduler/legislative] Feed re-seed failed:", err);
@@ -369,7 +415,9 @@ async function maybeRunStartupLegislativeRefresh(): Promise<void> {
       .select({ eventCount: sql<number>`count(*)::int` })
       .from(legislativeEvents);
     if (eventCount > 0) {
-      console.log(`[Scheduler/legislative] ${eventCount} events already in DB — skipping startup daily refresh`);
+      console.log(
+        `[Scheduler/legislative] ${eventCount} events already in DB — skipping startup daily refresh`,
+      );
       return;
     }
 
@@ -392,14 +440,20 @@ async function maybeRunStartupLegislativeRefresh(): Promise<void> {
       refreshCycleInProgress
     ) {
       if (Date.now() - heavyWaitStart >= HEAVY_DEFER_MAX) {
-        console.warn("[Scheduler/legislative] Bootstrap deferred 30 min — giving up; will run on next 5 AM cycle");
+        console.warn(
+          "[Scheduler/legislative] Bootstrap deferred 30 min — giving up; will run on next 5 AM cycle",
+        );
         return;
       }
-      console.log("[Scheduler/legislative] Heavy job in progress — deferring bootstrap daily refresh by 60s");
+      console.log(
+        "[Scheduler/legislative] Heavy job in progress — deferring bootstrap daily refresh by 60s",
+      );
       await sleep(HEAVY_DEFER_INTERVAL);
     }
 
-    console.log("[Scheduler/legislative] No events in DB — running startup daily refresh immediately");
+    console.log(
+      "[Scheduler/legislative] No events in DB — running startup daily refresh immediately",
+    );
     await runDailyRefresh();
   } catch (err) {
     console.error("[Scheduler/legislative] Startup event seed failed:", err);
@@ -407,7 +461,9 @@ async function maybeRunStartupLegislativeRefresh(): Promise<void> {
 }
 
 function startLegislativeSchedulers(): void {
-  console.log("[Scheduler/legislative] Starting RSS poller (every 60 min) + daily refresh (5 AM Chicago)");
+  console.log(
+    "[Scheduler/legislative] Starting RSS poller (every 60 min) + daily refresh (5 AM Chicago)",
+  );
 
   // Seed feeds first (idempotent) then start polling
   seedLegislativeFeeds()
@@ -425,7 +481,7 @@ function startLegislativeSchedulers(): void {
   // against the committee scraper that can take 5-15 minutes).
   setTimeout(() => {
     maybeRunStartupLegislativeRefresh().catch((err) =>
-      console.error("[Scheduler/legislative] Startup refresh error:", err)
+      console.error("[Scheduler/legislative] Startup refresh error:", err),
     );
   }, 10 * 1000); // 10-second head-start, then polling handles the rest
 
@@ -446,21 +502,35 @@ function stopLegislativeSchedulers(): void {
 }
 
 // ── Manual trigger exports for admin endpoints ──
-export async function triggerRssPoll(): Promise<{ success: boolean; error?: string; result?: unknown }> {
+export async function triggerRssPoll(): Promise<{
+  success: boolean;
+  error?: string;
+  result?: unknown;
+}> {
   try {
     const result = await pollAllFeeds();
     return { success: true, result };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
   }
 }
 
-export async function triggerDailyRefresh(): Promise<{ success: boolean; error?: string; result?: unknown }> {
+export async function triggerDailyRefresh(): Promise<{
+  success: boolean;
+  error?: string;
+  result?: unknown;
+}> {
   try {
     const result = await runDailyRefresh();
     return { success: true, result };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
   }
 }
 
@@ -479,7 +549,8 @@ export async function triggerFullLegislativeBootstrap(): Promise<{
   try {
     // Step 1: Force-refresh committees (both chambers)
     console.log("[Bootstrap] Step 1/3: Refreshing committees...");
-    const { checkAndRefreshCommitteesIfChanged } = await import("./refreshCommittees");
+    const { checkAndRefreshCommitteesIfChanged } =
+      await import("./refreshCommittees");
     const committeeResult = await checkAndRefreshCommitteesIfChanged(true);
 
     // Step 2: Seed RSS feeds (idempotent)
@@ -500,6 +571,9 @@ export async function triggerFullLegislativeBootstrap(): Promise<{
     };
   } catch (err) {
     console.error("[Bootstrap] Failed:", err);
-    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
   }
 }

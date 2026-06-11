@@ -14,12 +14,17 @@ import { signUserToken } from "../middleware/userAuth";
 function requireAdminSecret(req: Request, res: Response): boolean {
   const secret = process.env.ADMIN_CRON_SECRET;
   if (!secret) {
-    res.status(503).json({ error: "Admin endpoint disabled: ADMIN_CRON_SECRET not configured" });
+    res.status(503).json({
+      error: "Admin endpoint disabled: ADMIN_CRON_SECRET not configured",
+    });
     return false;
   }
   const provided =
     (req.headers["x-admin-secret"] as string | undefined) ??
-    (req.headers["authorization"] as string | undefined)?.replace(/^Bearer\s+/i, "");
+    (req.headers["authorization"] as string | undefined)?.replace(
+      /^Bearer\s+/i,
+      "",
+    );
   if (provided !== secret) {
     res.status(401).json({ error: "Unauthorized" });
     return false;
@@ -57,7 +62,9 @@ export function registerAuthRoutes(app: Express): void {
     if (!requireAdminSecret(req, res)) return;
     const { userId } = (req.body ?? {}) as { userId?: string };
     if (!userId || typeof userId !== "string" || userId.length > 255) {
-      res.status(400).json({ error: "userId (string, <=255 chars) is required" });
+      res
+        .status(400)
+        .json({ error: "userId (string, <=255 chars) is required" });
       return;
     }
     try {

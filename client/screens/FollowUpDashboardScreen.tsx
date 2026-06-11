@@ -17,7 +17,14 @@ import { useTheme } from "@/hooks/useTheme";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Card } from "@/components/Card";
-import { getAllFollowUps, archiveFollowUp, unarchiveFollowUp, NotePrayerEntry, getCachedOfficials, type OfficialsCacheData } from "@/lib/storage";
+import {
+  getAllFollowUps,
+  archiveFollowUp,
+  unarchiveFollowUp,
+  NotePrayerEntry,
+  getCachedOfficials,
+  type OfficialsCacheData,
+} from "@/lib/storage";
 import { Spacing, BorderRadius, Typography } from "@/constants/theme";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 import type { Official } from "@/lib/officials";
@@ -41,7 +48,8 @@ export default function FollowUpDashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [officialsCache, setOfficialsCache] = useState<OfficialsCacheData | null>(null);
+  const [officialsCache, setOfficialsCache] =
+    useState<OfficialsCacheData | null>(null);
 
   useEffect(() => {
     getCachedOfficials("ALL").then(setOfficialsCache);
@@ -50,9 +58,11 @@ export default function FollowUpDashboardScreen() {
   const loadFollowUps = useCallback(async () => {
     try {
       const data = await getAllFollowUps(showArchived);
-      const enriched = data.map(item => {
+      const enriched = data.map((item) => {
         const official = officialsCache?.officials?.find(
-          (o: Official) => o.source === item.source && o.districtNumber === item.districtNumber
+          (o: Official) =>
+            o.source === item.source &&
+            o.districtNumber === item.districtNumber,
         );
         return {
           ...item,
@@ -62,7 +72,12 @@ export default function FollowUpDashboardScreen() {
       });
       const now = new Date();
       const isOverdue = (entries: NotePrayerEntry[]) =>
-        entries.some(e => e.dueDate && new Date(e.dueDate + "T23:59:59") < now && !e.followUpArchivedAt);
+        entries.some(
+          (e) =>
+            e.dueDate &&
+            new Date(e.dueDate + "T23:59:59") < now &&
+            !e.followUpArchivedAt,
+        );
 
       const sorted = enriched.sort((a, b) => {
         // Overdue items sort to the top
@@ -70,8 +85,12 @@ export default function FollowUpDashboardScreen() {
         const bOverdue = isOverdue(b.entries) ? 1 : 0;
         if (bOverdue !== aOverdue) return bOverdue - aOverdue;
         // Then by most recent
-        const latestA = Math.max(...a.entries.map(e => new Date(e.createdAt).getTime()));
-        const latestB = Math.max(...b.entries.map(e => new Date(e.createdAt).getTime()));
+        const latestA = Math.max(
+          ...a.entries.map((e) => new Date(e.createdAt).getTime()),
+        );
+        const latestB = Math.max(
+          ...b.entries.map((e) => new Date(e.createdAt).getTime()),
+        );
         return latestB - latestA;
       });
       setFollowUps(sorted);
@@ -84,7 +103,7 @@ export default function FollowUpDashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadFollowUps();
-    }, [loadFollowUps])
+    }, [loadFollowUps]),
   );
 
   const handleRefresh = useCallback(() => {
@@ -100,7 +119,7 @@ export default function FollowUpDashboardScreen() {
         initialSection: "privateNotes",
       });
     },
-    [navigation]
+    [navigation],
   );
 
   const handleArchive = useCallback(
@@ -108,8 +127,8 @@ export default function FollowUpDashboardScreen() {
       const actionText = showArchived ? "restore" : "archive";
       Alert.alert(
         showArchived ? "Restore Follow-Up" : "Archive Follow-Up",
-        showArchived 
-          ? "Restore this follow-up to your active list?" 
+        showArchived
+          ? "Restore this follow-up to your active list?"
           : "Mark this follow-up as no longer needed?",
         [
           { text: "Cancel", style: "cancel" },
@@ -117,17 +136,25 @@ export default function FollowUpDashboardScreen() {
             text: showArchived ? "Restore" : "Archive",
             onPress: async () => {
               if (showArchived) {
-                await unarchiveFollowUp(item.source, item.districtNumber, entryId);
+                await unarchiveFollowUp(
+                  item.source,
+                  item.districtNumber,
+                  entryId,
+                );
               } else {
-                await archiveFollowUp(item.source, item.districtNumber, entryId);
+                await archiveFollowUp(
+                  item.source,
+                  item.districtNumber,
+                  entryId,
+                );
               }
               loadFollowUps();
             },
           },
-        ]
+        ],
       );
     },
-    [showArchived, loadFollowUps]
+    [showArchived, loadFollowUps],
   );
 
   const formatSource = (source: string) => {
@@ -146,8 +173,10 @@ export default function FollowUpDashboardScreen() {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-    
+    const diffDays = Math.floor(
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
@@ -157,58 +186,86 @@ export default function FollowUpDashboardScreen() {
   const renderFollowUpCard = useCallback(
     ({ item }: { item: FollowUpItem }) => {
       const latestEntry = item.entries.reduce((latest, entry) =>
-        new Date(entry.createdAt) > new Date(latest.createdAt) ? entry : latest
+        new Date(entry.createdAt) > new Date(latest.createdAt) ? entry : latest,
       );
 
       const now = new Date();
       const overdueEntry = item.entries.find(
-        e => e.dueDate && new Date(e.dueDate + "T23:59:59") < now && !e.followUpArchivedAt
+        (e) =>
+          e.dueDate &&
+          new Date(e.dueDate + "T23:59:59") < now &&
+          !e.followUpArchivedAt,
       );
       const isOverdue = !showArchived && !!overdueEntry;
-      const highPriority = item.entries.some(e => e.priority === "high" && !e.followUpArchivedAt);
+      const highPriority = item.entries.some(
+        (e) => e.priority === "high" && !e.followUpArchivedAt,
+      );
 
       const title = item.isVacant
         ? "Vacant District"
-        : (item.officialName || `${formatSource(item.source)} District ${item.districtNumber}`);
+        : item.officialName ||
+          `${formatSource(item.source)} District ${item.districtNumber}`;
 
       return (
         <Card
-          style={[styles.card, isOverdue ? { borderLeftWidth: 3, borderLeftColor: "#DC3545" } : {}]}
+          style={[
+            styles.card,
+            isOverdue ? { borderLeftWidth: 3, borderLeftColor: "#DC3545" } : {},
+          ]}
           onPress={() => handleOfficialPress(item)}
         >
           <View style={styles.cardHeader}>
             <View style={styles.officialInfo}>
-              <ThemedText style={styles.officialName}>
-                {title}
-              </ThemedText>
-              <ThemedText style={[styles.districtLabel, { color: theme.secondaryText }]}>
+              <ThemedText style={styles.officialName}>{title}</ThemedText>
+              <ThemedText
+                style={[styles.districtLabel, { color: theme.secondaryText }]}
+              >
                 {formatSource(item.source)} District {item.districtNumber}
               </ThemedText>
               <ThemedText style={styles.entryCount}>
-                {item.entries.length} follow-up{item.entries.length !== 1 ? "s" : ""}
+                {item.entries.length} follow-up
+                {item.entries.length !== 1 ? "s" : ""}
               </ThemedText>
             </View>
             <View style={{ alignItems: "flex-end", gap: 4 }}>
               {isOverdue ? (
                 <View style={[styles.badge, { backgroundColor: "#DC354520" }]}>
                   <Feather name="alert-circle" size={12} color="#DC3545" />
-                  <ThemedText style={[styles.badgeText, { color: "#DC3545" }]}>Overdue</ThemedText>
+                  <ThemedText style={[styles.badgeText, { color: "#DC3545" }]}>
+                    Overdue
+                  </ThemedText>
                 </View>
               ) : (
-                <View style={[styles.badge, { backgroundColor: showArchived ? theme.success + "20" : theme.warning + "20" }]}>
+                <View
+                  style={[
+                    styles.badge,
+                    {
+                      backgroundColor: showArchived
+                        ? theme.success + "20"
+                        : theme.warning + "20",
+                    },
+                  ]}
+                >
                   <Feather
                     name={showArchived ? "check-circle" : "flag"}
                     size={12}
                     color={showArchived ? theme.success : theme.warning}
                   />
-                  <ThemedText style={[styles.badgeText, { color: showArchived ? theme.success : theme.warning }]}>
+                  <ThemedText
+                    style={[
+                      styles.badgeText,
+                      { color: showArchived ? theme.success : theme.warning },
+                    ]}
+                  >
                     {showArchived ? "Resolved" : "Follow Up"}
                   </ThemedText>
                 </View>
               )}
               {highPriority && !showArchived ? (
                 <View style={[styles.badge, { backgroundColor: "#DC354520" }]}>
-                  <ThemedText style={[styles.badgeText, { color: "#DC3545" }]}>High Priority</ThemedText>
+                  <ThemedText style={[styles.badgeText, { color: "#DC3545" }]}>
+                    High Priority
+                  </ThemedText>
                 </View>
               ) : null}
             </View>
@@ -219,10 +276,15 @@ export default function FollowUpDashboardScreen() {
             </ThemedText>
             {isOverdue && overdueEntry?.dueDate ? (
               <ThemedText style={[styles.dateText, { color: "#DC3545" }]}>
-                Due {new Date(overdueEntry.dueDate + "T12:00:00").toLocaleDateString()}
+                Due{" "}
+                {new Date(
+                  overdueEntry.dueDate + "T12:00:00",
+                ).toLocaleDateString()}
               </ThemedText>
             ) : (
-              <ThemedText style={[styles.dateText, { color: theme.secondaryText }]}>
+              <ThemedText
+                style={[styles.dateText, { color: theme.secondaryText }]}
+              >
                 {showArchived && latestEntry.followUpArchivedAt
                   ? `Resolved ${formatDate(latestEntry.followUpArchivedAt)}`
                   : formatDate(latestEntry.createdAt)}
@@ -232,73 +294,93 @@ export default function FollowUpDashboardScreen() {
           <View style={styles.cardFooter}>
             <Pressable
               onPress={() => handleArchive(item, latestEntry.id)}
-                style={({ pressed }) => [
-                  styles.archiveButton,
-                  { 
-                    backgroundColor: showArchived ? theme.success + "15" : theme.border,
-                    opacity: pressed ? 0.7 : 1,
-                  },
+              style={({ pressed }) => [
+                styles.archiveButton,
+                {
+                  backgroundColor: showArchived
+                    ? theme.success + "15"
+                    : theme.border,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Feather
+                name={showArchived ? "rotate-ccw" : "check"}
+                size={14}
+                color={showArchived ? theme.success : theme.secondaryText}
+              />
+              <ThemedText
+                style={[
+                  styles.archiveButtonText,
+                  { color: showArchived ? theme.success : theme.secondaryText },
                 ]}
               >
-                <Feather 
-                  name={showArchived ? "rotate-ccw" : "check"} 
-                  size={14} 
-                  color={showArchived ? theme.success : theme.secondaryText} 
-                />
-                <ThemedText style={[styles.archiveButtonText, { color: showArchived ? theme.success : theme.secondaryText }]}>
-                  {showArchived ? "Restore" : "No longer needed"}
-                </ThemedText>
-              </Pressable>
-              <Feather name="chevron-right" size={20} color={theme.secondaryText} />
-            </View>
-          </Card>
+                {showArchived ? "Restore" : "No longer needed"}
+              </ThemedText>
+            </Pressable>
+            <Feather
+              name="chevron-right"
+              size={20}
+              color={theme.secondaryText}
+            />
+          </View>
+        </Card>
       );
     },
-    [theme, handleOfficialPress, handleArchive, showArchived]
+    [theme, handleOfficialPress, handleArchive, showArchived],
   );
 
-  const ListHeaderComponent = useMemo(() => (
-    <View style={[styles.filterRow, { backgroundColor: theme.backgroundRoot }]}>
-      <Pressable
-        onPress={() => setShowArchived(false)}
-        style={[
-          styles.filterButton,
-          { 
-            backgroundColor: !showArchived ? theme.primary : theme.inputBackground,
-            borderColor: theme.border,
-          },
-        ]}
+  const ListHeaderComponent = useMemo(
+    () => (
+      <View
+        style={[styles.filterRow, { backgroundColor: theme.backgroundRoot }]}
       >
-        <ThemedText
+        <Pressable
+          onPress={() => setShowArchived(false)}
           style={[
-            styles.filterButtonText,
-            { color: !showArchived ? "#FFFFFF" : theme.text },
+            styles.filterButton,
+            {
+              backgroundColor: !showArchived
+                ? theme.primary
+                : theme.inputBackground,
+              borderColor: theme.border,
+            },
           ]}
         >
-          Active
-        </ThemedText>
-      </Pressable>
-      <Pressable
-        onPress={() => setShowArchived(true)}
-        style={[
-          styles.filterButton,
-          { 
-            backgroundColor: showArchived ? theme.primary : theme.inputBackground,
-            borderColor: theme.border,
-          },
-        ]}
-      >
-        <ThemedText
+          <ThemedText
+            style={[
+              styles.filterButtonText,
+              { color: !showArchived ? "#FFFFFF" : theme.text },
+            ]}
+          >
+            Active
+          </ThemedText>
+        </Pressable>
+        <Pressable
+          onPress={() => setShowArchived(true)}
           style={[
-            styles.filterButtonText,
-            { color: showArchived ? "#FFFFFF" : theme.text },
+            styles.filterButton,
+            {
+              backgroundColor: showArchived
+                ? theme.primary
+                : theme.inputBackground,
+              borderColor: theme.border,
+            },
           ]}
         >
-          Archived
-        </ThemedText>
-      </Pressable>
-    </View>
-  ), [showArchived, theme]);
+          <ThemedText
+            style={[
+              styles.filterButtonText,
+              { color: showArchived ? "#FFFFFF" : theme.text },
+            ]}
+          >
+            Archived
+          </ThemedText>
+        </Pressable>
+      </View>
+    ),
+    [showArchived, theme],
+  );
 
   if (loading) {
     return (
@@ -317,14 +399,18 @@ export default function FollowUpDashboardScreen() {
         ListHeaderComponent={ListHeaderComponent}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Feather name={showArchived ? "archive" : "flag"} size={48} color={theme.secondaryText} />
+            <Feather
+              name={showArchived ? "archive" : "flag"}
+              size={48}
+              color={theme.secondaryText}
+            />
             <ThemedText style={[styles.emptyTitle, { marginTop: Spacing.lg }]}>
               {showArchived ? "No Archived Follow-Ups" : "No Follow-Ups"}
             </ThemedText>
             <ThemedText
               style={[styles.emptyText, { color: theme.secondaryText }]}
             >
-              {showArchived 
+              {showArchived
                 ? "Follow-ups you've marked as resolved will appear here."
                 : "Notes marked for follow-up will appear here. Add notes to officials and flag them for follow-up to track your action items."}
             </ThemedText>
@@ -332,7 +418,7 @@ export default function FollowUpDashboardScreen() {
         }
         contentContainerStyle={[
           styles.listContent,
-          { 
+          {
             paddingTop: headerHeight + Spacing.sm,
             paddingBottom: insets.bottom + Spacing.xl,
           },

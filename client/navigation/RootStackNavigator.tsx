@@ -17,13 +17,17 @@ export default function RootStackNavigator() {
   const screenOptions = useScreenOptions();
 
   useEffect(() => {
-    runStartupBackfill().then(result => {
-      if (result.hometownFilled > 0) {
-        console.log(`[App] Backfilled ${result.hometownFilled} hometowns on startup`);
-      }
-    }).catch(err => {
-      console.error("[App] Startup backfill error:", err);
-    });
+    runStartupBackfill()
+      .then((result) => {
+        if (result.hometownFilled > 0) {
+          console.log(
+            `[App] Backfilled ${result.hometownFilled} hometowns on startup`,
+          );
+        }
+      })
+      .catch((err) => {
+        console.error("[App] Startup backfill error:", err);
+      });
   }, []);
 
   return (

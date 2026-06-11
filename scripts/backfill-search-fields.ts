@@ -32,67 +32,74 @@ function extractCities(addresses: string[]): string[] {
 
 async function backfillSearchFields() {
   console.log("[Backfill] Starting search fields backfill...");
-  
+
   const officials = await db.select().from(officialPublic);
   console.log(`[Backfill] Found ${officials.length} officials to process`);
-  
+
   let updated = 0;
   let skipped = 0;
-  
+
   for (const official of officials) {
     const addresses: string[] = [];
-    
+
     if (official.capitolAddress) {
       addresses.push(official.capitolAddress);
     }
-    
-    if (official.districtAddresses && Array.isArray(official.districtAddresses)) {
+
+    if (
+      official.districtAddresses &&
+      Array.isArray(official.districtAddresses)
+    ) {
       for (const addr of official.districtAddresses) {
         if (typeof addr === "string") {
           addresses.push(addr);
         }
       }
     }
-    
+
     if (addresses.length === 0) {
       skipped++;
       continue;
     }
-    
+
     const zips = extractZips(addresses);
     const cities = extractCities(addresses);
-    
+
     const searchZips = zips.length > 0 ? zips.join(",") : null;
     const searchCities = cities.length > 0 ? cities.join(",") : null;
-    
-    await db.update(officialPublic)
+
+    await db
+      .update(officialPublic)
       .set({
         searchZips,
         searchCities,
       })
       .where(eq(officialPublic.id, official.id));
-    
+
     updated++;
-    
+
     if (updated % 50 === 0) {
       console.log(`[Backfill] Progress: ${updated}/${officials.length}`);
     }
   }
-  
+
   console.log(`[Backfill] Complete: ${updated} updated, ${skipped} skipped`);
-  
-  const sample = await db.select({
-    id: officialPublic.id,
-    fullName: officialPublic.fullName,
-    searchZips: officialPublic.searchZips,
-    searchCities: officialPublic.searchCities,
-  })
+
+  const sample = await db
+    .select({
+      id: officialPublic.id,
+      fullName: officialPublic.fullName,
+      searchZips: officialPublic.searchZips,
+      searchCities: officialPublic.searchCities,
+    })
     .from(officialPublic)
     .limit(5);
-  
+
   console.log("[Backfill] Sample results:");
   for (const s of sample) {
-    console.log(`  ${s.fullName}: zips=${s.searchZips}, cities=${s.searchCities}`);
+    console.log(
+      `  ${s.fullName}: zips=${s.searchZips}, cities=${s.searchCities}`,
+    );
   }
 }
 

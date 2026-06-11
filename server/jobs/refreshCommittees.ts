@@ -1,7 +1,16 @@
 import * as cheerio from "cheerio";
 import * as crypto from "crypto";
 import { db, pool } from "../db";
-import { committees, committeeMemberships, committeeRefreshState, officialPublic, alerts, type InsertCommittee, type InsertCommitteeMembership, type InsertAlert } from "@shared/schema";
+import {
+  committees,
+  committeeMemberships,
+  committeeRefreshState,
+  officialPublic,
+  alerts,
+  type InsertCommittee,
+  type InsertCommitteeMembership,
+  type InsertAlert,
+} from "@shared/schema";
 import { sendPushToAll } from "../lib/expoPush";
 import { eq, and, sql, ilike, isNotNull } from "drizzle-orm";
 
@@ -46,7 +55,11 @@ export function forceResetIsRefreshingCommittees(): void {
   isRefreshing = false;
 }
 
-async function fetchWithRetry(url: string, retries = 3, timeoutMs = 20000): Promise<Response> {
+async function fetchWithRetry(
+  url: string,
+  retries = 3,
+  timeoutMs = 20000,
+): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -60,14 +73,14 @@ async function fetchWithRetry(url: string, retries = 3, timeoutMs = 20000): Prom
       clearTimeout(timer);
       if (response.ok) return response;
       if (response.status === 429) {
-        await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+        await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
         continue;
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     } catch (err) {
       clearTimeout(timer);
       if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
     }
   }
   throw new Error(`Failed to fetch ${url} after ${retries} retries`);
@@ -93,13 +106,18 @@ const NON_OFFICIAL_PREFIXES = ["lt. gov.", "lieutenant governor", "speaker"];
 
 function normalizeName(name: string): string {
   return name
-    .replace(/^(Rep\.|Sen\.|Lt\.?\s*Gov\.?|Representative|Senator|Lieutenant\s+Governor)\s*/i, "")
+    .replace(
+      /^(Rep\.|Sen\.|Lt\.?\s*Gov\.?|Representative|Senator|Lieutenant\s+Governor)\s*/i,
+      "",
+    )
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
 
-async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]> {
+async function fetchCommitteeList(
+  chamber: "H" | "S",
+): Promise<ParsedCommittee[]> {
   const url = `${TLO_BASE_URL}/committees/Committees.aspx?Chamber=${chamber}`;
   console.log(`[RefreshCommittees] Fetching committee list from ${url}`);
 
@@ -109,7 +127,13 @@ async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]
 
   const rawCommittees: Array<{ name: string; code: string }> = [];
   const seenCodes = new Set<string>();
-  const GENERIC_LABELS = new Set(["meetings", "members", "bills", "membership", "home"]);
+  const GENERIC_LABELS = new Set([
+    "meetings",
+    "members",
+    "bills",
+    "membership",
+    "home",
+  ]);
 
   function extractCommitteeName(el: ReturnType<typeof $>[number]): string {
     const linkText = $(el).text().trim();
@@ -153,35 +177,42 @@ async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]
   }
 
   // Look for committee links — both meetings and membership pages carry CmteCode
-  $('a[href*="MeetingsByCmte.aspx"], a[href*="MembershipCmte.aspx"]').each((_, el) => {
-    const href = $(el).attr("href") || "";
-    if (!href) return;
+  $('a[href*="MeetingsByCmte.aspx"], a[href*="MembershipCmte.aspx"]').each(
+    (_, el) => {
+      const href = $(el).attr("href") || "";
+      if (!href) return;
 
-    const codeMatch = href.match(/CmteCode=([A-Z0-9]+)/i);
-    const code = codeMatch ? codeMatch[1] : "";
-    if (!code || seenCodes.has(code)) return;
+      const codeMatch = href.match(/CmteCode=([A-Z0-9]+)/i);
+      const code = codeMatch ? codeMatch[1] : "";
+      if (!code || seenCodes.has(code)) return;
 
-    const name = extractCommitteeName(el);
-    if (!name) return;
+      const name = extractCommitteeName(el);
+      if (!name) return;
 
-    seenCodes.add(code);
-    rawCommittees.push({ name, code });
-  });
-  
+      seenCodes.add(code);
+      rawCommittees.push({ name, code });
+    },
+  );
+
   const result: ParsedCommittee[] = [];
   let currentParentCode: string | null = null;
   let sortOrder = 0;
-  
+
   for (const { name, code } of rawCommittees) {
-    const isAppropriationsSubcommittee = name.toLowerCase().startsWith("appropriations - s/c");
-    const isStandaloneSubcommittee = name.toLowerCase().startsWith("s/c on") || name.toLowerCase().startsWith("s/c ");
-    const isSubcommittee = isAppropriationsSubcommittee || isStandaloneSubcommittee;
-    
+    const isAppropriationsSubcommittee = name
+      .toLowerCase()
+      .startsWith("appropriations - s/c");
+    const isStandaloneSubcommittee =
+      name.toLowerCase().startsWith("s/c on") ||
+      name.toLowerCase().startsWith("s/c ");
+    const isSubcommittee =
+      isAppropriationsSubcommittee || isStandaloneSubcommittee;
+
     let parentCode: string | null = null;
-    
+
     if (isAppropriationsSubcommittee) {
-      const appropriationsCommittee = rawCommittees.find(c => 
-        c.name.toLowerCase() === "appropriations"
+      const appropriationsCommittee = rawCommittees.find(
+        (c) => c.name.toLowerCase() === "appropriations",
       );
       parentCode = appropriationsCommittee?.code || null;
     } else if (isStandaloneSubcommittee) {
@@ -189,7 +220,7 @@ async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]
     } else {
       currentParentCode = code;
     }
-    
+
     result.push({
       name,
       slug: createSlug(name),
@@ -200,9 +231,11 @@ async function fetchCommitteeList(chamber: "H" | "S"): Promise<ParsedCommittee[]
       sortOrder: sortOrder++,
     });
   }
-  
-  const subcommitteeCount = result.filter(c => c.isSubcommittee).length;
-  console.log(`[RefreshCommittees] Found ${result.length} committees for chamber ${chamber} (${subcommitteeCount} subcommittees)`);
+
+  const subcommitteeCount = result.filter((c) => c.isSubcommittee).length;
+  console.log(
+    `[RefreshCommittees] Found ${result.length} committees for chamber ${chamber} (${subcommitteeCount} subcommittees)`,
+  );
   return result;
 }
 
@@ -211,7 +244,7 @@ function isValidPersonName(name: string): boolean {
   if (name.endsWith(":")) return false;
   if (/^\d/.test(name)) return false;
   if (/\d{5,}/.test(name)) return false;
-  
+
   const invalidPatterns = [
     /^texas legislature/i,
     /^help.*faq/i,
@@ -232,25 +265,27 @@ function isValidPersonName(name: string): boolean {
     /website/i,
     /capitol\.texas/i,
   ];
-  
+
   for (const pattern of invalidPatterns) {
     if (pattern.test(name)) return false;
   }
-  
-  const nameParts = name.split(/\s+/).filter(p => p.length > 0);
+
+  const nameParts = name.split(/\s+/).filter((p) => p.length > 0);
   if (nameParts.length < 2) return false;
-  
+
   return true;
 }
 
-async function fetchCommitteeMembers(committee: ParsedCommittee): Promise<ParsedMember[]> {
+async function fetchCommitteeMembers(
+  committee: ParsedCommittee,
+): Promise<ParsedMember[]> {
   const url = committee.sourceUrl;
-  
+
   try {
     const response = await fetchWithRetry(url);
     const html = await response.text();
     const $ = cheerio.load(html);
-    
+
     const members: ParsedMember[] = [];
     let sortOrder = 0;
 
@@ -329,12 +364,17 @@ async function fetchCommitteeMembers(committee: ParsedCommittee): Promise<Parsed
 
     return members;
   } catch (err) {
-    console.error(`[RefreshCommittees] Failed to fetch members for ${committee.name}:`, err);
+    console.error(
+      `[RefreshCommittees] Failed to fetch members for ${committee.name}:`,
+      err,
+    );
     return [];
   }
 }
 
-async function fetchAllCommitteesWithMembers(chamber: ChamberType): Promise<CommitteeWithMembers[]> {
+async function fetchAllCommitteesWithMembers(
+  chamber: ChamberType,
+): Promise<CommitteeWithMembers[]> {
   const chamberCode = chamber === "TX_HOUSE" ? "H" : "S";
   const committeeList = await fetchCommitteeList(chamberCode);
 
@@ -343,13 +383,15 @@ async function fetchAllCommitteesWithMembers(chamber: ChamberType): Promise<Comm
 
   for (let i = 0; i < committeeList.length; i += CONCURRENCY) {
     const batch = committeeList.slice(i, i + CONCURRENCY);
-    const membersBatch = await Promise.all(batch.map(c => fetchCommitteeMembers(c)));
+    const membersBatch = await Promise.all(
+      batch.map((c) => fetchCommitteeMembers(c)),
+    );
     for (let j = 0; j < batch.length; j++) {
       result.push({ committee: batch[j], members: membersBatch[j] });
     }
     // Brief pause between batches to avoid hammering TLO
     if (i + CONCURRENCY < committeeList.length) {
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 300));
     }
   }
 
@@ -359,48 +401,58 @@ async function fetchAllCommitteesWithMembers(chamber: ChamberType): Promise<Comm
 async function matchMemberToOfficial(
   memberName: string,
   legCode: string,
-  chamber: ChamberType
+  chamber: ChamberType,
 ): Promise<string | null> {
   const source = chamber;
-  
+
   const officials = await db
-    .select({ id: officialPublic.id, fullName: officialPublic.fullName, sourceMemberId: officialPublic.sourceMemberId })
+    .select({
+      id: officialPublic.id,
+      fullName: officialPublic.fullName,
+      sourceMemberId: officialPublic.sourceMemberId,
+    })
     .from(officialPublic)
-    .where(and(
-      eq(officialPublic.source, source),
-      eq(officialPublic.active, true)
-    ));
-  
+    .where(
+      and(eq(officialPublic.source, source), eq(officialPublic.active, true)),
+    );
+
   const normalizedSearchName = normalizeName(memberName);
-  
+
   for (const official of officials) {
     const normalizedOfficialName = normalizeName(official.fullName);
-    
+
     if (normalizedOfficialName === normalizedSearchName) {
       return official.id;
     }
-    
+
     const searchParts = normalizedSearchName.split(" ");
     const officialParts = normalizedOfficialName.split(" ");
-    
+
     if (searchParts.length >= 2 && officialParts.length >= 2) {
       const searchLast = searchParts[searchParts.length - 1];
       const officialLast = officialParts[officialParts.length - 1];
       const searchFirst = searchParts[0];
       const officialFirst = officialParts[0];
-      
-      if (searchLast === officialLast && 
-          (searchFirst === officialFirst || searchFirst.charAt(0) === officialFirst.charAt(0))) {
+
+      if (
+        searchLast === officialLast &&
+        (searchFirst === officialFirst ||
+          searchFirst.charAt(0) === officialFirst.charAt(0))
+      ) {
         return official.id;
       }
     }
   }
-  
+
   // Silently skip known non-official roles (Lt. Governor, Speaker, etc.)
   const rawLower = memberName.toLowerCase().replace(/\s+/g, " ").trim();
-  const isNonOfficial = NON_OFFICIAL_PREFIXES.some(p => rawLower.startsWith(p) || rawLower.includes(p));
+  const isNonOfficial = NON_OFFICIAL_PREFIXES.some(
+    (p) => rawLower.startsWith(p) || rawLower.includes(p),
+  );
   if (!isNonOfficial) {
-    console.log(`[RefreshCommittees] Could not match member "${memberName}" to any ${chamber} official`);
+    console.log(
+      `[RefreshCommittees] Could not match member "${memberName}" to any ${chamber} official`,
+    );
   }
   return null;
 }
@@ -416,18 +468,18 @@ async function getRefreshState(source: CommitteeSource): Promise<{
     .from(committeeRefreshState)
     .where(eq(committeeRefreshState.source, source))
     .limit(1);
-  
+
   return result.length > 0 ? result[0] : null;
 }
 
 async function updateRefreshState(
   source: CommitteeSource,
   fingerprint: string,
-  wasRefreshed: boolean
+  wasRefreshed: boolean,
 ): Promise<void> {
   const now = new Date();
   const existing = await getRefreshState(source);
-  
+
   if (existing) {
     await db
       .update(committeeRefreshState)
@@ -452,25 +504,27 @@ async function updateRefreshState(
 
 async function refreshChamberCommittees(
   chamber: ChamberType,
-  committeesWithMembers: CommitteeWithMembers[]
+  committeesWithMembers: CommitteeWithMembers[],
 ): Promise<{ committeesCount: number; membershipsCount: number }> {
   let committeesCount = 0;
   let membershipsCount = 0;
-  
+
   const codeToId = new Map<string, string>();
-  
+
   for (const { committee, members } of committeesWithMembers) {
     const existing = await db
       .select()
       .from(committees)
-      .where(and(
-        eq(committees.chamber, chamber),
-        eq(committees.slug, committee.slug)
-      ))
+      .where(
+        and(
+          eq(committees.chamber, chamber),
+          eq(committees.slug, committee.slug),
+        ),
+      )
       .limit(1);
-    
+
     let committeeId: string;
-    
+
     if (existing.length > 0) {
       committeeId = existing[0].id;
       await db
@@ -495,10 +549,10 @@ async function refreshChamberCommittees(
         .returning();
       committeeId = inserted[0].id;
     }
-    
+
     codeToId.set(committee.code, committeeId);
     committeesCount++;
-    
+
     // Only replace memberships when we actually got member data back.
     // An empty list most likely means the fetch failed — don't wipe existing data.
     if (members.length > 0) {
@@ -515,14 +569,21 @@ async function refreshChamberCommittees(
       // Use legCode as a stable diff key when available (immune to name formatting
       // variations from TLO). Fall back to memberName for non-legislator entries
       // (Lt. Gov., Speaker) that have no legCode href.
-      const makeKey = (name: string, role: string, code: string | null | undefined) =>
-        code ? `${code}|${role}` : `name:${name}|${role}`;
+      const makeKey = (
+        name: string,
+        role: string,
+        code: string | null | undefined,
+      ) => (code ? `${code}|${role}` : `name:${name}|${role}`);
 
       const existingSet = new Set(
-        existingRows.map(r => makeKey(r.memberName, r.roleTitle ?? "", r.legCode))
+        existingRows.map((r) =>
+          makeKey(r.memberName, r.roleTitle ?? "", r.legCode),
+        ),
       );
       const newSet = new Set(
-        members.map(m => makeKey(m.memberName, m.roleTitle, m.legCode || null))
+        members.map((m) =>
+          makeKey(m.memberName, m.roleTitle, m.legCode || null),
+        ),
       );
 
       await db
@@ -530,7 +591,11 @@ async function refreshChamberCommittees(
         .where(eq(committeeMemberships.committeeId, committeeId));
 
       for (const member of members) {
-        const officialId = await matchMemberToOfficial(member.memberName, member.legCode, chamber);
+        const officialId = await matchMemberToOfficial(
+          member.memberName,
+          member.legCode,
+          chamber,
+        );
 
         await db.insert(committeeMemberships).values({
           committeeId,
@@ -545,20 +610,33 @@ async function refreshChamberCommittees(
 
       // Alert only when the roster actually changed (not on every routine refresh).
       // Distinguish true membership changes from role-only updates.
-      const addedKeys   = [...newSet].filter(k => !existingSet.has(k));
-      const removedKeys = [...existingSet].filter(k => !newSet.has(k));
+      const addedKeys = [...newSet].filter((k) => !existingSet.has(k));
+      const removedKeys = [...existingSet].filter((k) => !newSet.has(k));
 
-      const addedPrefixes   = new Set(addedKeys.map(k => k.split("|")[0]));
-      const removedPrefixes = new Set(removedKeys.map(k => k.split("|")[0]));
-      const roleChanges = [...addedPrefixes].filter(p => removedPrefixes.has(p)).length;
-      const trueAdded   = addedKeys.filter(k => !removedPrefixes.has(k.split("|")[0])).length;
-      const trueRemoved = removedKeys.filter(k => !addedPrefixes.has(k.split("|")[0])).length;
+      const addedPrefixes = new Set(addedKeys.map((k) => k.split("|")[0]));
+      const removedPrefixes = new Set(removedKeys.map((k) => k.split("|")[0]));
+      const roleChanges = [...addedPrefixes].filter((p) =>
+        removedPrefixes.has(p),
+      ).length;
+      const trueAdded = addedKeys.filter(
+        (k) => !removedPrefixes.has(k.split("|")[0]),
+      ).length;
+      const trueRemoved = removedKeys.filter(
+        (k) => !addedPrefixes.has(k.split("|")[0]),
+      ).length;
 
       if (trueAdded > 0 || trueRemoved > 0 || roleChanges > 0) {
         const parts: string[] = [];
-        if (trueAdded   > 0) parts.push(`${trueAdded} member${trueAdded > 1 ? "s" : ""} added`);
-        if (trueRemoved > 0) parts.push(`${trueRemoved} member${trueRemoved > 1 ? "s" : ""} removed`);
-        if (roleChanges > 0) parts.push(`${roleChanges} member${roleChanges > 1 ? "s'" : "'s"} role updated`);
+        if (trueAdded > 0)
+          parts.push(`${trueAdded} member${trueAdded > 1 ? "s" : ""} added`);
+        if (trueRemoved > 0)
+          parts.push(
+            `${trueRemoved} member${trueRemoved > 1 ? "s" : ""} removed`,
+          );
+        if (roleChanges > 0)
+          parts.push(
+            `${roleChanges} member${roleChanges > 1 ? "s'" : "'s"} role updated`,
+          );
         const alertTitle = `Committee Updated: ${committee.name}`;
         const alertBody = parts.join(", ");
         await db.insert(alerts).values({
@@ -570,13 +648,16 @@ async function refreshChamberCommittees(
           body: alertBody,
         } satisfies InsertAlert);
         // Fire-and-forget push notification
-        sendPushToAll(alertTitle, alertBody, { alertType: "COMMITTEE_MEMBER_CHANGE", entityId: committeeId }).catch(
-          (err) => console.error("[refreshCommittees] Push failed:", err),
+        sendPushToAll(alertTitle, alertBody, {
+          alertType: "COMMITTEE_MEMBER_CHANGE",
+          entityId: committeeId,
+        }).catch((err) =>
+          console.error("[refreshCommittees] Push failed:", err),
         );
       }
     }
   }
-  
+
   for (const { committee } of committeesWithMembers) {
     if (committee.isSubcommittee && committee.parentCode) {
       const parentId = codeToId.get(committee.parentCode);
@@ -597,7 +678,7 @@ async function refreshChamberCommittees(
       }
     }
   }
-  
+
   return { committeesCount, membershipsCount };
 }
 
@@ -614,7 +695,7 @@ export interface CommitteeRefreshResult {
 async function checkAndRefreshChamber(
   source: CommitteeSource,
   chamber: ChamberType,
-  force: boolean
+  force: boolean,
 ): Promise<CommitteeRefreshResult> {
   const result: CommitteeRefreshResult = {
     source,
@@ -624,42 +705,50 @@ async function checkAndRefreshChamber(
     committeesCount: 0,
     membershipsCount: 0,
   };
-  
+
   try {
     const committeesWithMembers = await fetchAllCommitteesWithMembers(chamber);
     result.checked = true;
-    
+
     const dataForFingerprint = JSON.stringify(committeesWithMembers);
     const newFingerprint = computeFingerprint(dataForFingerprint);
-    
+
     const existingState = await getRefreshState(source);
-    const hasChanged = !existingState?.fingerprint || existingState.fingerprint !== newFingerprint;
-    
+    const hasChanged =
+      !existingState?.fingerprint ||
+      existingState.fingerprint !== newFingerprint;
+
     result.changed = hasChanged;
-    
+
     if (!hasChanged && !force) {
-      console.log(`[RefreshCommittees] ${source}: No changes detected, skipping refresh`);
+      console.log(
+        `[RefreshCommittees] ${source}: No changes detected, skipping refresh`,
+      );
       await updateRefreshState(source, newFingerprint, false);
       return result;
     }
-    
-    console.log(`[RefreshCommittees] ${source}: ${force ? "Force refresh" : "Changes detected"}, refreshing...`);
-    
-    const { committeesCount, membershipsCount } = await refreshChamberCommittees(chamber, committeesWithMembers);
-    
+
+    console.log(
+      `[RefreshCommittees] ${source}: ${force ? "Force refresh" : "Changes detected"}, refreshing...`,
+    );
+
+    const { committeesCount, membershipsCount } =
+      await refreshChamberCommittees(chamber, committeesWithMembers);
+
     result.refreshed = true;
     result.committeesCount = committeesCount;
     result.membershipsCount = membershipsCount;
-    
+
     await updateRefreshState(source, newFingerprint, true);
-    
-    console.log(`[RefreshCommittees] ${source}: Refreshed ${committeesCount} committees, ${membershipsCount} memberships`);
-    
+
+    console.log(
+      `[RefreshCommittees] ${source}: Refreshed ${committeesCount} committees, ${membershipsCount} memberships`,
+    );
   } catch (err) {
     result.error = String(err);
     console.error(`[RefreshCommittees] ${source} failed:`, err);
   }
-  
+
   return result;
 }
 
@@ -669,13 +758,15 @@ export interface FullCommitteeRefreshResult {
 }
 
 export async function checkAndRefreshCommitteesIfChanged(
-  force: boolean = false
+  force: boolean = false,
 ): Promise<FullCommitteeRefreshResult> {
   const startTime = Date.now();
   const results: CommitteeRefreshResult[] = [];
 
   if (isRefreshing) {
-    console.log("[RefreshCommittees] Already refreshing (local flag), skipping");
+    console.log(
+      "[RefreshCommittees] Already refreshing (local flag), skipping",
+    );
     return { results, durationMs: 0 };
   }
 
@@ -686,12 +777,14 @@ export async function checkAndRefreshCommitteesIfChanged(
   try {
     const lockResult = await lockClient.query(
       "SELECT pg_try_advisory_lock($1) AS acquired",
-      [COMMITTEE_REFRESH_LOCK_ID]
+      [COMMITTEE_REFRESH_LOCK_ID],
     );
     lockAcquired = lockResult.rows[0].acquired as boolean;
 
     if (!lockAcquired) {
-      console.log("[RefreshCommittees] Another instance holds the DB lock — skipping duplicate refresh");
+      console.log(
+        "[RefreshCommittees] Another instance holds the DB lock — skipping duplicate refresh",
+      );
       return { results, durationMs: 0 };
     }
 
@@ -699,17 +792,27 @@ export async function checkAndRefreshCommitteesIfChanged(
     isRefreshing = true;
 
     try {
-      const houseResult = await checkAndRefreshChamber("TX_HOUSE_COMMITTEES", "TX_HOUSE", force);
+      const houseResult = await checkAndRefreshChamber(
+        "TX_HOUSE_COMMITTEES",
+        "TX_HOUSE",
+        force,
+      );
       results.push(houseResult);
 
-      const senateResult = await checkAndRefreshChamber("TX_SENATE_COMMITTEES", "TX_SENATE", force);
+      const senateResult = await checkAndRefreshChamber(
+        "TX_SENATE_COMMITTEES",
+        "TX_SENATE",
+        force,
+      );
       results.push(senateResult);
     } finally {
       isRefreshing = false;
     }
   } finally {
     if (lockAcquired) {
-      await lockClient.query("SELECT pg_advisory_unlock($1)", [COMMITTEE_REFRESH_LOCK_ID]);
+      await lockClient.query("SELECT pg_advisory_unlock($1)", [
+        COMMITTEE_REFRESH_LOCK_ID,
+      ]);
       console.log("[RefreshCommittees] DB advisory lock released");
     }
     lockClient.release();
@@ -743,7 +846,7 @@ export async function maybeRunCommitteeRefresh(): Promise<void> {
       .from(committeeMemberships);
     if (committeeCount > 0 && memberCount === 0) {
       console.log(
-        `[RefreshCommittees] ${committeeCount} committees exist but 0 memberships — forcing re-run`
+        `[RefreshCommittees] ${committeeCount} committees exist but 0 memberships — forcing re-run`,
       );
       await checkAndRefreshCommitteesIfChanged(true);
       return;
@@ -768,10 +871,14 @@ export async function maybeRunCommitteeRefresh(): Promise<void> {
       return;
     }
 
-    console.log("[RefreshCommittees] Already checked this week, skipping startup seed");
+    console.log(
+      "[RefreshCommittees] Already checked this week, skipping startup seed",
+    );
     return;
   }
-  console.log("[RefreshCommittees] Committees not checked this week — running startup seed");
+  console.log(
+    "[RefreshCommittees] Committees not checked this week — running startup seed",
+  );
   await checkAndRefreshCommitteesIfChanged(false);
 }
 
@@ -794,7 +901,9 @@ export async function backfillMissingCommitteeMembers(): Promise<{
   errors: number;
 }> {
   if (isRefreshing) {
-    console.log("[RefreshCommittees] backfill skipped — refresh already in progress");
+    console.log(
+      "[RefreshCommittees] backfill skipped — refresh already in progress",
+    );
     return { filled: 0, skipped: 0, errors: 0 };
   }
 
@@ -812,7 +921,9 @@ export async function backfillMissingCommitteeMembers(): Promise<{
     );
 
   if (emptyCommittees.length === 0) {
-    console.log("[RefreshCommittees] backfill: no committees with 0 members found");
+    console.log(
+      "[RefreshCommittees] backfill: no committees with 0 members found",
+    );
     return { filled: 0, skipped: 0, errors: 0 };
   }
 
@@ -843,7 +954,9 @@ export async function backfillMissingCommitteeMembers(): Promise<{
 
           if (members.length === 0) {
             skipped++;
-            console.log(`[RefreshCommittees] backfill: ${row.name} — 0 members returned, skipping`);
+            console.log(
+              `[RefreshCommittees] backfill: ${row.name} — 0 members returned, skipping`,
+            );
             return;
           }
 
@@ -871,7 +984,10 @@ export async function backfillMissingCommitteeMembers(): Promise<{
           );
         } catch (err) {
           errors++;
-          console.error(`[RefreshCommittees] backfill error for ${row.name}:`, err);
+          console.error(
+            `[RefreshCommittees] backfill error for ${row.name}:`,
+            err,
+          );
         }
       }),
     );
@@ -887,15 +1003,17 @@ export async function backfillMissingCommitteeMembers(): Promise<{
   return { filled, skipped, errors };
 }
 
-export async function getAllCommitteeRefreshStates(): Promise<Array<{
-  source: string;
-  fingerprint: string | null;
-  lastCheckedAt: Date | null;
-  lastChangedAt: Date | null;
-  lastRefreshedAt: Date | null;
-}>> {
+export async function getAllCommitteeRefreshStates(): Promise<
+  Array<{
+    source: string;
+    fingerprint: string | null;
+    lastCheckedAt: Date | null;
+    lastChangedAt: Date | null;
+    lastRefreshedAt: Date | null;
+  }>
+> {
   const states = await db.select().from(committeeRefreshState);
-  return states.map(s => ({
+  return states.map((s) => ({
     source: s.source,
     fingerprint: s.fingerprint,
     lastCheckedAt: s.lastCheckedAt,

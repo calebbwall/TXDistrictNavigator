@@ -8,7 +8,10 @@ import {
   getIsRefreshing,
   backfillCapitolContactInfo,
 } from "../jobs/refreshOfficials";
-import { startOfficialsRefreshScheduler, getSchedulerStatus } from "../jobs/scheduler";
+import {
+  startOfficialsRefreshScheduler,
+  getSchedulerStatus,
+} from "../jobs/scheduler";
 import {
   checkAndRefreshGeoJSONIfChanged,
   getGeoJSONRefreshStates,
@@ -36,7 +39,9 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
+        return res
+          .status(401)
+          .json({ error: "Invalid or missing admin token" });
       }
 
       const { refreshAllOfficials } = await import("../jobs/refreshOfficials");
@@ -61,7 +66,9 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
+        return res
+          .status(401)
+          .json({ error: "Invalid or missing admin token" });
       }
 
       if (getIsRefreshing()) {
@@ -102,7 +109,9 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
+        return res
+          .status(401)
+          .json({ error: "Invalid or missing admin token" });
       }
 
       const refreshStates = await getAllRefreshStates();
@@ -113,7 +122,8 @@ export function registerAdminRoutes(app: Express): void {
       const isRefreshingGeoJSON = getIsRefreshingGeoJSON();
       const isRefreshingCommittees = getIsRefreshingCommittees();
 
-      const { listScraperAlerts, countActiveScraperAlerts } = await import("../jobs/scraperAlerts");
+      const { listScraperAlerts, countActiveScraperAlerts } =
+        await import("../jobs/scraperAlerts");
       const [scraperAlertsActive, scraperAlertsCount] = await Promise.all([
         listScraperAlerts({ limit: 25 }),
         countActiveScraperAlerts(),
@@ -151,7 +161,9 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
+        return res
+          .status(401)
+          .json({ error: "Invalid or missing admin token" });
       }
 
       if (getIsRefreshingGeoJSON()) {
@@ -195,7 +207,9 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
+        return res
+          .status(401)
+          .json({ error: "Invalid or missing admin token" });
       }
 
       const sources = [
@@ -217,12 +231,19 @@ export function registerAdminRoutes(app: Express): void {
         sources.map(async (source) => {
           try {
             const response = await fetch(source.url);
-            const data = await response.json() as { features?: Array<{ properties?: Record<string, unknown> }> };
+            const data = (await response.json()) as {
+              features?: Array<{ properties?: Record<string, unknown> }>;
+            };
             const sampleProps = data.features?.[0]?.properties || {};
 
-            const countUrl = source.url.replace("resultRecordCount=1", "returnCountOnly=true");
+            const countUrl = source.url.replace(
+              "resultRecordCount=1",
+              "returnCountOnly=true",
+            );
             const countResponse = await fetch(countUrl);
-            const countData = await countResponse.json() as { count?: number };
+            const countData = (await countResponse.json()) as {
+              count?: number;
+            };
 
             return {
               name: source.name,
@@ -235,7 +256,7 @@ export function registerAdminRoutes(app: Express): void {
           } catch (err) {
             return { name: source.name, status: "error", error: String(err) };
           }
-        })
+        }),
       );
 
       res.json({ sources: results });
@@ -255,16 +276,25 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
+        return res
+          .status(401)
+          .json({ error: "Invalid or missing admin token" });
       }
 
       const counts = await db
-        .select({ source: officialPublic.source, count: sql<number>`count(*)::int` })
+        .select({
+          source: officialPublic.source,
+          count: sql<number>`count(*)::int`,
+        })
         .from(officialPublic)
         .where(eq(officialPublic.active, true))
         .groupBy(officialPublic.source);
 
-      const countsBySource: Record<string, number> = { TX_HOUSE: 0, TX_SENATE: 0, US_HOUSE: 0 };
+      const countsBySource: Record<string, number> = {
+        TX_HOUSE: 0,
+        TX_SENATE: 0,
+        US_HOUSE: 0,
+      };
       for (const { source, count } of counts) {
         countsBySource[source] = count;
       }
@@ -275,14 +305,19 @@ export function registerAdminRoutes(app: Express): void {
         .orderBy(desc(refreshJobLog.startedAt))
         .limit(5);
 
-      const lastSuccessfulRefresh = lastRefreshJobs.find((j) => j.status === "success");
+      const lastSuccessfulRefresh = lastRefreshJobs.find(
+        (j) => j.status === "success",
+      );
       const lastFailedRefresh = lastRefreshJobs.find(
-        (j) => j.status === "failed" || j.status === "aborted"
+        (j) => j.status === "failed" || j.status === "aborted",
       );
 
       const result = {
         counts: countsBySource,
-        total: countsBySource.TX_HOUSE + countsBySource.TX_SENATE + countsBySource.US_HOUSE,
+        total:
+          countsBySource.TX_HOUSE +
+          countsBySource.TX_SENATE +
+          countsBySource.US_HOUSE,
         lastRefresh: lastSuccessfulRefresh
           ? {
               source: lastSuccessfulRefresh.source,
@@ -325,7 +360,9 @@ export function registerAdminRoutes(app: Express): void {
       const providedToken = req.headers["x-admin-token"];
 
       if (!adminToken) {
-        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
+        return res
+          .status(500)
+          .json({ error: "ADMIN_REFRESH_TOKEN not configured" });
       }
 
       if (providedToken !== adminToken) {
@@ -335,13 +372,19 @@ export function registerAdminRoutes(app: Express): void {
       const force = req.query.force === "true";
 
       if (getIsRefreshingCommittees()) {
-        return res.status(409).json({ error: "Committees refresh already in progress" });
+        return res
+          .status(409)
+          .json({ error: "Committees refresh already in progress" });
       }
 
       console.log(`[Admin] Committees refresh triggered (force=${force})`);
       const result = await checkAndRefreshCommitteesIfChanged(force);
 
-      res.json({ success: true, results: result.results, durationMs: result.durationMs });
+      res.json({
+        success: true,
+        results: result.results,
+        durationMs: result.durationMs,
+      });
     } catch (err) {
       console.error("[Admin] Committees refresh error:", err);
       res.status(500).json({ error: "Committees refresh failed" });
@@ -356,7 +399,10 @@ export function registerAdminRoutes(app: Express): void {
     }
     forceResetIsRefreshingCommittees();
     console.log("[Admin] isRefreshingCommittees flag force-reset");
-    res.json({ success: true, message: "isRefreshing flag reset. You can now trigger a fresh refresh." });
+    res.json({
+      success: true,
+      message: "isRefreshing flag reset. You can now trigger a fresh refresh.",
+    });
   });
 
   app.post("/admin/refresh/committees/backfill-missing", async (req, res) => {
@@ -379,7 +425,9 @@ export function registerAdminRoutes(app: Express): void {
       const providedToken = req.headers["x-admin-token"];
 
       if (!adminToken) {
-        return res.status(500).json({ error: "ADMIN_REFRESH_TOKEN not configured" });
+        return res
+          .status(500)
+          .json({ error: "ADMIN_REFRESH_TOKEN not configured" });
       }
 
       if (providedToken !== adminToken) {
@@ -388,9 +436,12 @@ export function registerAdminRoutes(app: Express): void {
 
       const force = req.query.force === "true";
 
-      console.log(`[Admin] Other TX Officials refresh triggered (force=${force})`);
+      console.log(
+        `[Admin] Other TX Officials refresh triggered (force=${force})`,
+      );
 
-      const { refreshOtherTexasOfficials } = await import("../jobs/refreshOtherTexasOfficials");
+      const { refreshOtherTexasOfficials } =
+        await import("../jobs/refreshOtherTexasOfficials");
       const result = await refreshOtherTexasOfficials({ force });
 
       res.json({
@@ -423,7 +474,8 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(401).json({ error: "Invalid admin token" });
       }
 
-      const { lookupHeadshotFromTexasTribune } = await import("../lib/texasTribuneLookup");
+      const { lookupHeadshotFromTexasTribune } =
+        await import("../lib/texasTribuneLookup");
 
       const officials = await db
         .select({
@@ -437,27 +489,39 @@ export function registerAdminRoutes(app: Express): void {
           and(
             eq(officialPublic.active, true),
             inArray(officialPublic.source, ["TX_HOUSE", "TX_SENATE"]),
-            or(isNull(officialPublic.photoUrl), eq(officialPublic.photoUrl, ""))
-          )
+            or(
+              isNull(officialPublic.photoUrl),
+              eq(officialPublic.photoUrl, ""),
+            ),
+          ),
         );
 
-      console.log(`[Admin] Headshot backfill: ${officials.length} officials missing photos`);
+      console.log(
+        `[Admin] Headshot backfill: ${officials.length} officials missing photos`,
+      );
 
-      res.json({ message: "Headshot backfill started", totalToProcess: officials.length });
+      res.json({
+        message: "Headshot backfill started",
+        totalToProcess: officials.length,
+      });
 
       let found = 0;
       let failed = 0;
 
       for (const official of officials) {
         try {
-          const result = await lookupHeadshotFromTexasTribune(official.fullName);
+          const result = await lookupHeadshotFromTexasTribune(
+            official.fullName,
+          );
           if (result.success && result.photoUrl) {
             await db
               .update(officialPublic)
               .set({ photoUrl: result.photoUrl })
               .where(eq(officialPublic.id, official.id));
             found++;
-            console.log(`[Headshot] ${found}/${officials.length} Found: ${official.fullName}`);
+            console.log(
+              `[Headshot] ${found}/${officials.length} Found: ${official.fullName}`,
+            );
           } else {
             failed++;
             console.log(`[Headshot] Not found: ${official.fullName}`);
@@ -469,7 +533,9 @@ export function registerAdminRoutes(app: Express): void {
         await new Promise((r) => setTimeout(r, 1000));
       }
 
-      console.log(`[Admin] Headshot backfill complete: ${found} found, ${failed} not found`);
+      console.log(
+        `[Admin] Headshot backfill complete: ${found} found, ${failed} not found`,
+      );
     } catch (err) {
       console.error("[Admin] Headshot backfill error:", err);
       if (!res.headersSent) {
@@ -526,7 +592,9 @@ export function registerAdminRoutes(app: Express): void {
       const { officialPublicId, personId } = req.body;
 
       if (!officialPublicId || !personId) {
-        return res.status(400).json({ error: "officialPublicId and personId are required" });
+        return res
+          .status(400)
+          .json({ error: "officialPublicId and personId are required" });
       }
 
       const official = await db
@@ -540,7 +608,11 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const { persons } = await import("@shared/schema");
-      const person = await db.select().from(persons).where(eq(persons.id, personId)).limit(1);
+      const person = await db
+        .select()
+        .from(persons)
+        .where(eq(persons.id, personId))
+        .limit(1);
 
       if (person.length === 0) {
         return res.status(404).json({ error: "Person not found" });
@@ -549,9 +621,16 @@ export function registerAdminRoutes(app: Express): void {
       const { setExplicitPersonLink } = await import("../lib/identityResolver");
       const result = await setExplicitPersonLink(officialPublicId, personId);
 
-      console.log(`[Admin] Created explicit person link: official ${officialPublicId} -> person ${personId}`);
+      console.log(
+        `[Admin] Created explicit person link: official ${officialPublicId} -> person ${personId}`,
+      );
 
-      res.json({ success: true, link: result, official: official[0], person: person[0] });
+      res.json({
+        success: true,
+        link: result,
+        official: official[0],
+        person: person[0],
+      });
     } catch (err) {
       console.error("[Admin] Person link error:", err);
       res.status(500).json({ error: "Failed to create person link" });
@@ -568,10 +647,13 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       if (!providedToken || providedToken !== adminToken) {
-        return res.status(401).json({ error: "Invalid or missing admin token" });
+        return res
+          .status(401)
+          .json({ error: "Invalid or missing admin token" });
       }
 
-      const { getIdentityStats, getAllExplicitPersonLinks } = await import("../lib/identityResolver");
+      const { getIdentityStats, getAllExplicitPersonLinks } =
+        await import("../lib/identityResolver");
       const identityStats = await getIdentityStats();
       const explicitLinks = await getAllExplicitPersonLinks();
 
@@ -580,7 +662,8 @@ export function registerAdminRoutes(app: Express): void {
       const committeesStates = await getAllCommitteeRefreshStates();
       const schedulerStatus = getSchedulerStatus();
 
-      const { listScraperAlerts, countActiveScraperAlerts } = await import("../jobs/scraperAlerts");
+      const { listScraperAlerts, countActiveScraperAlerts } =
+        await import("../jobs/scraperAlerts");
       const [scraperAlertsActive, scraperAlertsCount] = await Promise.all([
         listScraperAlerts({ limit: 25 }),
         countActiveScraperAlerts(),
@@ -588,14 +671,25 @@ export function registerAdminRoutes(app: Express): void {
 
       const datasets = {
         officials: {
-          TX_HOUSE: officialsStates.find((s) => s.source === "TX_HOUSE") || null,
-          TX_SENATE: officialsStates.find((s) => s.source === "TX_SENATE") || null,
-          US_HOUSE: officialsStates.find((s) => s.source === "US_HOUSE") || null,
+          TX_HOUSE:
+            officialsStates.find((s) => s.source === "TX_HOUSE") || null,
+          TX_SENATE:
+            officialsStates.find((s) => s.source === "TX_SENATE") || null,
+          US_HOUSE:
+            officialsStates.find((s) => s.source === "US_HOUSE") || null,
           isRefreshing: getIsRefreshing(),
         },
-        other_tx_officials: { note: "Static data source - no refresh state tracking" },
-        geojson: { states: geojsonStates, isRefreshing: getIsRefreshingGeoJSON() },
-        committees: { states: committeesStates, isRefreshing: getIsRefreshingCommittees() },
+        other_tx_officials: {
+          note: "Static data source - no refresh state tracking",
+        },
+        geojson: {
+          states: geojsonStates,
+          isRefreshing: getIsRefreshingGeoJSON(),
+        },
+        committees: {
+          states: committeesStates,
+          isRefreshing: getIsRefreshingCommittees(),
+        },
       };
 
       res.json({
@@ -623,13 +717,19 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const adminToken = process.env.ADMIN_REFRESH_TOKEN;
       const providedToken = req.headers["x-admin-token"];
-      if (!adminToken) return res.status(503).json({ error: "Admin not configured" });
-      if (providedToken !== adminToken) return res.status(401).json({ error: "Invalid admin token" });
+      if (!adminToken)
+        return res.status(503).json({ error: "Admin not configured" });
+      if (providedToken !== adminToken)
+        return res.status(401).json({ error: "Invalid admin token" });
 
       const includeResolved = req.query.includeResolved === "true";
-      const limit = Math.min(parseInt(String(req.query.limit ?? "100"), 10) || 100, 500);
+      const limit = Math.min(
+        parseInt(String(req.query.limit ?? "100"), 10) || 100,
+        500,
+      );
 
-      const { listScraperAlerts, countActiveScraperAlerts } = await import("../jobs/scraperAlerts");
+      const { listScraperAlerts, countActiveScraperAlerts } =
+        await import("../jobs/scraperAlerts");
       const [alerts, activeCount] = await Promise.all([
         listScraperAlerts({ includeResolved, limit }),
         countActiveScraperAlerts(),
@@ -647,17 +747,21 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const adminToken = process.env.ADMIN_REFRESH_TOKEN;
       const providedToken = req.headers["x-admin-token"];
-      if (!adminToken) return res.status(503).json({ error: "Admin not configured" });
-      if (providedToken !== adminToken) return res.status(401).json({ error: "Invalid admin token" });
+      if (!adminToken)
+        return res.status(503).json({ error: "Admin not configured" });
+      if (providedToken !== adminToken)
+        return res.status(401).json({ error: "Invalid admin token" });
 
       const { resolveScraperAlert } = await import("../jobs/scraperAlerts");
       const ok = await resolveScraperAlert(req.params.id);
-      if (!ok) return res.status(404).json({ error: "Alert not found or already resolved" });
+      if (!ok)
+        return res
+          .status(404)
+          .json({ error: "Alert not found or already resolved" });
       res.json({ success: true });
     } catch (err) {
       console.error("[Admin] Resolve scraper alert error:", err);
       res.status(500).json({ error: "Failed to resolve alert" });
     }
   });
-
 }

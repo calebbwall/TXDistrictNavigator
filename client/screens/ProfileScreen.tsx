@@ -1,5 +1,11 @@
 import React, { useState, useCallback } from "react";
-import { StyleSheet, View, ScrollView, Pressable, RefreshControl } from "react-native";
+import {
+  StyleSheet,
+  View,
+  ScrollView,
+  Pressable,
+  RefreshControl,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -10,7 +16,11 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { getOverlayPreferences, saveOverlayPreferences, type OverlayPreferences } from "@/lib/storage";
+import {
+  getOverlayPreferences,
+  saveOverlayPreferences,
+  type OverlayPreferences,
+} from "@/lib/storage";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
@@ -42,10 +52,18 @@ function SettingRow({
       disabled={isToggle || !onPress}
       style={({ pressed }) => [
         styles.settingRow,
-        { backgroundColor: theme.cardBackground, opacity: pressed && onPress ? 0.8 : 1 },
+        {
+          backgroundColor: theme.cardBackground,
+          opacity: pressed && onPress ? 0.8 : 1,
+        },
       ]}
     >
-      <View style={[styles.settingIcon, { backgroundColor: theme.backgroundDefault }]}>
+      <View
+        style={[
+          styles.settingIcon,
+          { backgroundColor: theme.backgroundDefault },
+        ]}
+      >
         <Feather name={icon} size={18} color={theme.primary} />
       </View>
       <View style={styles.settingContent}>
@@ -62,7 +80,9 @@ function SettingRow({
           style={[
             styles.toggle,
             {
-              backgroundColor: toggleValue ? theme.primary : theme.backgroundSecondary,
+              backgroundColor: toggleValue
+                ? theme.primary
+                : theme.backgroundSecondary,
             },
           ]}
         >
@@ -105,7 +125,7 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
   );
 
   const handleRefresh = useCallback(async () => {
@@ -121,7 +141,7 @@ export default function ProfileScreen() {
       setOverlayPrefs(newPrefs);
       await saveOverlayPreferences(newPrefs);
     },
-    [overlayPrefs]
+    [overlayPrefs],
   );
 
   return (
@@ -141,7 +161,12 @@ export default function ProfileScreen() {
         }
       >
         <View style={styles.profileHeader}>
-          <View style={[styles.avatarPlaceholder, { backgroundColor: theme.backgroundDefault }]}>
+          <View
+            style={[
+              styles.avatarPlaceholder,
+              { backgroundColor: theme.backgroundDefault },
+            ]}
+          >
             <Feather name="user" size={40} color={theme.secondaryText} />
           </View>
           <ThemedText type="h2" style={styles.welcomeText}>
@@ -157,11 +182,23 @@ export default function ProfileScreen() {
             Tools
           </ThemedText>
           <View style={styles.settingsGroup}>
-            <SettingRow icon="bookmark" label="Saved Officials" onPress={() => navigation.navigate("SavedOfficials")} />
+            <SettingRow
+              icon="bookmark"
+              label="Saved Officials"
+              onPress={() => navigation.navigate("SavedOfficials")}
+            />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
-            <SettingRow icon="flag" label="Follow-up Dashboard" onPress={() => navigation.navigate("FollowUpDashboard")} />
+            <SettingRow
+              icon="flag"
+              label="Follow-up Dashboard"
+              onPress={() => navigation.navigate("FollowUpDashboard")}
+            />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
-            <SettingRow icon="navigation" label="Mileage" onPress={() => navigation.navigate("MileageTracker")} />
+            <SettingRow
+              icon="navigation"
+              label="Mileage"
+              onPress={() => navigation.navigate("MileageTracker")}
+            />
           </View>
         </View>
 
@@ -209,7 +246,11 @@ export default function ProfileScreen() {
           <View style={styles.settingsGroup}>
             <SettingRow icon="info" label="App Version" value="1.0.2" />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
-            <SettingRow icon="book-open" label="About This App" onPress={() => navigation.navigate("About")} />
+            <SettingRow
+              icon="book-open"
+              label="About This App"
+              onPress={() => navigation.navigate("About")}
+            />
           </View>
         </View>
 

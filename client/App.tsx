@@ -62,7 +62,10 @@ export default function App() {
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener(
       (notification) => {
-        const data = notification.request.content.data as Record<string, unknown> | null;
+        const data = notification.request.content.data as Record<
+          string,
+          unknown
+        > | null;
         if (!data) return;
 
         if (data.alertType === "COMMITTEE_MEMBER_CHANGE") {

@@ -12,7 +12,10 @@ interface HeaderTitleProps {
 
 const LONG_PRESS_DURATION = 2000;
 
-export function HeaderTitle({ title, enableDebugToggle = false }: HeaderTitleProps) {
+export function HeaderTitle({
+  title,
+  enableDebugToggle = false,
+}: HeaderTitleProps) {
   const { toggleDebug } = useDebugFlags();
   const pressStart = useRef<number>(0);
 

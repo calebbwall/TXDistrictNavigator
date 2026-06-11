@@ -48,7 +48,7 @@ export function OverlayToggle({
     backgroundColor: interpolateColor(
       progress.value,
       [0, 1],
-      ["transparent", activeColor]
+      ["transparent", activeColor],
     ),
     borderColor: borderColor,
   }));
@@ -74,9 +74,7 @@ export function OverlayToggle({
           {label}
         </ThemedText>
       </View>
-      {isActive ? (
-        <Feather name="check" size={16} color={theme.text} />
-      ) : null}
+      {isActive ? <Feather name="check" size={16} color={theme.text} /> : null}
     </AnimatedPressable>
   );
 }

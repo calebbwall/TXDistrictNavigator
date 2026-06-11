@@ -54,7 +54,10 @@ export interface OfficialResponse {
   official: MergedOfficial;
 }
 
-export async function fetchOfficials(districtType?: DistrictType, search?: string): Promise<MergedOfficial[]> {
+export async function fetchOfficials(
+  districtType?: DistrictType,
+  search?: string,
+): Promise<MergedOfficial[]> {
   try {
     const url = new URL("/api/officials", getApiUrl());
     if (districtType) {
@@ -63,12 +66,12 @@ export async function fetchOfficials(districtType?: DistrictType, search?: strin
     if (search) {
       url.searchParams.set("search", search);
     }
-    
+
     const response = await fetch(url.toString());
     if (!response.ok) {
       throw new Error(`Failed to fetch officials: ${response.statusText}`);
     }
-    
+
     const data: OfficialsResponse = await response.json();
     return data.officials;
   } catch (error) {
@@ -77,16 +80,18 @@ export async function fetchOfficials(districtType?: DistrictType, search?: strin
   }
 }
 
-export async function fetchOfficialById(id: string): Promise<MergedOfficial | null> {
+export async function fetchOfficialById(
+  id: string,
+): Promise<MergedOfficial | null> {
   try {
     const url = new URL(`/api/officials/${id}`, getApiUrl());
     const response = await fetch(url.toString());
-    
+
     if (!response.ok) {
       if (response.status === 404) return null;
       throw new Error(`Failed to fetch official: ${response.statusText}`);
     }
-    
+
     const data: OfficialResponse = await response.json();
     return data.official;
   } catch (error) {
@@ -97,20 +102,20 @@ export async function fetchOfficialById(id: string): Promise<MergedOfficial | nu
 
 export async function fetchOfficialByDistrict(
   districtType: DistrictType,
-  districtNumber: number
+  districtNumber: number,
 ): Promise<MergedOfficial | null> {
   try {
     const url = new URL("/api/officials/by-district", getApiUrl());
     url.searchParams.set("district_type", districtType);
     url.searchParams.set("district_number", String(districtNumber));
-    
+
     const response = await fetch(url.toString());
-    
+
     if (!response.ok) {
       if (response.status === 404) return null;
       throw new Error(`Failed to fetch official: ${response.statusText}`);
     }
-    
+
     const data: OfficialResponse = await response.json();
     return data.official;
   } catch (error) {
@@ -121,7 +126,7 @@ export async function fetchOfficialByDistrict(
 
 export async function updateOfficialPrivate(
   id: string,
-  privateData: Partial<OfficialPrivate>
+  privateData: Partial<OfficialPrivate>,
 ): Promise<MergedOfficial | null> {
   try {
     const url = new URL(`/api/officials/${id}/private`, getApiUrl());
@@ -134,11 +139,11 @@ export async function updateOfficialPrivate(
       },
       body: JSON.stringify(privateData),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to update private data: ${response.statusText}`);
     }
-    
+
     const data: OfficialResponse = await response.json();
     return data.official;
   } catch (error) {
@@ -147,12 +152,17 @@ export async function updateOfficialPrivate(
   }
 }
 
-export function getDistrictTypeFromSource(source: MergedOfficial["source"]): DistrictType {
+export function getDistrictTypeFromSource(
+  source: MergedOfficial["source"],
+): DistrictType {
   switch (source) {
-    case "TX_HOUSE": return "tx_house";
-    case "TX_SENATE": return "tx_senate";
-    case "US_HOUSE": return "us_congress";
-    case "OTHER_TX": 
+    case "TX_HOUSE":
+      return "tx_house";
+    case "TX_SENATE":
+      return "tx_senate";
+    case "US_HOUSE":
+      return "us_congress";
+    case "OTHER_TX":
     default:
       return "tx_senate"; // Default fallback for non-district officials
   }
@@ -160,35 +170,50 @@ export function getDistrictTypeFromSource(source: MergedOfficial["source"]): Dis
 
 export function getDistrictTypeLabel(districtType: DistrictType): string {
   switch (districtType) {
-    case "tx_house": return "TX House";
-    case "tx_senate": return "TX Senate";
-    case "us_congress": return "US Congress";
+    case "tx_house":
+      return "TX House";
+    case "tx_senate":
+      return "TX Senate";
+    case "us_congress":
+      return "US Congress";
   }
 }
 
 export function getSourceLabel(source: MergedOfficial["source"]): string {
   switch (source) {
-    case "TX_HOUSE": return "Texas House";
-    case "TX_SENATE": return "Texas Senate";
-    case "US_HOUSE": return "US House";
-    case "OTHER_TX": return "Texas Statewide";
-    default: return "Texas Official";
+    case "TX_HOUSE":
+      return "Texas House";
+    case "TX_SENATE":
+      return "Texas Senate";
+    case "US_HOUSE":
+      return "US House";
+    case "OTHER_TX":
+      return "Texas Statewide";
+    default:
+      return "Texas Official";
   }
 }
 
 export function getPartyLabel(party: string | null): string {
   switch (party) {
-    case "R": return "Republican";
-    case "D": return "Democrat";
-    case "I": return "Independent";
-    default: return "Unknown";
+    case "R":
+      return "Republican";
+    case "D":
+      return "Democrat";
+    case "I":
+      return "Independent";
+    default:
+      return "Unknown";
   }
 }
 
 export function getPartyColor(party: string | null): string {
   switch (party) {
-    case "R": return "#E94B3C";
-    case "D": return "#4A90E2";
-    default: return "#888888";
+    case "R":
+      return "#E94B3C";
+    case "D":
+      return "#4A90E2";
+    default:
+      return "#888888";
   }
 }

@@ -46,7 +46,9 @@ type TestResult = {
 };
 
 function getDateKey(date: Date): string {
-  const localeStr = date.toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+  const localeStr = date.toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+  });
   const parts = localeStr.split("/");
   const month = parts[0].padStart(2, "0");
   const day = parts[1].padStart(2, "0");
@@ -113,7 +115,11 @@ export default function PrayerDiagnosticsScreen() {
       createdId = created.id;
       results.push({ step: "Create test prayer", passed: true });
     } catch (err: any) {
-      results.push({ step: "Create test prayer", passed: false, error: err.message });
+      results.push({
+        step: "Create test prayer",
+        passed: false,
+        error: err.message,
+      });
       setTestResults([...results]);
       setTestRunning(false);
       return;
@@ -126,7 +132,11 @@ export default function PrayerDiagnosticsScreen() {
       });
       results.push({ step: "Mark answered", passed: true });
     } catch (err: any) {
-      results.push({ step: "Mark answered", passed: false, error: err.message });
+      results.push({
+        step: "Mark answered",
+        passed: false,
+        error: err.message,
+      });
     }
     setTestResults([...results]);
 
@@ -134,7 +144,11 @@ export default function PrayerDiagnosticsScreen() {
       await apiRequest("POST", `/api/prayers/${createdId}/archive`);
       results.push({ step: "Archive prayer", passed: true });
     } catch (err: any) {
-      results.push({ step: "Archive prayer", passed: false, error: err.message });
+      results.push({
+        step: "Archive prayer",
+        passed: false,
+        error: err.message,
+      });
     }
     setTestResults([...results]);
 
@@ -142,7 +156,11 @@ export default function PrayerDiagnosticsScreen() {
       await apiRequest("POST", `/api/prayers/${createdId}/unarchive`);
       results.push({ step: "Unarchive prayer", passed: true });
     } catch (err: any) {
-      results.push({ step: "Unarchive prayer", passed: false, error: err.message });
+      results.push({
+        step: "Unarchive prayer",
+        passed: false,
+        error: err.message,
+      });
     }
     setTestResults([...results]);
 
@@ -150,14 +168,19 @@ export default function PrayerDiagnosticsScreen() {
       await apiRequest("DELETE", `/api/prayers/${createdId}`);
       results.push({ step: "Delete prayer", passed: true });
     } catch (err: any) {
-      results.push({ step: "Delete prayer", passed: false, error: err.message });
+      results.push({
+        step: "Delete prayer",
+        passed: false,
+        error: err.message,
+      });
     }
     setTestResults([...results]);
 
     setTestRunning(false);
   };
 
-  const allPassed = testResults.length > 0 && testResults.every((r) => r.passed);
+  const allPassed =
+    testResults.length > 0 && testResults.every((r) => r.passed);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -171,7 +194,12 @@ export default function PrayerDiagnosticsScreen() {
       >
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="calendar" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="calendar"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Date Keys</ThemedText>
           </View>
           <DiagRow label="Today" value={todayKey} theme={theme} />
@@ -180,12 +208,21 @@ export default function PrayerDiagnosticsScreen() {
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="sun" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="sun"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Daily Picks</ThemedText>
           </View>
           <DiagRow
             label="Today's pick IDs"
-            value={dailyPicks ? dailyPicks.prayers.map((p) => p.id.substring(0, 8)).join(", ") : "Loading..."}
+            value={
+              dailyPicks
+                ? dailyPicks.prayers.map((p) => p.id.substring(0, 8)).join(", ")
+                : "Loading..."
+            }
             theme={theme}
           />
           <DiagRow
@@ -197,21 +234,51 @@ export default function PrayerDiagnosticsScreen() {
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="database" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="database"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Prayer Counts</ThemedText>
           </View>
-          <DiagRow label="Active (OPEN)" value={String(openPrayers.length)} theme={theme} />
-          <DiagRow label="Answered" value={String(answeredPrayers.length)} theme={theme} />
-          <DiagRow label="Archived" value={String(archivedPrayers.length)} theme={theme} />
+          <DiagRow
+            label="Active (OPEN)"
+            value={String(openPrayers.length)}
+            theme={theme}
+          />
+          <DiagRow
+            label="Answered"
+            value={String(answeredPrayers.length)}
+            theme={theme}
+          />
+          <DiagRow
+            label="Archived"
+            value={String(archivedPrayers.length)}
+            theme={theme}
+          />
         </Card>
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="zap" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="zap"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Streak</ThemedText>
           </View>
-          <DiagRow label="Current" value={streak ? String(streak.currentStreak) : "--"} theme={theme} />
-          <DiagRow label="Longest" value={streak ? String(streak.longestStreak) : "--"} theme={theme} />
+          <DiagRow
+            label="Current"
+            value={streak ? String(streak.currentStreak) : "--"}
+            theme={theme}
+          />
+          <DiagRow
+            label="Longest"
+            value={streak ? String(streak.longestStreak) : "--"}
+            theme={theme}
+          />
           <DiagRow
             label="Last completed"
             value={streak?.lastCompletedDateKey ?? "Never"}
@@ -221,12 +288,19 @@ export default function PrayerDiagnosticsScreen() {
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="settings" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="settings"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Auto-Archive Settings</ThemedText>
           </View>
           <DiagRow
             label="Enabled"
-            value={archiveSettings ? (archiveSettings.enabled ? "Yes" : "No") : "--"}
+            value={
+              archiveSettings ? (archiveSettings.enabled ? "Yes" : "No") : "--"
+            }
             theme={theme}
           />
           <DiagRow
@@ -238,19 +312,42 @@ export default function PrayerDiagnosticsScreen() {
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="wifi" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="wifi"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">API</ThemedText>
           </View>
-          <DiagRow label="Base URL" value={(() => { try { return getApiUrl(); } catch { return "Not configured"; } })()} theme={theme} />
+          <DiagRow
+            label="Base URL"
+            value={(() => {
+              try {
+                return getApiUrl();
+              } catch {
+                return "Not configured";
+              }
+            })()}
+            theme={theme}
+          />
           <DiagRow label="Last sync" value="Now (live queries)" theme={theme} />
         </Card>
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="play-circle" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="play-circle"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Quick Self-Test</ThemedText>
           </View>
-          <ThemedText type="small" style={{ color: theme.secondaryText, marginBottom: Spacing.md }}>
+          <ThemedText
+            type="small"
+            style={{ color: theme.secondaryText, marginBottom: Spacing.md }}
+          >
             Creates, answers, archives, unarchives, and deletes a test prayer.
           </ThemedText>
 
@@ -260,7 +357,9 @@ export default function PrayerDiagnosticsScreen() {
             style={({ pressed }) => [
               styles.testButton,
               {
-                backgroundColor: testRunning ? theme.backgroundSecondary : theme.primary,
+                backgroundColor: testRunning
+                  ? theme.backgroundSecondary
+                  : theme.primary,
                 opacity: pressed ? 0.7 : 1,
               },
             ]}
@@ -268,7 +367,14 @@ export default function PrayerDiagnosticsScreen() {
             {testRunning ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <ThemedText type="body" style={{ color: "#FFFFFF", fontWeight: "600", textAlign: "center" }}>
+              <ThemedText
+                type="body"
+                style={{
+                  color: "#FFFFFF",
+                  fontWeight: "600",
+                  textAlign: "center",
+                }}
+              >
                 Run Self-Test
               </ThemedText>
             )}
@@ -277,7 +383,13 @@ export default function PrayerDiagnosticsScreen() {
           {testResults.length > 0 ? (
             <View style={styles.resultsContainer}>
               {testResults.map((result, index) => (
-                <View key={index} style={[styles.resultRow, { borderBottomColor: theme.border }]}>
+                <View
+                  key={index}
+                  style={[
+                    styles.resultRow,
+                    { borderBottomColor: theme.border },
+                  ]}
+                >
                   <Feather
                     name={result.passed ? "check-circle" : "x-circle"}
                     size={16}
@@ -287,7 +399,10 @@ export default function PrayerDiagnosticsScreen() {
                   <View style={{ flex: 1 }}>
                     <ThemedText type="caption">{result.step}</ThemedText>
                     {result.error ? (
-                      <ThemedText type="small" style={{ color: theme.secondary, marginTop: 2 }}>
+                      <ThemedText
+                        type="small"
+                        style={{ color: theme.secondary, marginTop: 2 }}
+                      >
                         {result.error}
                       </ThemedText>
                     ) : null}
@@ -305,8 +420,16 @@ export default function PrayerDiagnosticsScreen() {
               ))}
               {allPassed ? (
                 <View style={styles.summaryRow}>
-                  <Feather name="check" size={16} color={theme.success} style={{ marginRight: Spacing.sm }} />
-                  <ThemedText type="caption" style={{ color: theme.success, fontWeight: "600" }}>
+                  <Feather
+                    name="check"
+                    size={16}
+                    color={theme.success}
+                    style={{ marginRight: Spacing.sm }}
+                  />
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.success, fontWeight: "600" }}
+                  >
                     All tests passed
                   </ThemedText>
                 </View>
@@ -319,13 +442,28 @@ export default function PrayerDiagnosticsScreen() {
   );
 }
 
-function DiagRow({ label, value, theme }: { label: string; value: string; theme: any }) {
+function DiagRow({
+  label,
+  value,
+  theme,
+}: {
+  label: string;
+  value: string;
+  theme: any;
+}) {
   return (
     <View style={diagStyles.row}>
-      <ThemedText type="caption" style={{ color: theme.secondaryText, flex: 1 }}>
+      <ThemedText
+        type="caption"
+        style={{ color: theme.secondaryText, flex: 1 }}
+      >
         {label}
       </ThemedText>
-      <ThemedText type="caption" style={{ fontWeight: "600", flexShrink: 1, textAlign: "right" }} numberOfLines={2}>
+      <ThemedText
+        type="caption"
+        style={{ fontWeight: "600", flexShrink: 1, textAlign: "right" }}
+        numberOfLines={2}
+      >
         {value}
       </ThemedText>
     </View>

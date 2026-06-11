@@ -18,7 +18,10 @@ import {
 } from "../lib/officialUtils";
 import { requireUser } from "../middleware/userAuth";
 
-function requireAdminToken(req: import("express").Request, res: import("express").Response): boolean {
+function requireAdminToken(
+  req: import("express").Request,
+  res: import("express").Response,
+): boolean {
   const adminToken = process.env.ADMIN_REFRESH_TOKEN;
   if (!adminToken) {
     res.status(503).json({ error: "Admin endpoint not configured" });
@@ -47,7 +50,11 @@ export function registerOfficialsRoutes(app: Express): void {
       const isAllSources = source === "ALL";
 
       if (district_type && typeof district_type === "string") {
-        const validTypes: DistrictType[] = ["tx_house", "tx_senate", "us_congress"];
+        const validTypes: DistrictType[] = [
+          "tx_house",
+          "tx_senate",
+          "us_congress",
+        ];
         if (!validTypes.includes(district_type as DistrictType)) {
           return res.status(400).json({ error: "Invalid district_type" });
         }
@@ -70,23 +77,27 @@ export function registerOfficialsRoutes(app: Express): void {
         .where(conditions.length > 0 ? and(...conditions) : undefined);
 
       let officials: MergedOfficial[] = publicOfficials.map((pub) =>
-        mergeOfficial(pub, null)
+        mergeOfficial(pub, null),
       );
 
       if (isAllSources || !sourceFilter) {
         const houseOfficials = fillVacancies(
           officials.filter((o) => o.source === "TX_HOUSE"),
-          "TX_HOUSE"
+          "TX_HOUSE",
         );
         const senateOfficials = fillVacancies(
           officials.filter((o) => o.source === "TX_SENATE"),
-          "TX_SENATE"
+          "TX_SENATE",
         );
         const congressOfficials = fillVacancies(
           officials.filter((o) => o.source === "US_HOUSE"),
-          "US_HOUSE"
+          "US_HOUSE",
         );
-        officials = [...houseOfficials, ...senateOfficials, ...congressOfficials];
+        officials = [
+          ...houseOfficials,
+          ...senateOfficials,
+          ...congressOfficials,
+        ];
       } else if (sourceFilter && sourceFilter !== "OTHER_TX") {
         officials = fillVacancies(officials, sourceFilter);
       }
@@ -100,16 +111,20 @@ export function registerOfficialsRoutes(app: Express): void {
           if (o.district.includes(term)) return true;
           if (o.isVacant && "vacant".includes(term)) return true;
           if (o.party && o.party.toLowerCase().includes(term)) return true;
-          if (o.capitolAddress && o.capitolAddress.toLowerCase().includes(term)) return true;
+          if (o.capitolAddress && o.capitolAddress.toLowerCase().includes(term))
+            return true;
           if (o.districtAddresses && Array.isArray(o.districtAddresses)) {
             for (const addr of o.districtAddresses) {
-              if (typeof addr === "string" && addr.toLowerCase().includes(term)) return true;
+              if (typeof addr === "string" && addr.toLowerCase().includes(term))
+                return true;
             }
           }
           if (o.email && o.email.toLowerCase().includes(term)) return true;
           if (o.website && o.website.toLowerCase().includes(term)) return true;
-          if (o.searchZips && o.searchZips.toLowerCase().includes(term)) return true;
-          if (o.searchCities && o.searchCities.toLowerCase().includes(term)) return true;
+          if (o.searchZips && o.searchZips.toLowerCase().includes(term))
+            return true;
+          if (o.searchCities && o.searchCities.toLowerCase().includes(term))
+            return true;
           return false;
         });
 
@@ -119,11 +134,15 @@ export function registerOfficialsRoutes(app: Express): void {
           bySource[o.source] = (bySource[o.source] || 0) + 1;
         }
         console.log(
-          `[Search] q="${searchTerm}" | before=${beforeCount} | after=${afterCount} | bySource=${JSON.stringify(bySource)}`
+          `[Search] q="${searchTerm}" | before=${beforeCount} | after=${afterCount} | bySource=${JSON.stringify(bySource)}`,
         );
       }
 
-      const sourceOrder: Record<string, number> = { TX_HOUSE: 1, TX_SENATE: 2, US_HOUSE: 3 };
+      const sourceOrder: Record<string, number> = {
+        TX_HOUSE: 1,
+        TX_SENATE: 2,
+        US_HOUSE: 3,
+      };
 
       officials.sort((a, b) => {
         if (isAllSources || !sourceFilter) {
@@ -133,7 +152,8 @@ export function registerOfficialsRoutes(app: Express): void {
         }
         const distA = parseInt(a.district, 10);
         const distB = parseInt(b.district, 10);
-        if (!isNaN(distA) && !isNaN(distB) && distA !== distB) return distA - distB;
+        if (!isNaN(distA) && !isNaN(distB) && distA !== distB)
+          return distA - distB;
         const lastA = a.fullName.split(" ").pop() || "";
         const lastB = b.fullName.split(" ").pop() || "";
         return lastA.localeCompare(lastB);
@@ -157,7 +177,10 @@ export function registerOfficialsRoutes(app: Express): void {
         return res.status(400).json({ error: "officialIds array required" });
       }
 
-      const results: Record<string, { hometown: string | null; addressSource: string | null }> = {};
+      const results: Record<
+        string,
+        { hometown: string | null; addressSource: string | null }
+      > = {};
 
       const privateRecords = await db
         .select({
@@ -168,7 +191,9 @@ export function registerOfficialsRoutes(app: Express): void {
         .from(officialPrivate)
         .where(eq(officialPrivate.userId, "default"));
 
-      const privateMap = new Map(privateRecords.map((r) => [r.officialPublicId, r]));
+      const privateMap = new Map(
+        privateRecords.map((r) => [r.officialPublicId, r]),
+      );
 
       for (const id of officialIds) {
         const priv = privateMap.get(id);
@@ -198,7 +223,10 @@ export function registerOfficialsRoutes(app: Express): void {
         .from(officialPublic)
         .where(eq(officialPublic.active, true));
 
-      const allPrivate = await db.select().from(officialPrivate).where(eq(officialPrivate.userId, "default"));
+      const allPrivate = await db
+        .select()
+        .from(officialPrivate)
+        .where(eq(officialPrivate.userId, "default"));
       const privMap = new Map(allPrivate.map((p) => [p.officialPublicId, p]));
 
       const { isEffectivelyEmpty } = await import("../lib/backfillUtils");
@@ -222,7 +250,10 @@ export function registerOfficialsRoutes(app: Express): void {
         total: audit.length,
         withAddress: audit.filter((a) => a.hasAddress).length,
         missingAddress: audit.filter((a) => !a.hasAddress).length,
-        bySource: {} as Record<string, { total: number; filled: number; missing: number }>,
+        bySource: {} as Record<
+          string,
+          { total: number; filled: number; missing: number }
+        >,
         byAddressSource: {} as Record<string, number>,
       };
 
@@ -252,10 +283,16 @@ export function registerOfficialsRoutes(app: Express): void {
       const { district_type, district_number } = req.query;
 
       if (!district_type || !district_number) {
-        return res.status(400).json({ error: "district_type and district_number are required" });
+        return res
+          .status(400)
+          .json({ error: "district_type and district_number are required" });
       }
 
-      const validTypes: DistrictType[] = ["tx_house", "tx_senate", "us_congress"];
+      const validTypes: DistrictType[] = [
+        "tx_house",
+        "tx_senate",
+        "us_congress",
+      ];
       if (!validTypes.includes(district_type as DistrictType)) {
         return res.status(400).json({ error: "Invalid district_type" });
       }
@@ -270,8 +307,8 @@ export function registerOfficialsRoutes(app: Express): void {
           and(
             eq(officialPublic.source, source),
             eq(officialPublic.district, distNum),
-            eq(officialPublic.active, true)
-          )
+            eq(officialPublic.active, true),
+          ),
         )
         .limit(1);
 
@@ -297,13 +334,16 @@ export function registerOfficialsRoutes(app: Express): void {
           personalAddress: officialPrivate.personalAddress,
         })
         .from(officialPublic)
-        .innerJoin(officialPrivate, eq(officialPublic.id, officialPrivate.officialPublicId))
+        .innerJoin(
+          officialPrivate,
+          eq(officialPublic.id, officialPrivate.officialPublicId),
+        )
         .where(
           and(
             eq(officialPublic.active, true),
             eq(officialPrivate.userId, "default"),
-            sql`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`
-          )
+            sql`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`,
+          ),
         );
 
       res.json({
@@ -324,14 +364,18 @@ export function registerOfficialsRoutes(app: Express): void {
     try {
       const { id } = req.params;
 
-      const vacantMatch = id.match(/^VACANT-(TX_HOUSE|TX_SENATE|US_HOUSE)-(\d+)$/);
+      const vacantMatch = id.match(
+        /^VACANT-(TX_HOUSE|TX_SENATE|US_HOUSE)-(\d+)$/,
+      );
       if (vacantMatch) {
         const source = vacantMatch[1] as DistrictSourceType;
         const district = parseInt(vacantMatch[2], 10);
         return res.json({ official: createVacantOfficial(source, district) });
       }
 
-      const sourceDistrictMatch = id.match(/^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/);
+      const sourceDistrictMatch = id.match(
+        /^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/,
+      );
       if (sourceDistrictMatch) {
         const source = sourceDistrictMatch[1] as DistrictSourceType;
         const district = sourceDistrictMatch[2];
@@ -343,13 +387,15 @@ export function registerOfficialsRoutes(app: Express): void {
             and(
               eq(officialPublic.source, source),
               eq(officialPublic.district, district),
-              eq(officialPublic.active, true)
-            )
+              eq(officialPublic.active, true),
+            ),
           )
           .limit(1);
 
         if (!pub) {
-          return res.json({ official: createVacantOfficial(source, parseInt(district, 10)) });
+          return res.json({
+            official: createVacantOfficial(source, parseInt(district, 10)),
+          });
         }
 
         const official = mergeOfficial(pub, null);
@@ -385,7 +431,9 @@ export function registerOfficialsRoutes(app: Express): void {
       }
 
       if (districts.length > 500) {
-        return res.status(400).json({ error: "Too many districts requested (max 500)" });
+        return res
+          .status(400)
+          .json({ error: "Too many districts requested (max 500)" });
       }
 
       const results: MergedOfficial[] = [];
@@ -401,8 +449,8 @@ export function registerOfficialsRoutes(app: Express): void {
             and(
               eq(officialPublic.source, source),
               eq(officialPublic.district, String(districtNumber)),
-              eq(officialPublic.active, true)
-            )
+              eq(officialPublic.active, true),
+            ),
           )
           .limit(1);
 
@@ -436,9 +484,10 @@ export function registerOfficialsRoutes(app: Express): void {
 
       const parseResult = updateOfficialPrivateSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res
-          .status(400)
-          .json({ error: "Invalid request body", details: parseResult.error.issues });
+        return res.status(400).json({
+          error: "Invalid request body",
+          details: parseResult.error.issues,
+        });
       }
 
       const updateData = parseResult.data;
@@ -448,36 +497,50 @@ export function registerOfficialsRoutes(app: Express): void {
       const [existing] = await db
         .select()
         .from(officialPrivate)
-        .where(and(eq(officialPrivate.officialPublicId, id), eq(officialPrivate.userId, userId)))
+        .where(
+          and(
+            eq(officialPrivate.officialPublicId, id),
+            eq(officialPrivate.userId, userId),
+          ),
+        )
         .limit(1);
 
       if (existing) {
         await db
           .update(officialPrivate)
           .set({ ...updateData, addressSource: "user", updatedAt: new Date() })
-          .where(and(eq(officialPrivate.id, existing.id), eq(officialPrivate.userId, userId)));
+          .where(
+            and(
+              eq(officialPrivate.id, existing.id),
+              eq(officialPrivate.userId, userId),
+            ),
+          );
       } else {
         let finalUpdateData = { ...updateData };
         let autoFilled = false;
 
         const addressIsEmpty =
-          !updateData.personalAddress || updateData.personalAddress.trim().length === 0;
+          !updateData.personalAddress ||
+          updateData.personalAddress.trim().length === 0;
 
         if (addressIsEmpty && pub.fullName) {
           console.log(
-            `[API] Auto-fill: Looking up hometown for new private notes record for "${pub.fullName}"`
+            `[API] Auto-fill: Looking up hometown for new private notes record for "${pub.fullName}"`,
           );
           try {
-            const { lookupHometownFromTexasTribune } = await import("../lib/texasTribuneLookup");
+            const { lookupHometownFromTexasTribune } =
+              await import("../lib/texasTribuneLookup");
             const result = await lookupHometownFromTexasTribune(pub.fullName);
             if (result.success && result.hometown) {
               console.log(
-                `[API] Auto-fill: Setting personalAddress to "${result.hometown}" for ${pub.fullName}`
+                `[API] Auto-fill: Setting personalAddress to "${result.hometown}" for ${pub.fullName}`,
               );
               finalUpdateData.personalAddress = result.hometown;
               autoFilled = true;
             } else {
-              console.log(`[API] Auto-fill: No hometown found for ${pub.fullName}`);
+              console.log(
+                `[API] Auto-fill: No hometown found for ${pub.fullName}`,
+              );
             }
           } catch (error) {
             console.error(`[API] Auto-fill: Error looking up hometown:`, error);
@@ -496,7 +559,12 @@ export function registerOfficialsRoutes(app: Express): void {
       const [savedPriv] = await db
         .select()
         .from(officialPrivate)
-        .where(and(eq(officialPrivate.officialPublicId, id), eq(officialPrivate.userId, userId)))
+        .where(
+          and(
+            eq(officialPrivate.officialPublicId, id),
+            eq(officialPrivate.userId, userId),
+          ),
+        )
         .limit(1);
 
       res.json({ official: mergeOfficial(pub, savedPriv ?? null) });

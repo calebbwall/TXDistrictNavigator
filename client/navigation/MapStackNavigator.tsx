@@ -26,7 +26,9 @@ export default function MapStackNavigator() {
         name="Map"
         component={MapScreen}
         options={{
-          headerTitle: () => <HeaderTitle title="Texas Districts" enableDebugToggle />,
+          headerTitle: () => (
+            <HeaderTitle title="Texas Districts" enableDebugToggle />
+          ),
         }}
       />
       <Stack.Screen

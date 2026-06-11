@@ -15,28 +15,40 @@ import { and, eq, like } from "drizzle-orm";
 function applySchemaMigrations(): Promise<void> {
   return new Promise((resolve) => {
     if (process.env.SKIP_STARTUP_DB_PUSH === "1") {
-      console.log("[Startup] SKIP_STARTUP_DB_PUSH=1 — skipping drizzle-kit push");
+      console.log(
+        "[Startup] SKIP_STARTUP_DB_PUSH=1 — skipping drizzle-kit push",
+      );
       return resolve();
     }
-    console.log("[Startup] Applying Drizzle schema (drizzle-kit push --force)...");
+    console.log(
+      "[Startup] Applying Drizzle schema (drizzle-kit push --force)...",
+    );
     const t0 = Date.now();
     const child = spawn("npx", ["drizzle-kit", "push", "--force"], {
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
     });
     let out = "";
-    child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
-    child.stderr.on("data", (d: Buffer) => { out += d.toString(); });
+    child.stdout.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
     child.on("close", (code: number | null) => {
       const ms = Date.now() - t0;
       if (code === 0) {
-        console.log(`[Startup] Schema push OK (${ms}ms): ${out.split("\n").filter(Boolean).slice(-3).join(" | ")}`);
+        console.log(
+          `[Startup] Schema push OK (${ms}ms): ${out.split("\n").filter(Boolean).slice(-3).join(" | ")}`,
+        );
         resolve();
       } else {
         // Fail-fast: any startup path (npm run dev, tsx server/index.ts, etc.)
         // must refuse to serve traffic on a drifted schema. Set
         // SKIP_STARTUP_DB_PUSH=1 to opt out (e.g., for tests).
-        console.error(`[Startup] Schema push FAILED (exit=${code}, ${ms}ms):\n${out}`);
+        console.error(
+          `[Startup] Schema push FAILED (exit=${code}, ${ms}ms):\n${out}`,
+        );
         process.exit(1);
       }
     });
@@ -197,7 +209,10 @@ function serveExpoManifest(platform: string, req: Request, res: Response) {
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 
-  const protocol = sanitizeProto(req.header("x-forwarded-proto"), req.protocol || "https");
+  const protocol = sanitizeProto(
+    req.header("x-forwarded-proto"),
+    req.protocol || "https",
+  );
   const host = sanitizeHost(
     req.header("x-forwarded-host"),
     sanitizeHost(req.get("host"), ""),
@@ -206,7 +221,10 @@ function serveExpoManifest(platform: string, req: Request, res: Response) {
   const hostWithoutProtocol = host;
 
   if (manifest.launchAsset?.url) {
-    manifest.launchAsset.url = rebaseUrl(manifest.launchAsset.url, requestBaseUrl);
+    manifest.launchAsset.url = rebaseUrl(
+      manifest.launchAsset.url,
+      requestBaseUrl,
+    );
   }
 
   if (manifest.assets) {
@@ -225,19 +243,28 @@ function serveExpoManifest(platform: string, req: Request, res: Response) {
   }
 
   if (manifest.extra?.expoClient?.iconUrl) {
-    manifest.extra.expoClient.iconUrl = rebaseUrl(manifest.extra.expoClient.iconUrl, requestBaseUrl);
+    manifest.extra.expoClient.iconUrl = rebaseUrl(
+      manifest.extra.expoClient.iconUrl,
+      requestBaseUrl,
+    );
   }
 
   if (manifest.extra?.expoClient?.android?.adaptiveIcon) {
     const icon = manifest.extra.expoClient.android.adaptiveIcon;
-    for (const key of ["foregroundImageUrl", "monochromeImageUrl", "backgroundImageUrl"]) {
+    for (const key of [
+      "foregroundImageUrl",
+      "monochromeImageUrl",
+      "backgroundImageUrl",
+    ]) {
       if (icon[key]) {
         icon[key] = rebaseUrl(icon[key], requestBaseUrl);
       }
     }
   }
 
-  console.log(`[Manifest] Serving ${platform} manifest with baseUrl: ${requestBaseUrl}`);
+  console.log(
+    `[Manifest] Serving ${platform} manifest with baseUrl: ${requestBaseUrl}`,
+  );
   res.json(manifest);
 }
 
@@ -252,7 +279,10 @@ function serveLandingPage({
   landingPageTemplate: string;
   appName: string;
 }) {
-  const protocol = sanitizeProto(req.header("x-forwarded-proto"), req.protocol || "https");
+  const protocol = sanitizeProto(
+    req.header("x-forwarded-proto"),
+    req.protocol || "https",
+  );
   const host = sanitizeHost(
     req.header("x-forwarded-host"),
     sanitizeHost(req.get("host"), ""),
@@ -349,11 +379,18 @@ async function cleanupBootstrapAlerts(): Promise<void> {
   try {
     const result = await db
       .delete(alerts)
-      .where(and(eq(alerts.alertType, "RSS_ITEM"), like(alerts.body, "Page content updated%")))
+      .where(
+        and(
+          eq(alerts.alertType, "RSS_ITEM"),
+          like(alerts.body, "Page content updated%"),
+        ),
+      )
       .returning({ id: alerts.id });
     bootstrapAlertsCleaned = true;
     if (result.length > 0) {
-      console.log(`[Startup] Cleaned up ${result.length} false-positive RSS bootstrap alert(s)`);
+      console.log(
+        `[Startup] Cleaned up ${result.length} false-positive RSS bootstrap alert(s)`,
+      );
     }
   } catch (err) {
     console.error("[Startup] Alert cleanup failed:", err);
@@ -381,16 +418,22 @@ server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
     // If TZ is not set on the production server, naive `new Date(localString)`
     // calls may treat wall-clock times as UTC, causing a 5–6 hour shift.
     const tzCheck = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Chicago", hour: "numeric", hour12: false,
-    }).formatToParts(new Date("2025-06-01T15:00:00Z")).find((p) => p.type === "hour");
+      timeZone: "America/Chicago",
+      hour: "numeric",
+      hour12: false,
+    })
+      .formatToParts(new Date("2025-06-01T15:00:00Z"))
+      .find((p) => p.type === "hour");
     const chicagoHour = tzCheck ? parseInt(tzCheck.value, 10) : -1;
     if (chicagoHour !== 10) {
       console.warn(
         `[Startup] TZ WARNING: America/Chicago offset check failed (expected hour=10 for 15:00 UTC in CDT, got ${chicagoHour}). ` +
-        "Ensure TZ=America/Chicago is set in the production environment."
+          "Ensure TZ=America/Chicago is set in the production environment.",
       );
     } else {
-      console.log("[Startup] Timezone check passed (America/Chicago CDT offset correct)");
+      console.log(
+        "[Startup] Timezone check passed (America/Chicago CDT offset correct)",
+      );
     }
 
     setupCors(app);
@@ -407,6 +450,9 @@ server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
     await cleanupBootstrapAlerts();
     console.log("[Startup] Initialization complete");
   } catch (err) {
-    console.error("[FATAL] Startup error (server still running on port " + port + "):", err);
+    console.error(
+      "[FATAL] Startup error (server still running on port " + port + "):",
+      err,
+    );
   }
 })();

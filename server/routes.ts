@@ -18,26 +18,33 @@ import { maybeRunCommitteeRefresh } from "./jobs/refreshCommittees";
 import { maybeRunOtherTxRefresh } from "./jobs/refreshOtherTexasOfficials";
 
 export async function registerRoutes(app: Express): Promise<void> {
-  maybeRunScheduledRefresh().catch(err => {
+  maybeRunScheduledRefresh().catch((err) => {
     console.error("[Startup] Failed to check scheduled refresh:", err);
   });
 
-  maybeRunCommitteeRefresh().catch(err => {
+  maybeRunCommitteeRefresh().catch((err) => {
     console.error("[Startup] Failed to check committee refresh:", err);
   });
 
-  maybeRunOtherTxRefresh().catch(err => {
+  maybeRunOtherTxRefresh().catch((err) => {
     console.error("[Startup] Failed to check Other TX officials seed:", err);
   });
 
   setTimeout(async () => {
     try {
       const { bulkFillHometowns } = await import("./scripts/bulkFillHometowns");
-      console.log(`[Startup] Checking for new officials needing hometown lookup...`);
+      console.log(
+        `[Startup] Checking for new officials needing hometown lookup...`,
+      );
       const result = await bulkFillHometowns();
-      console.log(`[Startup] Hometown check done: filled=${result.filled}, notFound=${result.notFound}, errors=${result.errors}`);
+      console.log(
+        `[Startup] Hometown check done: filled=${result.filled}, notFound=${result.notFound}, errors=${result.errors}`,
+      );
     } catch (err) {
-      console.error(`[Startup] Hometown check failed:`, err instanceof Error ? err.message : err);
+      console.error(
+        `[Startup] Hometown check failed:`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }, 90000);
 
@@ -54,28 +61,29 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/stats", async (_req, res) => {
     try {
-      const counts = await db.select({
-        source: officialPublic.source,
-        count: sql<number>`count(*)::int`,
-      })
+      const counts = await db
+        .select({
+          source: officialPublic.source,
+          count: sql<number>`count(*)::int`,
+        })
         .from(officialPublic)
         .where(eq(officialPublic.active, true))
         .groupBy(officialPublic.source);
-      
+
       const stats: Record<string, number> = {
         tx_house: 0,
         tx_senate: 0,
         us_congress: 0,
         total: 0,
       };
-      
+
       for (const { source, count } of counts) {
         if (source === "TX_HOUSE") stats.tx_house = count;
         if (source === "TX_SENATE") stats.tx_senate = count;
         if (source === "US_HOUSE") stats.us_congress = count;
         stats.total += count;
       }
-      
+
       if (stats.total === 0) {
         return res.json({
           tx_house: 150,
@@ -85,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<void> {
           source: "fallback",
         });
       }
-      
+
       res.json(stats);
     } catch (err) {
       console.error("[API] Error fetching stats:", err);
@@ -99,28 +107,34 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-
   // Committee API endpoints
   app.get("/api/committees", async (req, res) => {
     try {
       const chamber = req.query.chamber as string | undefined;
-      
+
       let query = db.select().from(committees);
-      
+
       if (chamber === "TX_HOUSE" || chamber === "TX_SENATE") {
         query = query.where(eq(committees.chamber, chamber)) as typeof query;
       }
-      
-      const allCommittees = await query.orderBy(committees.sortOrder, committees.name);
-      
-      const parentCommittees = allCommittees.filter(c => !c.parentCommitteeId);
-      const subcommittees = allCommittees.filter(c => c.parentCommitteeId);
-      
-      const result = parentCommittees.map(parent => ({
+
+      const allCommittees = await query.orderBy(
+        committees.sortOrder,
+        committees.name,
+      );
+
+      const parentCommittees = allCommittees.filter(
+        (c) => !c.parentCommitteeId,
+      );
+      const subcommittees = allCommittees.filter((c) => c.parentCommitteeId);
+
+      const result = parentCommittees.map((parent) => ({
         ...parent,
-        subcommittees: subcommittees.filter(sub => sub.parentCommitteeId === parent.id),
+        subcommittees: subcommittees.filter(
+          (sub) => sub.parentCommitteeId === parent.id,
+        ),
       }));
-      
+
       res.json(result);
     } catch (err) {
       console.error("[API] Error fetching committees:", err);
@@ -131,17 +145,17 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/committees/:committeeId", async (req, res) => {
     try {
       const { committeeId } = req.params;
-      
+
       const committee = await db
         .select()
         .from(committees)
         .where(eq(committees.id, committeeId))
         .limit(1);
-      
+
       if (committee.length === 0) {
         return res.status(404).json({ error: "Committee not found" });
       }
-      
+
       const members = await db
         .select({
           id: committeeMemberships.id,
@@ -155,10 +169,13 @@ export async function registerRoutes(app: Express): Promise<void> {
           officialPhotoUrl: officialPublic.photoUrl,
         })
         .from(committeeMemberships)
-        .leftJoin(officialPublic, eq(committeeMemberships.officialPublicId, officialPublic.id))
+        .leftJoin(
+          officialPublic,
+          eq(committeeMemberships.officialPublicId, officialPublic.id),
+        )
         .where(eq(committeeMemberships.committeeId, committeeId))
         .orderBy(committeeMemberships.sortOrder);
-      
+
       res.json({
         committee: committee[0],
         members,
@@ -174,17 +191,22 @@ export async function registerRoutes(app: Express): Promise<void> {
       let { officialId } = req.params;
 
       // Resolve SOURCE:DISTRICT format (e.g., "TX_HOUSE:5") to UUID
-      const sourceDistrictMatch = officialId.match(/^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/);
+      const sourceDistrictMatch = officialId.match(
+        /^(TX_HOUSE|TX_SENATE|US_HOUSE):(\d+)$/,
+      );
       if (sourceDistrictMatch) {
         const source = sourceDistrictMatch[1] as DistrictSourceType;
         const district = sourceDistrictMatch[2];
-        const [pub] = await db.select({ id: officialPublic.id })
+        const [pub] = await db
+          .select({ id: officialPublic.id })
           .from(officialPublic)
-          .where(and(
-            eq(officialPublic.source, source),
-            eq(officialPublic.district, district),
-            eq(officialPublic.active, true)
-          ))
+          .where(
+            and(
+              eq(officialPublic.source, source),
+              eq(officialPublic.district, district),
+              eq(officialPublic.active, true),
+            ),
+          )
           .limit(1);
         if (pub) officialId = pub.id;
       }
@@ -197,7 +219,10 @@ export async function registerRoutes(app: Express): Promise<void> {
           roleTitle: committeeMemberships.roleTitle,
         })
         .from(committeeMemberships)
-        .innerJoin(committees, eq(committeeMemberships.committeeId, committees.id))
+        .innerJoin(
+          committees,
+          eq(committeeMemberships.committeeId, committees.id),
+        )
         .where(eq(committeeMemberships.officialPublicId, officialId))
         .orderBy(committees.name);
 
@@ -207,8 +232,6 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.status(500).json({ error: "Failed to fetch official committees" });
     }
   });
-
-
 
   app.get("/api/other-tx-officials", async (req, res) => {
     try {
@@ -220,10 +243,13 @@ export async function registerRoutes(app: Express): Promise<void> {
         conditions.push(eq(officialPublic.active, true));
       }
 
-      const officials = await db.select().from(officialPublic).where(and(...conditions));
+      const officials = await db
+        .select()
+        .from(officialPublic)
+        .where(and(...conditions));
 
       const merged: MergedOfficial[] = officials.map((pub) =>
-        mergeOfficial(pub, null)
+        mergeOfficial(pub, null),
       );
 
       if (grouped === "true") {
@@ -253,10 +279,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         };
 
         groupedOfficials.supremeCourt.sort(
-          (a, b) => extractPlace(a.roleTitle || "") - extractPlace(b.roleTitle || "")
+          (a, b) =>
+            extractPlace(a.roleTitle || "") - extractPlace(b.roleTitle || ""),
         );
         groupedOfficials.criminalAppeals.sort(
-          (a, b) => extractPlace(a.roleTitle || "") - extractPlace(b.roleTitle || "")
+          (a, b) =>
+            extractPlace(a.roleTitle || "") - extractPlace(b.roleTitle || ""),
         );
 
         res.json({
@@ -278,5 +306,4 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.status(500).json({ error: "Failed to fetch other TX officials" });
     }
   });
-
 }

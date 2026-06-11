@@ -21,7 +21,13 @@ interface ChamberRowProps {
   color: string;
 }
 
-function ChamberRow({ title, subtitle, chamber, icon, color }: ChamberRowProps) {
+function ChamberRow({
+  title,
+  subtitle,
+  chamber,
+  icon,
+  color,
+}: ChamberRowProps) {
   const { theme } = useTheme();
   const navigation = useNavigation<NavigationProp>();
 
@@ -42,7 +48,9 @@ function ChamberRow({ title, subtitle, chamber, icon, color }: ChamberRowProps) 
         <Feather name={icon} size={24} color={color} />
       </View>
       <View style={styles.chamberContent}>
-        <ThemedText type="body" style={{ fontWeight: "600" }}>{title}</ThemedText>
+        <ThemedText type="body" style={{ fontWeight: "600" }}>
+          {title}
+        </ThemedText>
         <ThemedText type="caption" style={{ color: theme.secondaryText }}>
           {subtitle}
         </ThemedText>
@@ -70,7 +78,10 @@ export default function CommitteesScreen() {
         ]}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
       >
-        <ThemedText type="body" style={[styles.description, { color: theme.secondaryText }]}>
+        <ThemedText
+          type="body"
+          style={[styles.description, { color: theme.secondaryText }]}
+        >
           View committee assignments for Texas legislators
         </ThemedText>
 

@@ -64,10 +64,14 @@ export default function FocusedModeScreen() {
     queryKey: ["/api/prayer-categories"],
   });
 
-  const { data: officialsData } = useQuery<{ officials: { id: string; fullName: string }[] }>({
+  const { data: officialsData } = useQuery<{
+    officials: { id: string; fullName: string }[];
+  }>({
     queryKey: ["/api/officials"],
   });
-  const officialsMap = new Map((officialsData?.officials ?? []).map((o) => [o.id, o.fullName]));
+  const officialsMap = new Map(
+    (officialsData?.officials ?? []).map((o) => [o.id, o.fullName]),
+  );
 
   const prayerQueries = prayerIds.map((id) => ({
     queryKey: ["/api/prayers", id],
@@ -177,25 +181,22 @@ export default function FocusedModeScreen() {
   const officialNames = (currentPrayer.officialIds ?? [])
     .map((id) => officialsMap.get(id))
     .filter(Boolean) as string[];
-  const allPeopleNames = [...officialNames, ...(currentPrayer.customPeopleNames ?? [])];
-  const peopleLabel = allPeopleNames.length === 0
-    ? null
-    : allPeopleNames.length <= 2
-    ? allPeopleNames.join(", ")
-    : `${allPeopleNames[0]} +${allPeopleNames.length - 1} more`;
+  const allPeopleNames = [
+    ...officialNames,
+    ...(currentPrayer.customPeopleNames ?? []),
+  ];
+  const peopleLabel =
+    allPeopleNames.length === 0
+      ? null
+      : allPeopleNames.length <= 2
+        ? allPeopleNames.join(", ")
+        : `${allPeopleNames[0]} +${allPeopleNames.length - 1} more`;
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === prayerIds.length - 1;
 
   return (
-    <View
-      style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
-    >
-      <View
-        style={[
-          styles.topBar,
-          { paddingTop: insets.top + Spacing.sm },
-        ]}
-      >
+    <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}>
         <Pressable onPress={handleClose} style={styles.closeButton}>
           <Feather name="x" size={24} color={theme.text} />
         </Pressable>
@@ -229,10 +230,7 @@ export default function FocusedModeScreen() {
             </View>
           ) : null}
 
-          <ThemedText
-            type="h1"
-            style={[styles.title, { textAlign: "center" }]}
-          >
+          <ThemedText type="h1" style={[styles.title, { textAlign: "center" }]}>
             {currentPrayer.title}
           </ThemedText>
 
@@ -243,11 +241,7 @@ export default function FocusedModeScreen() {
                 { backgroundColor: theme.backgroundDefault },
               ]}
             >
-              <Feather
-                name="user"
-                size={14}
-                color={theme.secondaryText}
-              />
+              <Feather name="user" size={14} color={theme.secondaryText} />
               <ThemedText
                 type="caption"
                 style={{
@@ -262,10 +256,7 @@ export default function FocusedModeScreen() {
 
           <ThemedText
             type="body"
-            style={[
-              styles.bodyText,
-              { color: theme.text, lineHeight: 34 },
-            ]}
+            style={[styles.bodyText, { color: theme.text, lineHeight: 34 }]}
           >
             {currentPrayer.body}
           </ThemedText>
@@ -297,16 +288,9 @@ export default function FocusedModeScreen() {
               ]}
             >
               <View
-                style={[
-                  styles.successIcon,
-                  { backgroundColor: theme.primary },
-                ]}
+                style={[styles.successIcon, { backgroundColor: theme.primary }]}
               >
-                <Feather
-                  name="check"
-                  size={24}
-                  color="#FFFFFF"
-                />
+                <Feather name="check" size={24} color="#FFFFFF" />
               </View>
             </Animated.View>
           ) : (
@@ -321,9 +305,7 @@ export default function FocusedModeScreen() {
                 type="body"
                 style={{ color: theme.buttonText, fontWeight: "600" }}
               >
-                {markPrayedMutation.isPending
-                  ? "Marking..."
-                  : "Mark Prayed"}
+                {markPrayedMutation.isPending ? "Marking..." : "Mark Prayed"}
               </ThemedText>
             </View>
           )}

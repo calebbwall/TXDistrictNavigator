@@ -44,70 +44,89 @@ export default function AskAIScreen() {
   const flatListRef = useRef<FlatList<Message>>(null);
   const inputRef = useRef<TextInput>(null);
 
-  const sendQuestion = useCallback(async (question: string) => {
-    if (!question.trim() || isLoading) return;
+  const sendQuestion = useCallback(
+    async (question: string) => {
+      if (!question.trim() || isLoading) return;
 
-    const userMsg: Message = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      text: question.trim(),
-    };
-    const loadingMsg: Message = {
-      id: `loading-${Date.now()}`,
-      role: "assistant",
-      text: "",
-      loading: true,
-    };
+      const userMsg: Message = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        text: question.trim(),
+      };
+      const loadingMsg: Message = {
+        id: `loading-${Date.now()}`,
+        role: "assistant",
+        text: "",
+        loading: true,
+      };
 
-    setMessages((prev) => [...prev, userMsg, loadingMsg]);
-    setInputText("");
-    setIsLoading(true);
+      setMessages((prev) => [...prev, userMsg, loadingMsg]);
+      setInputText("");
+      setIsLoading(true);
 
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(
+        () => flatListRef.current?.scrollToEnd({ animated: true }),
+        100,
+      );
 
-    try {
-      let answerText: string;
       try {
-        const res = await apiRequest("POST", "/api/ai/ask", { question: question.trim() });
-        const data = await res.json();
-        answerText = data.answer ?? "No answer returned.";
-      } catch (err: any) {
-        const msg = String(err?.message ?? "");
-        if (msg.startsWith("429")) {
-          answerText = "You've hit the AI rate limit. Please try again in a minute.";
-        } else if (msg.startsWith("401")) {
-          answerText = "Authentication required. Please reopen the app.";
-        } else {
-          answerText = "Something went wrong. Please try again.";
+        let answerText: string;
+        try {
+          const res = await apiRequest("POST", "/api/ai/ask", {
+            question: question.trim(),
+          });
+          const data = await res.json();
+          answerText = data.answer ?? "No answer returned.";
+        } catch (err: any) {
+          const msg = String(err?.message ?? "");
+          if (msg.startsWith("429")) {
+            answerText =
+              "You've hit the AI rate limit. Please try again in a minute.";
+          } else if (msg.startsWith("401")) {
+            answerText = "Authentication required. Please reopen the app.";
+          } else {
+            answerText = "Something went wrong. Please try again.";
+          }
         }
-      }
 
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.loading ? { ...m, text: answerText, loading: false } : m
-        )
-      );
-    } catch {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.loading
-            ? { ...m, text: "Couldn't reach the server. Please check your connection.", loading: false }
-            : m
-        )
-      );
-    } finally {
-      setIsLoading(false);
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-    }
-  }, [isLoading]);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.loading ? { ...m, text: answerText, loading: false } : m,
+          ),
+        );
+      } catch {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.loading
+              ? {
+                  ...m,
+                  text: "Couldn't reach the server. Please check your connection.",
+                  loading: false,
+                }
+              : m,
+          ),
+        );
+      } finally {
+        setIsLoading(false);
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          100,
+        );
+      }
+    },
+    [isLoading],
+  );
 
   const handleSend = useCallback(() => {
     sendQuestion(inputText);
   }, [inputText, sendQuestion]);
 
-  const handleSuggestion = useCallback((text: string) => {
-    sendQuestion(text);
-  }, [sendQuestion]);
+  const handleSuggestion = useCallback(
+    (text: string) => {
+      sendQuestion(text);
+    },
+    [sendQuestion],
+  );
 
   const renderMessage = useCallback(
     ({ item }: { item: Message }) => {
@@ -119,7 +138,11 @@ export default function AskAIScreen() {
             isUser ? styles.userBubble : styles.aiBubble,
             isUser
               ? { backgroundColor: theme.primary }
-              : { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: 1 },
+              : {
+                  backgroundColor: theme.cardBackground,
+                  borderColor: theme.border,
+                  borderWidth: 1,
+                },
           ]}
         >
           {item.loading ? (
@@ -138,20 +161,28 @@ export default function AskAIScreen() {
         </View>
       );
     },
-    [theme]
+    [theme],
   );
 
   const keyExtractor = useCallback((item: Message) => item.id, []);
 
   const EmptyState = (
     <View style={styles.emptyContainer}>
-      <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + "18" }]}>
+      <View
+        style={[
+          styles.emptyIconContainer,
+          { backgroundColor: theme.primary + "18" },
+        ]}
+      >
         <Ionicons name="sparkles" size={32} color={theme.primary} />
       </View>
       <ThemedText type="h3" style={[styles.emptyTitle, { color: theme.text }]}>
         Ask anything
       </ThemedText>
-      <ThemedText type="body" style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
+      <ThemedText
+        type="body"
+        style={[styles.emptySubtitle, { color: theme.secondaryText }]}
+      >
         Ask dynamic questions about Texas legislators and legislation
       </ThemedText>
       <View style={styles.suggestionsGrid}>
@@ -220,7 +251,10 @@ export default function AskAIScreen() {
           <View
             style={[
               styles.inputContainer,
-              { backgroundColor: theme.inputBackground, borderColor: theme.border },
+              {
+                backgroundColor: theme.inputBackground,
+                borderColor: theme.border,
+              },
             ]}
           >
             <TextInput
@@ -242,7 +276,9 @@ export default function AskAIScreen() {
                 styles.sendButton,
                 {
                   backgroundColor:
-                    inputText.trim() && !isLoading ? theme.primary : theme.border,
+                    inputText.trim() && !isLoading
+                      ? theme.primary
+                      : theme.border,
                   opacity: pressed ? 0.8 : 1,
                 },
               ]}

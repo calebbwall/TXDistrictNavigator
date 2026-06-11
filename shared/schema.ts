@@ -1,10 +1,27 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, json, pgEnum, uniqueIndex, index, integer, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  boolean,
+  timestamp,
+  json,
+  pgEnum,
+  uniqueIndex,
+  index,
+  integer,
+  primaryKey,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Source enum for officials
-export const sourceEnum = pgEnum("source_type", ["TX_HOUSE", "TX_SENATE", "US_HOUSE", "OTHER_TX"]);
+export const sourceEnum = pgEnum("source_type", [
+  "TX_HOUSE",
+  "TX_SENATE",
+  "US_HOUSE",
+  "OTHER_TX",
+]);
 
 // Persons table - stable identity for officials across position changes
 export const persons = pgTable("persons", {
@@ -18,63 +35,80 @@ export const persons = pgTable("persons", {
 });
 
 // Official public data - refreshable from authoritative sources
-export const officialPublic = pgTable("official_public", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  personId: varchar("person_id", { length: 255 })
-    .references(() => persons.id), // Links to stable person identity
-  source: sourceEnum("source").notNull(),
-  sourceMemberId: varchar("source_member_id", { length: 255 }).notNull(),
-  chamber: varchar("chamber", { length: 50 }).notNull(),
-  district: varchar("district", { length: 20 }).notNull(),
-  fullName: varchar("full_name", { length: 255 }).notNull(),
-  roleTitle: varchar("role_title", { length: 255 }), // For OTHER_TX: Governor, Lt Governor, etc.
-  party: varchar("party", { length: 10 }),
-  photoUrl: text("photo_url"),
-  capitolAddress: text("capitol_address"),
-  capitolPhone: varchar("capitol_phone", { length: 50 }),
-  // Capitol room/office number scraped from TLO (e.g., "E2.406")
-  // Format: Building code + room number, parsed from "EXT E2.406" format
-  // NOTE: If schema is regenerated, this field must be re-added here
-  capitolRoom: varchar("capitol_room", { length: 50 }),
-  districtAddresses: json("district_addresses").$type<string[]>(),
-  districtPhones: json("district_phones").$type<string[]>(),
-  website: text("website"),
-  email: varchar("email", { length: 255 }),
-  active: boolean("active").default(true).notNull(),
-  lastRefreshedAt: timestamp("last_refreshed_at").defaultNow().notNull(),
-  // Normalized search fields - derived from addresses for faster search
-  searchZips: text("search_zips"), // Comma-separated unique ZIPs (e.g., "78711,75570")
-  searchCities: text("search_cities"), // Comma-separated unique cities (e.g., "Austin,New Boston")
-}, (table) => ({
-  sourceIdUnique: uniqueIndex("source_member_unique_idx").on(table.source, table.sourceMemberId),
-}));
+export const officialPublic = pgTable(
+  "official_public",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    personId: varchar("person_id", { length: 255 }).references(
+      () => persons.id,
+    ), // Links to stable person identity
+    source: sourceEnum("source").notNull(),
+    sourceMemberId: varchar("source_member_id", { length: 255 }).notNull(),
+    chamber: varchar("chamber", { length: 50 }).notNull(),
+    district: varchar("district", { length: 20 }).notNull(),
+    fullName: varchar("full_name", { length: 255 }).notNull(),
+    roleTitle: varchar("role_title", { length: 255 }), // For OTHER_TX: Governor, Lt Governor, etc.
+    party: varchar("party", { length: 10 }),
+    photoUrl: text("photo_url"),
+    capitolAddress: text("capitol_address"),
+    capitolPhone: varchar("capitol_phone", { length: 50 }),
+    // Capitol room/office number scraped from TLO (e.g., "E2.406")
+    // Format: Building code + room number, parsed from "EXT E2.406" format
+    // NOTE: If schema is regenerated, this field must be re-added here
+    capitolRoom: varchar("capitol_room", { length: 50 }),
+    districtAddresses: json("district_addresses").$type<string[]>(),
+    districtPhones: json("district_phones").$type<string[]>(),
+    website: text("website"),
+    email: varchar("email", { length: 255 }),
+    active: boolean("active").default(true).notNull(),
+    lastRefreshedAt: timestamp("last_refreshed_at").defaultNow().notNull(),
+    // Normalized search fields - derived from addresses for faster search
+    searchZips: text("search_zips"), // Comma-separated unique ZIPs (e.g., "78711,75570")
+    searchCities: text("search_cities"), // Comma-separated unique cities (e.g., "Austin,New Boston")
+  },
+  (table) => ({
+    sourceIdUnique: uniqueIndex("source_member_unique_idx").on(
+      table.source,
+      table.sourceMemberId,
+    ),
+  }),
+);
 
 // Official private data - user-entered only, never touched by refresh
 // Scoped per device-user so each device only reads and writes its own records.
-export const officialPrivate = pgTable("official_private", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
-  personId: varchar("person_id", { length: 255 })
-    .references(() => persons.id), // Keyed by person for continuity across position changes
-  officialPublicId: varchar("official_public_id", { length: 255 })
-    .references(() => officialPublic.id), // Legacy: kept for backwards compatibility
-  personalPhone: varchar("personal_phone", { length: 50 }),
-  personalAddress: text("personal_address"),
-  addressSource: varchar("address_source", { length: 20 }),
-  spouseName: varchar("spouse_name", { length: 255 }),
-  childrenNames: json("children_names").$type<string[]>(),
-  birthday: varchar("birthday", { length: 20 }),
-  anniversary: varchar("anniversary", { length: 20 }),
-  notes: text("notes"),
-  tags: json("tags").$type<string[]>(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  userOfficialUnique: uniqueIndex("official_private_user_official_idx").on(table.userId, table.officialPublicId),
-}));
+export const officialPrivate = pgTable(
+  "official_private",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+    personId: varchar("person_id", { length: 255 }).references(
+      () => persons.id,
+    ), // Keyed by person for continuity across position changes
+    officialPublicId: varchar("official_public_id", { length: 255 }).references(
+      () => officialPublic.id,
+    ), // Legacy: kept for backwards compatibility
+    personalPhone: varchar("personal_phone", { length: 50 }),
+    personalAddress: text("personal_address"),
+    addressSource: varchar("address_source", { length: 20 }),
+    spouseName: varchar("spouse_name", { length: 255 }),
+    childrenNames: json("children_names").$type<string[]>(),
+    birthday: varchar("birthday", { length: 20 }),
+    anniversary: varchar("anniversary", { length: 20 }),
+    notes: text("notes"),
+    tags: json("tags").$type<string[]>(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userOfficialUnique: uniqueIndex("official_private_user_official_idx").on(
+      table.userId,
+      table.officialPublicId,
+    ),
+  }),
+);
 
 // Refresh state tracking - fingerprints and timestamps per source
 export const refreshState = pgTable("refresh_state", {
@@ -110,23 +144,31 @@ export const refreshJobLog = pgTable("refresh_job_log", {
 // Scraper alerts - surfaced when a refresh job hits a structural-failure
 // branch (e.g. SAFETY ABORT, parsed 0 records, job threw). One active row per
 // (source, kind); subsequent occurrences bump occurrenceCount + lastSeenAt.
-export const scraperAlerts = pgTable("scraper_alerts", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  source: varchar("source", { length: 50 }).notNull(),
-  kind: varchar("kind", { length: 50 }).notNull(),
-  severity: varchar("severity", { length: 20 }).notNull().default("warning"),
-  message: text("message").notNull(),
-  details: json("details").$type<Record<string, unknown>>(),
-  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
-  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
-  occurrenceCount: integer("occurrence_count").default(1).notNull(),
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  activeBySourceKind: index("scraper_alerts_active_idx").on(table.source, table.kind, table.resolvedAt),
-}));
+export const scraperAlerts = pgTable(
+  "scraper_alerts",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    source: varchar("source", { length: 50 }).notNull(),
+    kind: varchar("kind", { length: 50 }).notNull(),
+    severity: varchar("severity", { length: 20 }).notNull().default("warning"),
+    message: text("message").notNull(),
+    details: json("details").$type<Record<string, unknown>>(),
+    firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    occurrenceCount: integer("occurrence_count").default(1).notNull(),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    activeBySourceKind: index("scraper_alerts_active_idx").on(
+      table.source,
+      table.kind,
+      table.resolvedAt,
+    ),
+  }),
+);
 
 export type ScraperAlert = typeof scraperAlerts.$inferSelect;
 export type InsertScraperAlert = typeof scraperAlerts.$inferInsert;
@@ -171,21 +213,28 @@ export const DISTRICT_RANGES = {
 export const chamberEnum = pgEnum("chamber_type", ["TX_HOUSE", "TX_SENATE"]);
 
 // Committees table
-export const committees = pgTable("committees", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  chamber: chamberEnum("chamber").notNull(),
-  name: varchar("name", { length: 255 }).notNull(),
-  slug: varchar("slug", { length: 255 }).notNull(),
-  sourceUrl: text("source_url"),
-  parentCommitteeId: varchar("parent_committee_id", { length: 255 }), // For subcommittees
-  sortOrder: varchar("sort_order", { length: 10 }), // For stable ordering
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  chamberSlugUnique: uniqueIndex("committee_chamber_slug_idx").on(table.chamber, table.slug),
-}));
+export const committees = pgTable(
+  "committees",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    chamber: chamberEnum("chamber").notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    slug: varchar("slug", { length: 255 }).notNull(),
+    sourceUrl: text("source_url"),
+    parentCommitteeId: varchar("parent_committee_id", { length: 255 }), // For subcommittees
+    sortOrder: varchar("sort_order", { length: 10 }), // For stable ordering
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    chamberSlugUnique: uniqueIndex("committee_chamber_slug_idx").on(
+      table.chamber,
+      table.slug,
+    ),
+  }),
+);
 
 // Committee memberships table - links officials to committees with roles
 export const committeeMemberships = pgTable("committee_memberships", {
@@ -195,8 +244,10 @@ export const committeeMemberships = pgTable("committee_memberships", {
   committeeId: varchar("committee_id", { length: 255 })
     .notNull()
     .references(() => committees.id, { onDelete: "cascade" }),
-  officialPublicId: varchar("official_public_id", { length: 255 })
-    .references(() => officialPublic.id, { onDelete: "set null" }),
+  officialPublicId: varchar("official_public_id", { length: 255 }).references(
+    () => officialPublic.id,
+    { onDelete: "set null" },
+  ),
   // Fallback matching fields when official isn't directly linkable
   memberName: varchar("member_name", { length: 255 }).notNull(),
   roleTitle: varchar("role_title", { length: 100 }),
@@ -224,12 +275,16 @@ export const committeeRefreshState = pgTable("committee_refresh_state", {
 export type Committee = typeof committees.$inferSelect;
 export type InsertCommittee = typeof committees.$inferInsert;
 export type CommitteeMembership = typeof committeeMemberships.$inferSelect;
-export type InsertCommitteeMembership = typeof committeeMemberships.$inferInsert;
+export type InsertCommitteeMembership =
+  typeof committeeMemberships.$inferInsert;
 export type CommitteeRefreshState = typeof committeeRefreshState.$inferSelect;
 
 // Merged official type for API responses
 export interface MergedOfficial extends OfficialPublic {
-  private?: Omit<OfficialPrivate, 'id' | 'officialPublicId' | 'personId'> | null;
+  private?: Omit<
+    OfficialPrivate,
+    "id" | "officialPublicId" | "personId"
+  > | null;
   isVacant?: boolean;
   person?: Person | null;
 }
@@ -251,7 +306,7 @@ export const OTHER_TX_ROLES = [
   "Secretary of State",
 ] as const;
 
-export type OtherTxRole = typeof OTHER_TX_ROLES[number];
+export type OtherTxRole = (typeof OTHER_TX_ROLES)[number];
 
 // Insert schemas for validation
 export const insertOfficialPublicSchema = createInsertSchema(officialPublic);
@@ -273,69 +328,103 @@ export type UpdateOfficialPrivate = z.infer<typeof updateOfficialPrivateSchema>;
 
 // ── Prayer System ──
 
-export const prayerStatusEnum = pgEnum("prayer_status", ["OPEN", "ANSWERED", "ARCHIVED"]);
+export const prayerStatusEnum = pgEnum("prayer_status", [
+  "OPEN",
+  "ANSWERED",
+  "ARCHIVED",
+]);
 
-export const prayerCategories = pgTable("prayer_categories", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
-  name: varchar("name", { length: 255 }).notNull(),
-  sortOrder: integer("sort_order").default(0).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  userNameUnique: uniqueIndex("prayer_categories_user_name_idx").on(table.userId, table.name),
-}));
+export const prayerCategories = pgTable(
+  "prayer_categories",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+    name: varchar("name", { length: 255 }).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userNameUnique: uniqueIndex("prayer_categories_user_name_idx").on(
+      table.userId,
+      table.name,
+    ),
+  }),
+);
 
-export const prayers = pgTable("prayers", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
-  title: varchar("title", { length: 500 }).notNull(),
-  body: text("body").notNull(),
-  status: prayerStatusEnum("status").default("OPEN").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  answeredAt: timestamp("answered_at"),
-  archivedAt: timestamp("archived_at"),
-  answerNote: text("answer_note"),
-  categoryId: varchar("category_id", { length: 255 })
-    .references(() => prayerCategories.id, { onDelete: "set null" }),
-  officialIds: json("official_ids").$type<string[]>().default([]),
-  customPeopleNames: json("custom_people_names").$type<string[]>().default([]),
-  pinnedDaily: boolean("pinned_daily").default(false).notNull(),
-  priority: integer("priority").default(0).notNull(),
-  lastShownAt: timestamp("last_shown_at"),
-  lastPrayedAt: timestamp("last_prayed_at"),
-  eventDate: timestamp("event_date"),
-  autoAfterEventAction: varchar("auto_after_event_action", { length: 20 }).default("none").notNull(),
-  autoAfterEventDaysOffset: integer("auto_after_event_days_offset").default(0).notNull(),
-}, (table) => ({
-  userStatusIdx: index("prayers_user_status_idx").on(table.userId, table.status),
-}));
+export const prayers = pgTable(
+  "prayers",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+    title: varchar("title", { length: 500 }).notNull(),
+    body: text("body").notNull(),
+    status: prayerStatusEnum("status").default("OPEN").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    answeredAt: timestamp("answered_at"),
+    archivedAt: timestamp("archived_at"),
+    answerNote: text("answer_note"),
+    categoryId: varchar("category_id", { length: 255 }).references(
+      () => prayerCategories.id,
+      { onDelete: "set null" },
+    ),
+    officialIds: json("official_ids").$type<string[]>().default([]),
+    customPeopleNames: json("custom_people_names")
+      .$type<string[]>()
+      .default([]),
+    pinnedDaily: boolean("pinned_daily").default(false).notNull(),
+    priority: integer("priority").default(0).notNull(),
+    lastShownAt: timestamp("last_shown_at"),
+    lastPrayedAt: timestamp("last_prayed_at"),
+    eventDate: timestamp("event_date"),
+    autoAfterEventAction: varchar("auto_after_event_action", { length: 20 })
+      .default("none")
+      .notNull(),
+    autoAfterEventDaysOffset: integer("auto_after_event_days_offset")
+      .default(0)
+      .notNull(),
+  },
+  (table) => ({
+    userStatusIdx: index("prayers_user_status_idx").on(
+      table.userId,
+      table.status,
+    ),
+  }),
+);
 
-export const dailyPrayerPicks = pgTable("daily_prayer_picks", {
-  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
-  dateKey: varchar("date_key", { length: 10 }).notNull(),
-  prayerIds: json("prayer_ids").$type<string[]>().notNull(),
-  generatedAt: timestamp("generated_at").defaultNow().notNull(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.userId, table.dateKey] }),
-}));
+export const dailyPrayerPicks = pgTable(
+  "daily_prayer_picks",
+  {
+    userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+    dateKey: varchar("date_key", { length: 10 }).notNull(),
+    prayerIds: json("prayer_ids").$type<string[]>().notNull(),
+    generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.dateKey] }),
+  }),
+);
 
-export const prayerStreak = pgTable("prayer_streak", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
-  currentStreak: integer("current_streak").default(0).notNull(),
-  lastCompletedDateKey: varchar("last_completed_date_key", { length: 10 }),
-  longestStreak: integer("longest_streak").default(0).notNull(),
-}, (table) => ({
-  userIdUnique: uniqueIndex("prayer_streak_user_id_idx").on(table.userId),
-}));
+export const prayerStreak = pgTable(
+  "prayer_streak",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+    currentStreak: integer("current_streak").default(0).notNull(),
+    lastCompletedDateKey: varchar("last_completed_date_key", { length: 10 }),
+    longestStreak: integer("longest_streak").default(0).notNull(),
+  },
+  (table) => ({
+    userIdUnique: uniqueIndex("prayer_streak_user_id_idx").on(table.userId),
+  }),
+);
 
 export const appSettings = pgTable("app_settings", {
   id: varchar("id")
@@ -424,41 +513,57 @@ export const notificationPrefEnum = pgEnum("notification_pref_enum", [
 ]);
 
 // Bills table – reused by agenda items, bill_actions, and subscriptions
-export const bills = pgTable("bills", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  billNumber: varchar("bill_number", { length: 30 }).notNull(),
-  legSession: varchar("leg_session", { length: 10 }).notNull(),
-  caption: text("caption"),
-  sourceUrl: text("source_url"),
-  externalId: varchar("external_id", { length: 100 }).unique(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  billNumberSessionIdx: uniqueIndex("bills_number_session_idx").on(table.billNumber, table.legSession),
-}));
+export const bills = pgTable(
+  "bills",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    billNumber: varchar("bill_number", { length: 30 }).notNull(),
+    legSession: varchar("leg_session", { length: 10 }).notNull(),
+    caption: text("caption"),
+    sourceUrl: text("source_url"),
+    externalId: varchar("external_id", { length: 100 }).unique(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    billNumberSessionIdx: uniqueIndex("bills_number_session_idx").on(
+      table.billNumber,
+      table.legSession,
+    ),
+  }),
+);
 
 // Bill actions (referral history, votes, amendments, etc.)
-export const billActions = pgTable("bill_actions", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  billId: varchar("bill_id", { length: 255 })
-    .notNull()
-    .references(() => bills.id, { onDelete: "cascade" }),
-  actionAt: timestamp("action_at"),
-  actionText: text("action_text").notNull(),
-  parsedActionType: varchar("parsed_action_type", { length: 50 }),
-  committeeId: varchar("committee_id", { length: 255 })
-    .references(() => committees.id, { onDelete: "set null" }),
-  chamber: varchar("chamber", { length: 50 }),
-  sourceUrl: text("source_url"),
-  externalId: varchar("external_id", { length: 100 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  billActionIdx: index("bill_actions_bill_action_at_idx").on(table.billId, table.actionAt),
-}));
+export const billActions = pgTable(
+  "bill_actions",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    billId: varchar("bill_id", { length: 255 })
+      .notNull()
+      .references(() => bills.id, { onDelete: "cascade" }),
+    actionAt: timestamp("action_at"),
+    actionText: text("action_text").notNull(),
+    parsedActionType: varchar("parsed_action_type", { length: 50 }),
+    committeeId: varchar("committee_id", { length: 255 }).references(
+      () => committees.id,
+      { onDelete: "set null" },
+    ),
+    chamber: varchar("chamber", { length: 50 }),
+    sourceUrl: text("source_url"),
+    externalId: varchar("external_id", { length: 100 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    billActionIdx: index("bill_actions_bill_action_at_idx").on(
+      table.billId,
+      table.actionAt,
+    ),
+  }),
+);
 
 // RSS / polling feeds
 export const rssFeeds = pgTable("rss_feeds", {
@@ -482,23 +587,30 @@ export const rssFeeds = pgTable("rss_feeds", {
 });
 
 // Individual RSS / polled items
-export const rssItems = pgTable("rss_items", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  feedId: varchar("feed_id", { length: 255 })
-    .notNull()
-    .references(() => rssFeeds.id, { onDelete: "cascade" }),
-  guid: text("guid").notNull(),
-  title: text("title").notNull(),
-  link: text("link").notNull(),
-  summary: text("summary"),
-  publishedAt: timestamp("published_at"),
-  fingerprint: text("fingerprint").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  feedGuidIdx: uniqueIndex("rss_items_feed_guid_idx").on(table.feedId, table.guid),
-}));
+export const rssItems = pgTable(
+  "rss_items",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    feedId: varchar("feed_id", { length: 255 })
+      .notNull()
+      .references(() => rssFeeds.id, { onDelete: "cascade" }),
+    guid: text("guid").notNull(),
+    title: text("title").notNull(),
+    link: text("link").notNull(),
+    summary: text("summary"),
+    publishedAt: timestamp("published_at"),
+    fingerprint: text("fingerprint").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    feedGuidIdx: uniqueIndex("rss_items_feed_guid_idx").on(
+      table.feedId,
+      table.guid,
+    ),
+  }),
+);
 
 // User subscriptions (single user now, future-proof)
 export const userSubscriptions = pgTable("user_subscriptions", {
@@ -507,13 +619,18 @@ export const userSubscriptions = pgTable("user_subscriptions", {
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id", { length: 255 }).notNull().default("default"),
   type: subscriptionTypeEnum("type").notNull(),
-  committeeId: varchar("committee_id", { length: 255 })
-    .references(() => committees.id, { onDelete: "cascade" }),
-  billId: varchar("bill_id", { length: 255 })
-    .references(() => bills.id, { onDelete: "cascade" }),
+  committeeId: varchar("committee_id", { length: 255 }).references(
+    () => committees.id,
+    { onDelete: "cascade" },
+  ),
+  billId: varchar("bill_id", { length: 255 }).references(() => bills.id, {
+    onDelete: "cascade",
+  }),
   chamber: varchar("chamber", { length: 50 }),
-  officialPublicId: varchar("official_public_id", { length: 255 })
-    .references(() => officialPublic.id, { onDelete: "cascade" }),
+  officialPublicId: varchar("official_public_id", { length: 255 }).references(
+    () => officialPublic.id,
+    { onDelete: "cascade" },
+  ),
   notificationPreference: notificationPrefEnum("notification_preference")
     .default("IN_APP_ONLY")
     .notNull(),
@@ -521,47 +638,65 @@ export const userSubscriptions = pgTable("user_subscriptions", {
 });
 
 // In-app alerts
-export const alerts = pgTable("alerts", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: varchar("user_id", { length: 255 }).notNull().default("default"),
-  alertType: alertTypeEnum("alert_type").notNull(),
-  entityType: varchar("entity_type", { length: 50 }).notNull(), // rss_item, event, bill, committee
-  entityId: text("entity_id"),
-  title: text("title").notNull(),
-  body: text("body").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  readAt: timestamp("read_at"),
-}, (table) => ({
-  alertsUserReadIdx: index("alerts_user_read_at_idx").on(table.userId, table.readAt),
-}));
+export const alerts = pgTable(
+  "alerts",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: varchar("user_id", { length: 255 }).notNull().default("default"),
+    alertType: alertTypeEnum("alert_type").notNull(),
+    entityType: varchar("entity_type", { length: 50 }).notNull(), // rss_item, event, bill, committee
+    entityId: text("entity_id"),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    readAt: timestamp("read_at"),
+  },
+  (table) => ({
+    alertsUserReadIdx: index("alerts_user_read_at_idx").on(
+      table.userId,
+      table.readAt,
+    ),
+  }),
+);
 
 // Core legislative events (hearings, floor calendars, session days)
-export const legislativeEvents = pgTable("legislative_events", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  source: varchar("source", { length: 20 }).default("TLO").notNull(),
-  eventType: eventTypeEnum("event_type").notNull(),
-  chamber: varchar("chamber", { length: 50 }),
-  committeeId: varchar("committee_id", { length: 255 })
-    .references(() => committees.id, { onDelete: "set null" }),
-  title: text("title").notNull(),
-  startsAt: timestamp("starts_at"),
-  endsAt: timestamp("ends_at"),
-  timezone: varchar("timezone", { length: 50 }).default("America/Chicago").notNull(),
-  location: text("location"),
-  status: eventStatusEnum("status").default("POSTED").notNull(),
-  sourceUrl: text("source_url").notNull(),
-  externalId: varchar("external_id", { length: 100 }).unique(),
-  fingerprint: text("fingerprint").notNull(),
-  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  committeeStartsAtIdx: index("leg_events_committee_starts_at_idx").on(table.committeeId, table.startsAt),
-}));
+export const legislativeEvents = pgTable(
+  "legislative_events",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    source: varchar("source", { length: 20 }).default("TLO").notNull(),
+    eventType: eventTypeEnum("event_type").notNull(),
+    chamber: varchar("chamber", { length: 50 }),
+    committeeId: varchar("committee_id", { length: 255 }).references(
+      () => committees.id,
+      { onDelete: "set null" },
+    ),
+    title: text("title").notNull(),
+    startsAt: timestamp("starts_at"),
+    endsAt: timestamp("ends_at"),
+    timezone: varchar("timezone", { length: 50 })
+      .default("America/Chicago")
+      .notNull(),
+    location: text("location"),
+    status: eventStatusEnum("status").default("POSTED").notNull(),
+    sourceUrl: text("source_url").notNull(),
+    externalId: varchar("external_id", { length: 100 }).unique(),
+    fingerprint: text("fingerprint").notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    committeeStartsAtIdx: index("leg_events_committee_starts_at_idx").on(
+      table.committeeId,
+      table.startsAt,
+    ),
+  }),
+);
 
 // Hearing details (one per event)
 export const hearingDetails = pgTable("hearing_details", {
@@ -584,8 +719,9 @@ export const hearingAgendaItems = pgTable("hearing_agenda_items", {
   eventId: varchar("event_id", { length: 255 })
     .notNull()
     .references(() => legislativeEvents.id, { onDelete: "cascade" }),
-  billId: varchar("bill_id", { length: 255 })
-    .references(() => bills.id, { onDelete: "set null" }),
+  billId: varchar("bill_id", { length: 255 }).references(() => bills.id, {
+    onDelete: "set null",
+  }),
   billNumber: varchar("bill_number", { length: 30 }), // denormalized for quick display
   itemText: text("item_text").notNull(),
   sortOrder: integer("sort_order").notNull(),
@@ -602,8 +738,9 @@ export const witnesses = pgTable("witnesses", {
   fullName: text("full_name").notNull(),
   organization: text("organization"),
   position: text("position"), // FOR, AGAINST, ON
-  billId: varchar("bill_id", { length: 255 })
-    .references(() => bills.id, { onDelete: "set null" }),
+  billId: varchar("bill_id", { length: 255 }).references(() => bills.id, {
+    onDelete: "set null",
+  }),
   sortOrder: integer("sort_order").notNull(),
 });
 

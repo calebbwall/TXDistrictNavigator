@@ -10,14 +10,34 @@ interface HometownResult {
 
 function transliterate(str: string): string {
   const map: Record<string, string> = {
-    'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a', 'ã': 'a',
-    'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
-    'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
-    'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o', 'õ': 'o',
-    'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
-    'ñ': 'n', 'ç': 'c', 'ý': 'y', 'ÿ': 'y',
+    á: "a",
+    à: "a",
+    ä: "a",
+    â: "a",
+    ã: "a",
+    é: "e",
+    è: "e",
+    ë: "e",
+    ê: "e",
+    í: "i",
+    ì: "i",
+    ï: "i",
+    î: "i",
+    ó: "o",
+    ò: "o",
+    ö: "o",
+    ô: "o",
+    õ: "o",
+    ú: "u",
+    ù: "u",
+    ü: "u",
+    û: "u",
+    ñ: "n",
+    ç: "c",
+    ý: "y",
+    ÿ: "y",
   };
-  return str.replace(/[^\x00-\x7F]/g, ch => map[ch] || '');
+  return str.replace(/[^\x00-\x7F]/g, (ch) => map[ch] || "");
 }
 
 function nameToSlug(fullName: string): string {
@@ -30,117 +50,125 @@ function nameToSlug(fullName: string): string {
 }
 
 function splitInitials(name: string): string {
-  return name.replace(/([A-Z])(?=[A-Z])/g, '$1 ');
+  return name.replace(/([A-Z])(?=[A-Z])/g, "$1 ");
 }
 
 const SLUG_OVERRIDES: Record<string, string> = {
-  'Alma Allen': 'alma-a-allen',
-  'Angie Button': 'angie-chen-button',
-  'Armando Walle': 'armando-lucio-walle',
-  'Jon Rosenthal': 'jon-e-rosenthal',
-  'Jeff Barry': 'jeffrey-barry',
-  'Vincent Perez': 'vince-perez',
-  'Rhetta Bowers': 'rhetta-andrews-bowers',
-  'Borris Miles': 'borris-l-miles',
-  'César Blanco': 'cesar-j-blanco',
-  'Juan Hinojosa': 'juan-chuy-hinojosa',
-  'Erin Gámez': 'erin-elizabeth-gamez',
-  'Armando Martinez': 'armando-mando-martinez',
-  'Lulu Flores': 'maria-luisa-flores',
-  'Liz Campos': 'elizabeth-liz-campos',
-  'Sam Harless': 'e-sam-harless',
-  'John Bucy III': 'john-h-bucy-iii',
-  'Lauren A Simmons': 'lauren-ashley-simmons',
-  'Steve Toth': 'steve-toth',
-  'Shelley Luther': 'shelley-luther',
+  "Alma Allen": "alma-a-allen",
+  "Angie Button": "angie-chen-button",
+  "Armando Walle": "armando-lucio-walle",
+  "Jon Rosenthal": "jon-e-rosenthal",
+  "Jeff Barry": "jeffrey-barry",
+  "Vincent Perez": "vince-perez",
+  "Rhetta Bowers": "rhetta-andrews-bowers",
+  "Borris Miles": "borris-l-miles",
+  "César Blanco": "cesar-j-blanco",
+  "Juan Hinojosa": "juan-chuy-hinojosa",
+  "Erin Gámez": "erin-elizabeth-gamez",
+  "Armando Martinez": "armando-mando-martinez",
+  "Lulu Flores": "maria-luisa-flores",
+  "Liz Campos": "elizabeth-liz-campos",
+  "Sam Harless": "e-sam-harless",
+  "John Bucy III": "john-h-bucy-iii",
+  "Lauren A Simmons": "lauren-ashley-simmons",
+  "Steve Toth": "steve-toth",
+  "Shelley Luther": "shelley-luther",
 };
 
 const FIRST_NAME_ALTERNATES: Record<string, string[]> = {
-  'jeff': ['jeffrey'],
-  'jeffrey': ['jeff'],
-  'mike': ['michael'],
-  'michael': ['mike'],
-  'sam': ['samuel'],
-  'samuel': ['sam'],
-  'bob': ['robert'],
-  'robert': ['bob'],
-  'bill': ['william'],
-  'william': ['bill'],
-  'jim': ['james'],
-  'james': ['jim'],
-  'tom': ['thomas'],
-  'thomas': ['tom'],
-  'vince': ['vincent'],
-  'vincent': ['vince'],
-  'jon': ['jonathan'],
-  'jonathan': ['jon'],
-  'liz': ['elizabeth'],
-  'elizabeth': ['liz'],
-  'don': ['donald'],
-  'donald': ['don'],
-  'ron': ['ronald'],
-  'ronald': ['ron'],
-  'dan': ['daniel'],
-  'daniel': ['dan'],
+  jeff: ["jeffrey"],
+  jeffrey: ["jeff"],
+  mike: ["michael"],
+  michael: ["mike"],
+  sam: ["samuel"],
+  samuel: ["sam"],
+  bob: ["robert"],
+  robert: ["bob"],
+  bill: ["william"],
+  william: ["bill"],
+  jim: ["james"],
+  james: ["jim"],
+  tom: ["thomas"],
+  thomas: ["tom"],
+  vince: ["vincent"],
+  vincent: ["vince"],
+  jon: ["jonathan"],
+  jonathan: ["jon"],
+  liz: ["elizabeth"],
+  elizabeth: ["liz"],
+  don: ["donald"],
+  donald: ["don"],
+  ron: ["ronald"],
+  ronald: ["ron"],
+  dan: ["daniel"],
+  daniel: ["dan"],
 };
 
 function generateSlugVariants(fullName: string): string[] {
-  let cleanName = fullName.replace(/\./g, '').trim();
-  
+  let cleanName = fullName.replace(/\./g, "").trim();
+
   if (/^"[^"]+"\s*$/.test(cleanName)) {
-    cleanName = cleanName.replace(/"/g, '').trim();
+    cleanName = cleanName.replace(/"/g, "").trim();
   }
-  
-  const override = SLUG_OVERRIDES[cleanName] || SLUG_OVERRIDES[fullName.replace(/"/g, '').replace(/\./g, '').trim()];
+
+  const override =
+    SLUG_OVERRIDES[cleanName] ||
+    SLUG_OVERRIDES[fullName.replace(/"/g, "").replace(/\./g, "").trim()];
   if (override) {
     return [override];
   }
-  
+
   const commaMatch = cleanName.match(/^([^,]+),\s*(.+)$/);
   if (commaMatch) {
     let lastName = commaMatch[1].trim();
     let restParts = commaMatch[2].trim();
     const restSuffixMatch = restParts.match(/\s+(Jr|Sr|III|IV|II|V)\s*$/i);
-    let commaSuffix = '';
+    let commaSuffix = "";
     if (restSuffixMatch) {
       commaSuffix = restSuffixMatch[1];
-      restParts = restParts.replace(/\s+(Jr|Sr|III|IV|II|V)\s*$/i, '').trim();
+      restParts = restParts.replace(/\s+(Jr|Sr|III|IV|II|V)\s*$/i, "").trim();
     }
-    cleanName = commaSuffix ? `${restParts} ${lastName} ${commaSuffix}` : `${restParts} ${lastName}`;
-    const commaOverride = SLUG_OVERRIDES[cleanName] || SLUG_OVERRIDES[cleanName.replace(/"/g, '').trim()];
+    cleanName = commaSuffix
+      ? `${restParts} ${lastName} ${commaSuffix}`
+      : `${restParts} ${lastName}`;
+    const commaOverride =
+      SLUG_OVERRIDES[cleanName] ||
+      SLUG_OVERRIDES[cleanName.replace(/"/g, "").trim()];
     if (commaOverride) {
       return [commaOverride];
     }
   }
-  
+
   const nicknameMatch = cleanName.match(/"([^"]+)"/);
   const nickname = nicknameMatch ? nicknameMatch[1] : null;
-  cleanName = cleanName.replace(/"[^"]+"\s*/g, '').trim();
-  
+  cleanName = cleanName.replace(/"[^"]+"\s*/g, "").trim();
+
   const suffixMatch = cleanName.match(/,?\s*(Jr|Sr|III|IV|II|V)\.?\s*$/i);
   const suffix = suffixMatch ? suffixMatch[1].toLowerCase() : null;
-  const nameWithoutSuffix = cleanName.replace(/,?\s*(Jr|Sr|III|IV|II|V)\.?\s*$/i, '').trim();
-  
+  const nameWithoutSuffix = cleanName
+    .replace(/,?\s*(Jr|Sr|III|IV|II|V)\.?\s*$/i, "")
+    .trim();
+
   const parts = nameWithoutSuffix.split(/\s+/);
   const slugs: string[] = [];
-  
+
   if (parts.length >= 2) {
     const firstName = parts[0];
     const lastName = parts[parts.length - 1];
     const middleParts = parts.slice(1, -1);
-    
+
     const baseSlug = nameToSlug(`${firstName} ${lastName}`);
     slugs.push(baseSlug);
-    
+
     if (suffix) {
       slugs.push(nameToSlug(`${firstName} ${lastName} ${suffix}`));
     }
-    
+
     slugs.push(nameToSlug(`${firstName} ${lastName} jr`));
     slugs.push(nameToSlug(`${firstName} ${lastName} iii`));
     slugs.push(nameToSlug(`${firstName} ${lastName} ii`));
     slugs.push(nameToSlug(`${firstName} ${lastName} sr`));
-    
+
     const altNames = FIRST_NAME_ALTERNATES[firstName.toLowerCase()] || [];
     for (const alt of altNames) {
       slugs.push(nameToSlug(`${alt} ${lastName}`));
@@ -148,7 +176,7 @@ function generateSlugVariants(fullName: string): string[] {
         slugs.push(nameToSlug(`${alt} ${lastName} ${suffix}`));
       }
     }
-    
+
     if (/^[A-Z]{2,3}$/.test(firstName)) {
       const splitFirst = splitInitials(firstName);
       slugs.push(nameToSlug(`${splitFirst} ${lastName}`));
@@ -156,54 +184,58 @@ function generateSlugVariants(fullName: string): string[] {
         slugs.push(nameToSlug(`${splitFirst} ${lastName} ${suffix}`));
       }
     }
-    
+
     if (nickname) {
       slugs.push(nameToSlug(`${nickname} ${lastName}`));
       if (suffix) {
         slugs.push(nameToSlug(`${nickname} ${lastName} ${suffix}`));
       }
       if (middleParts.length > 0) {
-        slugs.push(nameToSlug(`${nickname} ${middleParts.join(' ')} ${lastName}`));
+        slugs.push(
+          nameToSlug(`${nickname} ${middleParts.join(" ")} ${lastName}`),
+        );
       }
     }
-    
+
     if (middleParts.length > 0) {
-      slugs.push(nameToSlug(parts.join(' ')));
+      slugs.push(nameToSlug(parts.join(" ")));
       if (suffix) {
-        slugs.push(nameToSlug(`${parts.join(' ')} ${suffix}`));
+        slugs.push(nameToSlug(`${parts.join(" ")} ${suffix}`));
       }
-      
+
       for (const middle of middleParts) {
         slugs.push(nameToSlug(`${firstName} ${middle} ${lastName}`));
       }
-      
+
       if (middleParts.length === 1 && middleParts[0].length === 1) {
         const expandedInitial = splitInitials(middleParts[0]);
         slugs.push(nameToSlug(`${firstName} ${expandedInitial} ${lastName}`));
       }
     }
-    
+
     if (/^[A-Z]$/.test(firstName) && middleParts.length > 0) {
       slugs.push(nameToSlug(`${middleParts[0]} ${lastName}`));
     }
   } else {
     slugs.push(nameToSlug(fullName));
   }
-  
-  return [...new Set(slugs.filter(s => s.length > 0))];
+
+  return [...new Set(slugs.filter((s) => s.length > 0))];
 }
 
 function parseHometownFromHtml(html: string): string | null {
-  const normalizedHtml = html.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ');
-  const hometownMatch = normalizedHtml.match(/<td>\s*<strong>Hometown<\/strong>\s*<\/td>\s*<td>([^<]+)<\/td>/i);
-  
+  const normalizedHtml = html.replace(/\r?\n/g, " ").replace(/\s+/g, " ");
+  const hometownMatch = normalizedHtml.match(
+    /<td>\s*<strong>Hometown<\/strong>\s*<\/td>\s*<td>([^<]+)<\/td>/i,
+  );
+
   if (hometownMatch && hometownMatch[1]) {
     const hometown = hometownMatch[1].trim();
     if (hometown && hometown.length > 0 && hometown.toLowerCase() !== "n/a") {
       return hometown;
     }
   }
-  
+
   return null;
 }
 
@@ -215,53 +247,62 @@ function parseHeadshotFromHtml(html: string): string | null {
   return null;
 }
 
-export async function lookupHometownFromTexasTribune(fullName: string): Promise<HometownResult> {
+export async function lookupHometownFromTexasTribune(
+  fullName: string,
+): Promise<HometownResult> {
   const slugs = generateSlugVariants(fullName);
-  
-  console.log(`[TexasTribune] Looking up hometown for "${fullName}" with slugs:`, slugs);
-  
+
+  console.log(
+    `[TexasTribune] Looking up hometown for "${fullName}" with slugs:`,
+    slugs,
+  );
+
   for (const slug of slugs) {
     const url = `https://directory.texastribune.org/${slug}/`;
-    
+
     try {
       const response = await fetch(url, {
         headers: {
           "User-Agent": "TXDistrictNavigator/1.0 (civic-engagement-app)",
-          "Accept": "text/html",
+          Accept: "text/html",
         },
         redirect: "follow",
       });
-      
+
       if (!response.ok) {
         console.log(`[TexasTribune] ${slug}: ${response.status}`);
         continue;
       }
-      
+
       const html = await response.text();
-      
-      if (html.includes("Page not found") || html.includes("<title>404</title>")) {
+
+      if (
+        html.includes("Page not found") ||
+        html.includes("<title>404</title>")
+      ) {
         console.log(`[TexasTribune] ${slug}: Page not found`);
         continue;
       }
-      
+
       const hometown = parseHometownFromHtml(html);
-      
+
       if (hometown) {
         const formattedHometown = `${hometown}, TX`;
-        console.log(`[TexasTribune] Found hometown for "${fullName}": ${formattedHometown}`);
+        console.log(
+          `[TexasTribune] Found hometown for "${fullName}": ${formattedHometown}`,
+        );
         return {
           hometown: formattedHometown,
           success: true,
         };
       }
-      
+
       console.log(`[TexasTribune] ${slug}: No hometown field found`);
-      
     } catch (error) {
       console.log(`[TexasTribune] Error fetching ${slug}:`, error);
     }
   }
-  
+
   console.log(`[TexasTribune] No hometown found for "${fullName}"`);
   return {
     hometown: null,
@@ -276,36 +317,44 @@ interface HeadshotResult {
   error?: string;
 }
 
-export async function lookupHeadshotFromTexasTribune(fullName: string): Promise<HeadshotResult> {
+export async function lookupHeadshotFromTexasTribune(
+  fullName: string,
+): Promise<HeadshotResult> {
   const slugs = generateSlugVariants(fullName);
-  
+
   for (const slug of slugs) {
     const url = `https://directory.texastribune.org/${slug}/`;
-    
+
     try {
       const response = await fetch(url, {
         headers: {
           "User-Agent": "TXDistrictNavigator/1.0 (civic-engagement-app)",
-          "Accept": "text/html",
+          Accept: "text/html",
         },
         redirect: "follow",
       });
-      
+
       if (!response.ok) continue;
-      
+
       const html = await response.text();
-      if (html.includes("Page not found") || html.includes("<title>404</title>")) continue;
-      
+      if (
+        html.includes("Page not found") ||
+        html.includes("<title>404</title>")
+      )
+        continue;
+
       const photoUrl = parseHeadshotFromHtml(html);
       if (photoUrl) {
-        console.log(`[TexasTribune] Found headshot for "${fullName}": ${photoUrl}`);
+        console.log(
+          `[TexasTribune] Found headshot for "${fullName}": ${photoUrl}`,
+        );
         return { photoUrl, success: true };
       }
     } catch (error) {
       console.log(`[TexasTribune] Error fetching headshot ${slug}:`, error);
     }
   }
-  
+
   return { photoUrl: null, success: false, error: "Headshot not found" };
 }
 
@@ -321,7 +370,10 @@ export interface ContactInfoResult {
 }
 
 function cleanCellText(text: string): string {
-  return text.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  return text
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseOfficeSection(
@@ -351,17 +403,27 @@ function parseOfficeSection(
   return result;
 }
 
-function parseContactInfoFromHtml(html: string): Omit<ContactInfoResult, "success" | "error"> {
+function parseContactInfoFromHtml(
+  html: string,
+): Omit<ContactInfoResult, "success" | "error"> {
   const $ = cheerio.load(html);
 
-  const capitol = parseOfficeSection($, 'section[aria-labelledby="main-office-heading"]');
-  const district = parseOfficeSection($, 'section[aria-labelledby="district-office-heading"]');
+  const capitol = parseOfficeSection(
+    $,
+    'section[aria-labelledby="main-office-heading"]',
+  );
+  const district = parseOfficeSection(
+    $,
+    'section[aria-labelledby="district-office-heading"]',
+  );
 
-  const capitolAddress = capitol["mailing address"] || capitol["address"] || null;
+  const capitolAddress =
+    capitol["mailing address"] || capitol["address"] || null;
   const capitolPhone = capitol["phone"] || null;
   const capitolRoom = capitol["room"] || null;
   const capitolEmail = capitol["email"] || null;
-  const districtAddress = district["address"] || district["mailing address"] || null;
+  const districtAddress =
+    district["address"] || district["mailing address"] || null;
   const districtPhone = district["phone"] || null;
 
   return {
@@ -386,7 +448,7 @@ export async function lookupContactInfoFromTexasTribune(
       const response = await fetch(url, {
         headers: {
           "User-Agent": "TXDistrictNavigator/1.0 (civic-engagement-app)",
-          "Accept": "text/html",
+          Accept: "text/html",
         },
         redirect: "follow",
       });
@@ -394,7 +456,11 @@ export async function lookupContactInfoFromTexasTribune(
       if (!response.ok) continue;
 
       const html = await response.text();
-      if (html.includes("Page not found") || html.includes("<title>404</title>")) continue;
+      if (
+        html.includes("Page not found") ||
+        html.includes("<title>404</title>")
+      )
+        continue;
 
       const parsed = parseContactInfoFromHtml(html);
       const hasAny =

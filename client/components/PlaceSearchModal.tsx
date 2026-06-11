@@ -14,7 +14,11 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { getApiUrl } from "@/lib/query-client";
-import { getRecentPlaces, addRecentPlace, RecentPlaceEntry } from "@/lib/storage";
+import {
+  getRecentPlaces,
+  addRecentPlace,
+  RecentPlaceEntry,
+} from "@/lib/storage";
 import { Spacing, BorderRadius, Typography } from "@/constants/theme";
 
 export interface PlaceCandidate {
@@ -109,7 +113,7 @@ export function PlaceSearchModal({
       onSelectPlace(place);
       onClose();
     },
-    [onSelectPlace, onClose]
+    [onSelectPlace, onClose],
   );
 
   const handleSelectRecent = useCallback(
@@ -123,7 +127,7 @@ export function PlaceSearchModal({
       onSelectPlace(place);
       onClose();
     },
-    [onSelectPlace, onClose]
+    [onSelectPlace, onClose],
   );
 
   const renderPlaceItem = useCallback(
@@ -136,12 +140,16 @@ export function PlaceSearchModal({
           <View style={styles.placeInfo}>
             <ThemedText style={styles.placeName}>{item.name}</ThemedText>
             {item.county ? (
-              <ThemedText style={[styles.placeDetail, { color: theme.secondaryText }]}>
+              <ThemedText
+                style={[styles.placeDetail, { color: theme.secondaryText }]}
+              >
                 {item.county} County
               </ThemedText>
             ) : null}
             {item.population ? (
-              <ThemedText style={[styles.placeDetail, { color: theme.secondaryText }]}>
+              <ThemedText
+                style={[styles.placeDetail, { color: theme.secondaryText }]}
+              >
                 Pop. {item.population.toLocaleString()}
               </ThemedText>
             ) : null}
@@ -150,7 +158,7 @@ export function PlaceSearchModal({
         </Card>
       </Pressable>
     ),
-    [theme, handleSelectPlace]
+    [theme, handleSelectPlace],
   );
 
   const renderRecentItem = useCallback(
@@ -166,7 +174,9 @@ export function PlaceSearchModal({
               <ThemedText style={styles.placeName}>{item.name}</ThemedText>
             </View>
             {item.county ? (
-              <ThemedText style={[styles.placeDetail, { color: theme.secondaryText }]}>
+              <ThemedText
+                style={[styles.placeDetail, { color: theme.secondaryText }]}
+              >
                 {item.county} County
               </ThemedText>
             ) : null}
@@ -175,12 +185,13 @@ export function PlaceSearchModal({
         </Card>
       </Pressable>
     ),
-    [theme, handleSelectRecent]
+    [theme, handleSelectRecent],
   );
 
   const showRecents = !hasSearched && recentPlaces.length > 0;
   const showCandidates = hasSearched && candidates.length > 0;
-  const showEmpty = hasSearched && candidates.length === 0 && !loading && !error;
+  const showEmpty =
+    hasSearched && candidates.length === 0 && !loading && !error;
 
   return (
     <Modal
@@ -189,7 +200,9 @@ export function PlaceSearchModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={[styles.container, { backgroundColor: theme.backgroundDefault }]}>
+      <View
+        style={[styles.container, { backgroundColor: theme.backgroundDefault }]}
+      >
         <View style={styles.header}>
           <ThemedText style={styles.title}>Search Texas Place</ThemedText>
           <Pressable onPress={onClose} hitSlop={8}>
@@ -198,7 +211,15 @@ export function PlaceSearchModal({
         </View>
 
         <View style={styles.searchRow}>
-          <View style={[styles.searchInput, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}>
+          <View
+            style={[
+              styles.searchInput,
+              {
+                backgroundColor: theme.inputBackground,
+                borderColor: theme.border,
+              },
+            ]}
+          >
             <Feather name="search" size={18} color={theme.secondaryText} />
             <TextInput
               value={query}
@@ -212,14 +233,21 @@ export function PlaceSearchModal({
             />
             {query.length > 0 ? (
               <Pressable onPress={() => setQuery("")} hitSlop={8}>
-                <Feather name="x-circle" size={18} color={theme.secondaryText} />
+                <Feather
+                  name="x-circle"
+                  size={18}
+                  color={theme.secondaryText}
+                />
               </Pressable>
             ) : null}
           </View>
           <Pressable
             onPress={searchPlaces}
             disabled={loading}
-            style={[styles.searchButton, { backgroundColor: theme.primary, opacity: loading ? 0.6 : 1 }]}
+            style={[
+              styles.searchButton,
+              { backgroundColor: theme.primary, opacity: loading ? 0.6 : 1 },
+            ]}
           >
             {loading ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -240,7 +268,9 @@ export function PlaceSearchModal({
 
         {showRecents ? (
           <View style={styles.listContainer}>
-            <ThemedText style={[styles.sectionTitle, { color: theme.secondaryText }]}>
+            <ThemedText
+              style={[styles.sectionTitle, { color: theme.secondaryText }]}
+            >
               Recent Searches
             </ThemedText>
             <FlatList
@@ -248,22 +278,30 @@ export function PlaceSearchModal({
               keyExtractor={(item, i) => `${item.lat}-${item.lng}-${i}`}
               renderItem={renderRecentItem}
               contentContainerStyle={styles.listContent}
-              ItemSeparatorComponent={() => <View style={{ height: Spacing.xs }} />}
+              ItemSeparatorComponent={() => (
+                <View style={{ height: Spacing.xs }} />
+              )}
             />
           </View>
         ) : null}
 
         {showCandidates ? (
           <View style={styles.listContainer}>
-            <ThemedText style={[styles.sectionTitle, { color: theme.secondaryText }]}>
+            <ThemedText
+              style={[styles.sectionTitle, { color: theme.secondaryText }]}
+            >
               Select a Place ({candidates.length} found)
             </ThemedText>
             <FlatList
               data={candidates}
-              keyExtractor={(item, i) => `${item.geonameId || item.postalCode}-${i}`}
+              keyExtractor={(item, i) =>
+                `${item.geonameId || item.postalCode}-${i}`
+              }
               renderItem={renderPlaceItem}
               contentContainerStyle={styles.listContent}
-              ItemSeparatorComponent={() => <View style={{ height: Spacing.xs }} />}
+              ItemSeparatorComponent={() => (
+                <View style={{ height: Spacing.xs }} />
+              )}
             />
           </View>
         ) : null}
@@ -271,7 +309,9 @@ export function PlaceSearchModal({
         {showEmpty ? (
           <View style={styles.emptyContainer}>
             <Feather name="map-pin" size={40} color={theme.secondaryText} />
-            <ThemedText style={[styles.emptyText, { color: theme.secondaryText }]}>
+            <ThemedText
+              style={[styles.emptyText, { color: theme.secondaryText }]}
+            >
               No places found for "{query}"
             </ThemedText>
           </View>
@@ -280,7 +320,9 @@ export function PlaceSearchModal({
         {!hasSearched && recentPlaces.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Feather name="map" size={40} color={theme.secondaryText} />
-            <ThemedText style={[styles.emptyText, { color: theme.secondaryText }]}>
+            <ThemedText
+              style={[styles.emptyText, { color: theme.secondaryText }]}
+            >
               Enter a Texas city name or ZIP code to search
             </ThemedText>
           </View>
