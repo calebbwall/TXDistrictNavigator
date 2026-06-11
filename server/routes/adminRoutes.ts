@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { db } from "../db";
 import { officialPublic, refreshJobLog } from "@shared/schema";
 import { desc, eq, and, sql, or, inArray, isNull } from "drizzle-orm";
+import { secureCompare } from "../lib/secureCompare";
 import {
   checkAndRefreshIfChanged,
   getAllRefreshStates,
@@ -38,7 +39,7 @@ export function registerAdminRoutes(app: Express): void {
         });
       }
 
-      if (!providedToken || providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res
           .status(401)
           .json({ error: "Invalid or missing admin token" });
@@ -65,7 +66,7 @@ export function registerAdminRoutes(app: Express): void {
         });
       }
 
-      if (!providedToken || providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res
           .status(401)
           .json({ error: "Invalid or missing admin token" });
@@ -108,7 +109,7 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(503).json({ error: "Admin not configured" });
       }
 
-      if (!providedToken || providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res
           .status(401)
           .json({ error: "Invalid or missing admin token" });
@@ -122,8 +123,9 @@ export function registerAdminRoutes(app: Express): void {
       const isRefreshingGeoJSON = getIsRefreshingGeoJSON();
       const isRefreshingCommittees = getIsRefreshingCommittees();
 
-      const { listScraperAlerts, countActiveScraperAlerts } =
-        await import("../jobs/scraperAlerts");
+      const { listScraperAlerts, countActiveScraperAlerts } = await import(
+        "../jobs/scraperAlerts"
+      );
       const [scraperAlertsActive, scraperAlertsCount] = await Promise.all([
         listScraperAlerts({ limit: 25 }),
         countActiveScraperAlerts(),
@@ -160,7 +162,7 @@ export function registerAdminRoutes(app: Express): void {
         });
       }
 
-      if (!providedToken || providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res
           .status(401)
           .json({ error: "Invalid or missing admin token" });
@@ -206,7 +208,7 @@ export function registerAdminRoutes(app: Express): void {
         });
       }
 
-      if (!providedToken || providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res
           .status(401)
           .json({ error: "Invalid or missing admin token" });
@@ -275,7 +277,7 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(503).json({ error: "Admin not configured" });
       }
 
-      if (!providedToken || providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res
           .status(401)
           .json({ error: "Invalid or missing admin token" });
@@ -365,7 +367,7 @@ export function registerAdminRoutes(app: Express): void {
           .json({ error: "ADMIN_REFRESH_TOKEN not configured" });
       }
 
-      if (providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res.status(401).json({ error: "Invalid admin token" });
       }
 
@@ -394,7 +396,7 @@ export function registerAdminRoutes(app: Express): void {
   app.post("/admin/refresh/committees/reset", (req, res) => {
     const adminToken = process.env.ADMIN_REFRESH_TOKEN;
     const providedToken = req.headers["x-admin-token"];
-    if (!adminToken || providedToken !== adminToken) {
+    if (!adminToken || !secureCompare(providedToken, adminToken)) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     forceResetIsRefreshingCommittees();
@@ -407,7 +409,7 @@ export function registerAdminRoutes(app: Express): void {
 
   app.post("/admin/refresh/committees/backfill-missing", async (req, res) => {
     const token = req.headers["x-admin-token"];
-    if (token !== process.env.ADMIN_REFRESH_TOKEN) {
+    if (!secureCompare(token, process.env.ADMIN_REFRESH_TOKEN ?? "")) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     try {
@@ -430,7 +432,7 @@ export function registerAdminRoutes(app: Express): void {
           .json({ error: "ADMIN_REFRESH_TOKEN not configured" });
       }
 
-      if (providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res.status(401).json({ error: "Invalid admin token" });
       }
 
@@ -440,8 +442,9 @@ export function registerAdminRoutes(app: Express): void {
         `[Admin] Other TX Officials refresh triggered (force=${force})`,
       );
 
-      const { refreshOtherTexasOfficials } =
-        await import("../jobs/refreshOtherTexasOfficials");
+      const { refreshOtherTexasOfficials } = await import(
+        "../jobs/refreshOtherTexasOfficials"
+      );
       const result = await refreshOtherTexasOfficials({ force });
 
       res.json({
@@ -470,12 +473,13 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(503).json({ error: "Admin not configured" });
       }
 
-      if (providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res.status(401).json({ error: "Invalid admin token" });
       }
 
-      const { lookupHeadshotFromTexasTribune } =
-        await import("../lib/texasTribuneLookup");
+      const { lookupHeadshotFromTexasTribune } = await import(
+        "../lib/texasTribuneLookup"
+      );
 
       const officials = await db
         .select({
@@ -553,7 +557,7 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(503).json({ error: "Admin not configured" });
       }
 
-      if (providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res.status(401).json({ error: "Invalid admin token" });
       }
 
@@ -585,7 +589,7 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(503).json({ error: "Admin not configured" });
       }
 
-      if (providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res.status(401).json({ error: "Invalid admin token" });
       }
 
@@ -646,14 +650,15 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(503).json({ error: "Admin not configured" });
       }
 
-      if (!providedToken || providedToken !== adminToken) {
+      if (!secureCompare(providedToken, adminToken)) {
         return res
           .status(401)
           .json({ error: "Invalid or missing admin token" });
       }
 
-      const { getIdentityStats, getAllExplicitPersonLinks } =
-        await import("../lib/identityResolver");
+      const { getIdentityStats, getAllExplicitPersonLinks } = await import(
+        "../lib/identityResolver"
+      );
       const identityStats = await getIdentityStats();
       const explicitLinks = await getAllExplicitPersonLinks();
 
@@ -662,8 +667,9 @@ export function registerAdminRoutes(app: Express): void {
       const committeesStates = await getAllCommitteeRefreshStates();
       const schedulerStatus = getSchedulerStatus();
 
-      const { listScraperAlerts, countActiveScraperAlerts } =
-        await import("../jobs/scraperAlerts");
+      const { listScraperAlerts, countActiveScraperAlerts } = await import(
+        "../jobs/scraperAlerts"
+      );
       const [scraperAlertsActive, scraperAlertsCount] = await Promise.all([
         listScraperAlerts({ limit: 25 }),
         countActiveScraperAlerts(),
@@ -719,7 +725,7 @@ export function registerAdminRoutes(app: Express): void {
       const providedToken = req.headers["x-admin-token"];
       if (!adminToken)
         return res.status(503).json({ error: "Admin not configured" });
-      if (providedToken !== adminToken)
+      if (!secureCompare(providedToken, adminToken))
         return res.status(401).json({ error: "Invalid admin token" });
 
       const includeResolved = req.query.includeResolved === "true";
@@ -728,8 +734,9 @@ export function registerAdminRoutes(app: Express): void {
         500,
       );
 
-      const { listScraperAlerts, countActiveScraperAlerts } =
-        await import("../jobs/scraperAlerts");
+      const { listScraperAlerts, countActiveScraperAlerts } = await import(
+        "../jobs/scraperAlerts"
+      );
       const [alerts, activeCount] = await Promise.all([
         listScraperAlerts({ includeResolved, limit }),
         countActiveScraperAlerts(),
@@ -749,7 +756,7 @@ export function registerAdminRoutes(app: Express): void {
       const providedToken = req.headers["x-admin-token"];
       if (!adminToken)
         return res.status(503).json({ error: "Admin not configured" });
-      if (providedToken !== adminToken)
+      if (!secureCompare(providedToken, adminToken))
         return res.status(401).json({ error: "Invalid admin token" });
 
       const { resolveScraperAlert } = await import("../jobs/scraperAlerts");

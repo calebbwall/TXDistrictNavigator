@@ -10,6 +10,7 @@
 import type { Express, Request, Response } from "express";
 import crypto from "crypto";
 import { signUserToken } from "../middleware/userAuth";
+import { secureCompare } from "../lib/secureCompare";
 
 function requireAdminSecret(req: Request, res: Response): boolean {
   const secret = process.env.ADMIN_CRON_SECRET;
@@ -25,7 +26,7 @@ function requireAdminSecret(req: Request, res: Response): boolean {
       /^Bearer\s+/i,
       "",
     );
-  if (provided !== secret) {
+  if (!secureCompare(provided, secret)) {
     res.status(401).json({ error: "Unauthorized" });
     return false;
   }
