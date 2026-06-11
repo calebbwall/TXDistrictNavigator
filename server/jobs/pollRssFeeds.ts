@@ -19,6 +19,7 @@ import {
   type RssFeed,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { FETCH_TIMEOUT_SCRAPE_MS } from "../lib/httpTimeouts";
 import {
   refreshCommitteeHearings,
   refreshChamberUpcomingHearings,
@@ -57,7 +58,10 @@ async function conditionalFetch(feed: RssFeed): Promise<FetchResult> {
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await fetch(feed.url, { headers });
+      const res = await fetch(feed.url, {
+        headers,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SCRAPE_MS),
+      });
       const etag = res.headers.get("etag");
       const lastModified = res.headers.get("last-modified");
 

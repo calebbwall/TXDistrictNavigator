@@ -1,3 +1,5 @@
+import { FETCH_TIMEOUT_LOOKUP_MS } from "./lib/httpTimeouts";
+
 const GEONAMES_BASE = "http://api.geonames.org";
 
 export interface PlaceResult {
@@ -97,7 +99,9 @@ async function lookupZIP(
     `[GeoNames] ZIP lookup: ${GEONAMES_BASE}/postalCodeSearchJSON?postalcode=${cleanZip}&country=US&maxRows=5`,
   );
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LOOKUP_MS),
+  });
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
   }
@@ -145,7 +149,9 @@ async function lookupCity(
     `[GeoNames] City lookup: ${GEONAMES_BASE}/searchJSON?q=${encodeURIComponent(query)}&country=US&adminCode1=TX&featureClass=P&maxRows=5`,
   );
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LOOKUP_MS),
+  });
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
   }
@@ -277,7 +283,9 @@ async function lookupZIPMulti(
     `[GeoNames] ZIP multi lookup: ${GEONAMES_BASE}/postalCodeSearchJSON?postalcode=${cleanZip}&country=US&maxRows=${maxResults}`,
   );
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LOOKUP_MS),
+  });
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
   }
@@ -326,7 +334,9 @@ async function lookupCityMulti(
     `[GeoNames] City multi lookup: ${GEONAMES_BASE}/searchJSON?q=${encodeURIComponent(query)}&country=US&adminCode1=TX&featureClass=P&maxRows=${maxResults}`,
   );
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LOOKUP_MS),
+  });
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
   }

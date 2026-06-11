@@ -10,6 +10,7 @@
  * - Texas Court of Criminal Appeals: https://www.txcourts.gov/cca/about-the-court/judges/
  * - Secretary of State Bio: https://www.sos.state.tx.us/about/sosbio.shtml
  */
+import { FETCH_TIMEOUT_LARGE_MS } from "../lib/httpTimeouts";
 
 export interface OtherTexasOfficialData {
   roleTitle: string;
@@ -111,7 +112,7 @@ async function scrapeSupremeCourt(): Promise<OtherTexasOfficialData[]> {
   try {
     const response = await fetch(url, {
       headers: { "User-Agent": "TXDistrictNavigator/1.0" },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LARGE_MS),
     });
 
     if (!response.ok) {
@@ -204,7 +205,7 @@ async function scrapeCriminalAppeals(): Promise<OtherTexasOfficialData[]> {
   try {
     const response = await fetch(url, {
       headers: { "User-Agent": "TXDistrictNavigator/1.0" },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LARGE_MS),
     });
 
     if (!response.ok) {

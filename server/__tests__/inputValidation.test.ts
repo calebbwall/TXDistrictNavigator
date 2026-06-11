@@ -11,14 +11,14 @@
  *
  * Run with: npx tsx server/__tests__/inputValidation.test.ts
  */
-process.env.USER_TOKEN_SECRET =
-  process.env.USER_TOKEN_SECRET ?? "p2-test-user-secret-0123456789abcdef";
-delete process.env.GROQ_API_KEY;
-
 import express from "express";
 import type { Server } from "http";
 import { like } from "drizzle-orm";
 import { signUserToken } from "../middleware/userAuth";
+
+process.env.USER_TOKEN_SECRET =
+  process.env.USER_TOKEN_SECRET ?? "p2-test-user-secret-0123456789abcdef";
+delete process.env.GROQ_API_KEY;
 
 let passed = 0;
 let failed = 0;
@@ -109,7 +109,11 @@ async function testParseSearchValidation(): Promise<void> {
     { query: XSS },
     token,
   );
-  assertEqual(xss.status, 503, "XSS payload passes type checks → 503 (no Groq)");
+  assertEqual(
+    xss.status,
+    503,
+    "XSS payload passes type checks → 503 (no Groq)",
+  );
   assert(
     !JSON.stringify(xss.body).includes("<script>"),
     "response does not reflect the script payload",
@@ -233,7 +237,9 @@ async function testAskValidation(): Promise<void> {
 }
 
 async function testByDistrictsValidation(): Promise<void> {
-  console.log("\n[test] POST /api/officials/by-districts — validation & batching");
+  console.log(
+    "\n[test] POST /api/officials/by-districts — validation & batching",
+  );
 
   for (const [label, payload] of [
     ["missing districts", {}],
@@ -305,7 +311,9 @@ async function testByDistrictsValidation(): Promise<void> {
 }
 
 async function testCustomPeopleNamesRoundTrip(): Promise<void> {
-  console.log("\n[test] prayers customPeopleNames — client→server→client round-trip");
+  console.log(
+    "\n[test] prayers customPeopleNames — client→server→client round-trip",
+  );
   const token = freshToken();
 
   const names = ["Ann Richards", `O'Brien, \"Tex\"`, "李明", XSS];
@@ -326,11 +334,14 @@ async function testCustomPeopleNamesRoundTrip(): Promise<void> {
     "POST response echoes the exact array (incl. quotes, unicode, markup-as-data)",
   );
 
-  const fetched = await request("GET", "/api/prayers?limit=50", undefined, token);
-  assertEqual(fetched.status, 200, "GET /api/prayers succeeds");
-  const mine = (fetched.body as any[]).find(
-    (p) => p.id === created.body.id,
+  const fetched = await request(
+    "GET",
+    "/api/prayers?limit=50",
+    undefined,
+    token,
   );
+  assertEqual(fetched.status, 200, "GET /api/prayers succeeds");
+  const mine = (fetched.body as any[]).find((p) => p.id === created.body.id);
   assert(mine !== undefined, "created prayer is returned to its owner");
   assertEqual(
     JSON.stringify(mine?.customPeopleNames),

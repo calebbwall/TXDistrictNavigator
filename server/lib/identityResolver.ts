@@ -417,8 +417,10 @@ export async function resolveAllMissingPersonIds(): Promise<{
   }
 
   // 3. Batch-create persons that don't exist yet.
-  const toCreate: Array<{ fullNameCanonical: string; fullNameDisplay: string }> =
-    [];
+  const toCreate: Array<{
+    fullNameCanonical: string;
+    fullNameDisplay: string;
+  }> = [];
   const seenCanonical = new Set<string>();
   for (const official of officialsWithoutPerson) {
     if (linkByOfficial.has(official.id)) continue;

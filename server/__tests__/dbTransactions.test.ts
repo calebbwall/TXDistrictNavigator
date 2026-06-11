@@ -9,12 +9,7 @@
  * Run with: npx tsx server/__tests__/dbTransactions.test.ts
  */
 
-if (!process.env.DATABASE_URL) {
-  console.log("[dbTransactions.test] SKIPPED — DATABASE_URL is not set");
-  process.exit(0);
-}
-
-import { eq, and, like, inArray, sql } from "drizzle-orm";
+import { eq, like, inArray, sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import {
   committees,
@@ -31,6 +26,11 @@ import {
 } from "../../shared/schema";
 import { findOrCreateBill } from "../jobs/targetedRefresh";
 import { resolveAllMissingPersonIds } from "../lib/identityResolver";
+
+if (!process.env.DATABASE_URL) {
+  console.log("[dbTransactions.test] SKIPPED — DATABASE_URL is not set");
+  process.exit(0);
+}
 
 let passed = 0;
 let failed = 0;
@@ -59,7 +59,9 @@ async function cleanup(): Promise<void> {
   await db
     .delete(legislativeEvents)
     .where(like(legislativeEvents.externalId, `${MARK}%`));
-  await db.delete(committees).where(like(committees.slug, `${MARK.toLowerCase()}%`));
+  await db
+    .delete(committees)
+    .where(like(committees.slug, `${MARK.toLowerCase()}%`));
   await db.delete(bills).where(like(bills.billNumber, "HB99%"));
   await db
     .delete(officialPublic)
@@ -161,9 +163,11 @@ async function testHearingRefreshRollback(): Promise<void> {
     })
     .returning();
 
-  await db
-    .insert(hearingDetails)
-    .values({ eventId: event.id, noticeText: "original notice", witnessCount: 2 });
+  await db.insert(hearingDetails).values({
+    eventId: event.id,
+    noticeText: "original notice",
+    witnessCount: 2,
+  });
   await db.insert(hearingAgendaItems).values([
     { eventId: event.id, itemText: "HB 1 layout", sortOrder: 0 },
     { eventId: event.id, itemText: "HB 2 layout", sortOrder: 1 },

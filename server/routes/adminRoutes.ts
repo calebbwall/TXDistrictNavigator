@@ -3,6 +3,7 @@ import { db } from "../db";
 import { officialPublic, refreshJobLog } from "@shared/schema";
 import { desc, eq, and, sql, or, inArray, isNull } from "drizzle-orm";
 import { secureCompare } from "../lib/secureCompare";
+import { FETCH_TIMEOUT_EXTERNAL_MS } from "../lib/httpTimeouts";
 import {
   checkAndRefreshIfChanged,
   getAllRefreshStates,
@@ -232,7 +233,9 @@ export function registerAdminRoutes(app: Express): void {
       const results = await Promise.all(
         sources.map(async (source) => {
           try {
-            const response = await fetch(source.url);
+            const response = await fetch(source.url, {
+              signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTERNAL_MS),
+            });
             const data = (await response.json()) as {
               features?: Array<{ properties?: Record<string, unknown> }>;
             };
@@ -242,7 +245,9 @@ export function registerAdminRoutes(app: Express): void {
               "resultRecordCount=1",
               "returnCountOnly=true",
             );
-            const countResponse = await fetch(countUrl);
+            const countResponse = await fetch(countUrl, {
+              signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTERNAL_MS),
+            });
             const countData = (await countResponse.json()) as {
               count?: number;
             };

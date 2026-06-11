@@ -43,7 +43,9 @@ function legacyTodayDateKey(now: Date): string {
 }
 
 function testDateKeyDstTransitions(): void {
-  console.log("\n[test] zonedDateKey() — DST transition days (America/Chicago)");
+  console.log(
+    "\n[test] zonedDateKey() — DST transition days (America/Chicago)",
+  );
 
   // Spring forward: Mar 8 2026, 2:00 AM CST → 3:00 AM CDT.
   // 1:59 AM CST == 07:59 UTC

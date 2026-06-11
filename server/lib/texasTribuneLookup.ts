@@ -1,3 +1,4 @@
+import { FETCH_TIMEOUT_EXTERNAL_MS } from "./httpTimeouts";
 // @ts-ignore - node-fetch types not installed
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
@@ -267,6 +268,7 @@ export async function lookupHometownFromTexasTribune(
           Accept: "text/html",
         },
         redirect: "follow",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTERNAL_MS),
       });
 
       if (!response.ok) {
@@ -332,6 +334,7 @@ export async function lookupHeadshotFromTexasTribune(
           Accept: "text/html",
         },
         redirect: "follow",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTERNAL_MS),
       });
 
       if (!response.ok) continue;
@@ -451,6 +454,7 @@ export async function lookupContactInfoFromTexasTribune(
           Accept: "text/html",
         },
         redirect: "follow",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTERNAL_MS),
       });
 
       if (!response.ok) continue;

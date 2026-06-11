@@ -33,6 +33,7 @@ import {
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendPushToAll } from "../lib/expoPush";
 import { zonedWallTimeToUtc } from "../lib/timezone";
+import { FETCH_TIMEOUT_SCRAPE_MS } from "../lib/httpTimeouts";
 
 const TX_TIMEZONE = "America/Chicago";
 const MONTH_NAMES: Record<string, number> = {
@@ -62,6 +63,8 @@ export async function fetchWithRetry(
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await fetch(url, {
+        // Per-attempt timeout; callers may still pass their own signal.
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SCRAPE_MS),
         ...options,
         headers: {
           "User-Agent": "TXDistrictNavigator/1.0 (Legislative Data Sync)",

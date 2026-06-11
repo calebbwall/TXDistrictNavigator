@@ -8,6 +8,7 @@ import {
   type InsertOfficialPublic,
 } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { FETCH_TIMEOUT_SCRAPE_MS } from "../lib/httpTimeouts";
 
 import {
   fetchTexasHouseParties,
@@ -79,6 +80,8 @@ async function fetchWithRetry(
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetch(url, {
+        // Per-attempt timeout; callers may still pass their own signal.
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SCRAPE_MS),
         ...options,
         headers: {
           "User-Agent": "TexasDistrictsApp/1.0 (Official Data Sync)",

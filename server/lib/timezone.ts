@@ -36,7 +36,9 @@ export function zonedDateKey(
   }).format(now);
   if (offsetDays === 0) return formatted;
   const [y, m, d] = formatted.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
+  return new Date(Date.UTC(y, m - 1, d + offsetDays))
+    .toISOString()
+    .slice(0, 10);
 }
 
 function tzOffsetMs(date: Date, timeZone: string): number {

@@ -58,10 +58,12 @@ async function request(
 }
 
 async function testFailClosedWhenUnconfigured(): Promise<void> {
-  console.log("\n[test] admin endpoints fail closed when token is unconfigured");
+  console.log(
+    "\n[test] admin endpoints fail closed when token is unconfigured",
+  );
 
   delete process.env.ADMIN_REFRESH_TOKEN;
-  const endpoints: Array<[string, string]> = [
+  const endpoints: [string, string][] = [
     ["POST", "/api/refresh"],
     ["POST", "/admin/refresh/officials"],
     ["GET", "/admin/refresh/status"],
@@ -91,7 +93,7 @@ async function testFailClosedWhenUnconfigured(): Promise<void> {
     ["POST", "/admin/refresh/committees/backfill-missing"],
     ["POST", "/admin/refresh/committees/reset"],
     ["GET", "/admin/status"],
-  ] as Array<[string, string]>) {
+  ] as [string, string][]) {
     const { status } = await request(method, urlPath, "");
     assert(
       status === 401 || status === 500 || status === 503,
@@ -201,10 +203,26 @@ function testConstantTimeComparison(): void {
   );
 
   // Correctness alongside timing
-  assertEqual(secureCompare(matching, expected), true, "matching token accepted");
-  assertEqual(secureCompare(earlyMismatch, expected), false, "early mismatch rejected");
-  assertEqual(secureCompare(lateMismatch, expected), false, "late mismatch rejected");
-  assertEqual(secureCompare(shortToken, expected), false, "short token rejected");
+  assertEqual(
+    secureCompare(matching, expected),
+    true,
+    "matching token accepted",
+  );
+  assertEqual(
+    secureCompare(earlyMismatch, expected),
+    false,
+    "early mismatch rejected",
+  );
+  assertEqual(
+    secureCompare(lateMismatch, expected),
+    false,
+    "late mismatch rejected",
+  );
+  assertEqual(
+    secureCompare(shortToken, expected),
+    false,
+    "short token rejected",
+  );
 }
 
 function testStaticTokenComparisonAudit(): void {

@@ -12,6 +12,7 @@ import {
   type InsertAlert,
 } from "@shared/schema";
 import { sendPushToAll } from "../lib/expoPush";
+import { FETCH_TIMEOUT_SCRAPE_MS } from "../lib/httpTimeouts";
 import { eq, and, sql, ilike, isNotNull } from "drizzle-orm";
 
 // Unique advisory lock ID for committee refresh — prevents concurrent refreshes across instances
@@ -58,7 +59,7 @@ export function forceResetIsRefreshingCommittees(): void {
 async function fetchWithRetry(
   url: string,
   retries = 3,
-  timeoutMs = 20000,
+  timeoutMs = FETCH_TIMEOUT_SCRAPE_MS,
 ): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     const controller = new AbortController();

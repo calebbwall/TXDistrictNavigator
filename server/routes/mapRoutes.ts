@@ -13,6 +13,7 @@ import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { lookupPlace, lookupPlaceCandidates, getCacheStats } from "../geonames";
+import { FETCH_TIMEOUT_PROXY_MS } from "../lib/httpTimeouts";
 
 type SourceType = "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
 
@@ -334,12 +335,18 @@ export function registerMapRoutes(app: Express): void {
         return res.status(403).json({ error: "Domain not allowed" });
       }
 
+      // Hostname allowlisting alone still admits ftp:// etc., which fetch()
+      // rejects with an opaque 500. Only proxy web URLs.
+      if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+        return res.status(403).json({ error: "Protocol not allowed" });
+      }
+
       // redirect: "manual" — the allowlist above only validates the initial URL.
       // Following redirects would let an allowlisted host bounce this request to
       // an arbitrary (including internal) address, i.e. SSRF.
       const imageResponse = await fetch(url, {
         redirect: "manual",
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_PROXY_MS),
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -359,7 +366,7 @@ export function registerMapRoutes(app: Express): void {
         }
         const redirected = await fetch(new URL(location, url).toString(), {
           redirect: "manual",
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_PROXY_MS),
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
