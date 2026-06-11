@@ -197,7 +197,7 @@ export default function PrayerSettingsScreen() {
                 type="small"
                 style={{ color: theme.secondaryText, marginTop: 2 }}
               >
-                Automatically archive prayers after they've been answered
+                Automatically archive prayers after they&rsquo;ve been answered
               </ThemedText>
             </View>
             <Switch

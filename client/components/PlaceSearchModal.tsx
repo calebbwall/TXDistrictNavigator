@@ -312,7 +312,7 @@ export function PlaceSearchModal({
             <ThemedText
               style={[styles.emptyText, { color: theme.secondaryText }]}
             >
-              No places found for "{query}"
+              No places found for &ldquo;{query}&rdquo;
             </ThemedText>
           </View>
         ) : null}

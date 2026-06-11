@@ -34,12 +34,15 @@ import {
   type MileageEntry,
 } from "@/lib/storage";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
+import { toISODateString } from "@/utils/validation";
 
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
 type RoutePropType = RouteProp<ProfileStackParamList, "MileageEntry">;
 
 function getToday(): string {
-  return new Date().toISOString().split("T")[0];
+  // Local date, not UTC — toISOString() would roll to tomorrow's date
+  // during evening hours in US timezones.
+  return toISODateString(new Date());
 }
 
 async function copyToAppStorage(uri: string): Promise<string> {

@@ -64,6 +64,28 @@ function AlertsBell({ onPress }: { onPress: () => void }) {
   );
 }
 
+// Proper component so useTheme runs inside a mounted component rather than a
+// plain render callback (react-hooks/rules-of-hooks).
+function DashboardHeaderTitle() {
+  const { theme } = useTheme();
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: "America/Chicago",
+  });
+  return (
+    <View style={{ alignItems: "center" }}>
+      <Text style={{ fontWeight: "700", fontSize: 17, color: theme.text }}>
+        Legislative Calendar
+      </Text>
+      <Text style={{ fontSize: 12, color: theme.secondaryText, marginTop: 1 }}>
+        {today}
+      </Text>
+    </View>
+  );
+}
+
 export default function LegislativeStackNavigator() {
   const screenOptions = useScreenOptions();
 
@@ -82,35 +104,9 @@ export default function LegislativeStackNavigator() {
       <Stack.Screen
         name="LegislativeDashboard"
         component={LegislativeDashboardScreen}
-        options={({}) => ({
-          headerTitle: () => {
-            const { theme } = useTheme();
-            const today = new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-              timeZone: "America/Chicago",
-            });
-            return (
-              <View style={{ alignItems: "center" }}>
-                <Text
-                  style={{ fontWeight: "700", fontSize: 17, color: theme.text }}
-                >
-                  Legislative Calendar
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: theme.secondaryText,
-                    marginTop: 1,
-                  }}
-                >
-                  {today}
-                </Text>
-              </View>
-            );
-          },
-        })}
+        options={{
+          headerTitle: () => <DashboardHeaderTitle />,
+        }}
       />
       <Stack.Screen
         name="CommitteeBrowser"

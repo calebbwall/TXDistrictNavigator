@@ -1979,11 +1979,15 @@ export default function MapScreen() {
   const layerButtonScale = useSharedValue(1);
 
   useEffect(() => {
-    getOverlayPreferences().then((prefs) => {
-      console.log("[MapScreen] Loaded overlay preferences:", prefs);
-      setOverlays(prefs);
-      initialOverlaysRef.current = prefs;
-    });
+    getOverlayPreferences()
+      .then((prefs) => {
+        console.log("[MapScreen] Loaded overlay preferences:", prefs);
+        setOverlays(prefs);
+        initialOverlaysRef.current = prefs;
+      })
+      .catch((err) => {
+        console.error("[MapScreen] Failed to load overlay preferences:", err);
+      });
   }, []);
 
   // Geocode address using Nominatim (OpenStreetMap) - free, no API key needed
