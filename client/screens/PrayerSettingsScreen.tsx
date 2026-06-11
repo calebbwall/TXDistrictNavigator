@@ -41,11 +41,13 @@ export default function PrayerSettingsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const navigation = useNavigation<NativeStackNavigationProp<PrayerStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<PrayerStackParamList>>();
 
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState("08:00");
-  const [notificationsUnavailable, setNotificationsUnavailable] = useState(false);
+  const [notificationsUnavailable, setNotificationsUnavailable] =
+    useState(false);
 
   const { data: archiveSettings, isLoading } = useQuery<AutoArchiveSettings>({
     queryKey: ["/api/settings/auto-archive"],
@@ -56,7 +58,9 @@ export default function PrayerSettingsScreen() {
       await apiRequest("PUT", "/api/settings/auto-archive", settings);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings/auto-archive"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/settings/auto-archive"],
+      });
       showToast("Settings saved");
     },
     onError: (err: Error) => {
@@ -81,7 +85,7 @@ export default function PrayerSettingsScreen() {
       if (!archiveSettings) return;
       archiveMutation.mutate({ enabled, days: archiveSettings.days });
     },
-    [archiveSettings, archiveMutation]
+    [archiveSettings, archiveMutation],
   );
 
   const handleDaysChange = useCallback(
@@ -89,7 +93,7 @@ export default function PrayerSettingsScreen() {
       if (!archiveSettings) return;
       archiveMutation.mutate({ enabled: archiveSettings.enabled, days });
     },
-    [archiveSettings, archiveMutation]
+    [archiveSettings, archiveMutation],
   );
 
   const applyReminder = useCallback(async (enabled: boolean, time: string) => {
@@ -115,21 +119,34 @@ export default function PrayerSettingsScreen() {
     async (enabled: boolean) => {
       await applyReminder(enabled, reminderTime);
     },
-    [applyReminder, reminderTime]
+    [applyReminder, reminderTime],
   );
 
-  const handleTimeChange = useCallback(async (time: string) => {
-    setReminderTime(time);
-    await AsyncStorage.setItem("prayerReminderTime", time);
-    if (reminderEnabled) {
-      const [h, m] = time.split(":").map(Number);
-      await scheduleDailyPrayerReminder(h, m);
-    }
-  }, [reminderEnabled]);
+  const handleTimeChange = useCallback(
+    async (time: string) => {
+      setReminderTime(time);
+      await AsyncStorage.setItem("prayerReminderTime", time);
+      if (reminderEnabled) {
+        const [h, m] = time.split(":").map(Number);
+        await scheduleDailyPrayerReminder(h, m);
+      }
+    },
+    [reminderEnabled],
+  );
 
-  const timeOptions = ["06:00", "07:00", "08:00", "09:00", "12:00", "18:00", "21:00"];
+  const timeOptions = [
+    "06:00",
+    "07:00",
+    "08:00",
+    "09:00",
+    "12:00",
+    "18:00",
+    "21:00",
+  ];
 
-  const [exportStatus, setExportStatus] = useState<"ALL" | "OPEN" | "ANSWERED">("ALL");
+  const [exportStatus, setExportStatus] = useState<"ALL" | "OPEN" | "ANSWERED">(
+    "ALL",
+  );
   const [exportIncludeBody, setExportIncludeBody] = useState(true);
 
   const handleExport = useCallback(async () => {
@@ -144,7 +161,9 @@ export default function PrayerSettingsScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
+      >
         <ActivityIndicator style={{ marginTop: headerHeight + Spacing.xxl }} />
       </View>
     );
@@ -162,14 +181,22 @@ export default function PrayerSettingsScreen() {
       >
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="archive" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="archive"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Auto-Archive</ThemedText>
           </View>
 
           <View style={styles.optionRow}>
             <View style={{ flex: 1 }}>
               <ThemedText type="body">Auto-archive answered prayers</ThemedText>
-              <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }}>
+              <ThemedText
+                type="small"
+                style={{ color: theme.secondaryText, marginTop: 2 }}
+              >
                 Automatically archive prayers after they've been answered
               </ThemedText>
             </View>
@@ -181,7 +208,10 @@ export default function PrayerSettingsScreen() {
 
           {archiveSettings?.enabled ? (
             <View style={styles.daysSection}>
-              <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}>
+              <ThemedText
+                type="caption"
+                style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}
+              >
                 Archive after
               </ThemedText>
               <View style={styles.pillRow}>
@@ -194,8 +224,12 @@ export default function PrayerSettingsScreen() {
                       style={[
                         styles.pill,
                         {
-                          backgroundColor: isSelected ? theme.primary : theme.backgroundSecondary,
-                          borderColor: isSelected ? theme.primary : theme.border,
+                          backgroundColor: isSelected
+                            ? theme.primary
+                            : theme.backgroundSecondary,
+                          borderColor: isSelected
+                            ? theme.primary
+                            : theme.border,
                         },
                       ]}
                     >
@@ -218,14 +252,22 @@ export default function PrayerSettingsScreen() {
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="bell" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="bell"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Daily Reminder</ThemedText>
           </View>
 
           <View style={styles.optionRow}>
             <View style={{ flex: 1 }}>
               <ThemedText type="body">Daily reminder</ThemedText>
-              <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }}>
+              <ThemedText
+                type="small"
+                style={{ color: theme.secondaryText, marginTop: 2 }}
+              >
                 Get a daily reminder to pray
               </ThemedText>
             </View>
@@ -236,9 +278,22 @@ export default function PrayerSettingsScreen() {
           </View>
 
           {notificationsUnavailable ? (
-            <View style={[styles.noticeRow, { backgroundColor: theme.warning + "20" }]}>
-              <Feather name="alert-triangle" size={16} color={theme.warning} style={{ marginRight: Spacing.sm }} />
-              <ThemedText type="small" style={{ color: theme.secondaryText, flex: 1 }}>
+            <View
+              style={[
+                styles.noticeRow,
+                { backgroundColor: theme.warning + "20" },
+              ]}
+            >
+              <Feather
+                name="alert-triangle"
+                size={16}
+                color={theme.warning}
+                style={{ marginRight: Spacing.sm }}
+              />
+              <ThemedText
+                type="small"
+                style={{ color: theme.secondaryText, flex: 1 }}
+              >
                 Notifications unavailable in this build.
               </ThemedText>
             </View>
@@ -246,14 +301,24 @@ export default function PrayerSettingsScreen() {
 
           {reminderEnabled ? (
             <View style={styles.daysSection}>
-              <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}>
+              <ThemedText
+                type="caption"
+                style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}
+              >
                 Reminder time
               </ThemedText>
               <View style={styles.pillRow}>
                 {timeOptions.map((time) => {
                   const isSelected = reminderTime === time;
                   const hour = parseInt(time.split(":")[0], 10);
-                  const label = hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`;
+                  const label =
+                    hour === 0
+                      ? "12 AM"
+                      : hour < 12
+                        ? `${hour} AM`
+                        : hour === 12
+                          ? "12 PM"
+                          : `${hour - 12} PM`;
                   return (
                     <Pressable
                       key={time}
@@ -261,8 +326,12 @@ export default function PrayerSettingsScreen() {
                       style={[
                         styles.pill,
                         {
-                          backgroundColor: isSelected ? theme.primary : theme.backgroundSecondary,
-                          borderColor: isSelected ? theme.primary : theme.border,
+                          backgroundColor: isSelected
+                            ? theme.primary
+                            : theme.backgroundSecondary,
+                          borderColor: isSelected
+                            ? theme.primary
+                            : theme.border,
                         },
                       ]}
                     >
@@ -285,7 +354,12 @@ export default function PrayerSettingsScreen() {
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="download" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="download"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Export Prayers</ThemedText>
           </View>
 
@@ -293,11 +367,17 @@ export default function PrayerSettingsScreen() {
             <View style={{ flex: 1 }}>
               <ThemedText type="body">Include prayer body</ThemedText>
             </View>
-            <Switch value={exportIncludeBody} onValueChange={setExportIncludeBody} />
+            <Switch
+              value={exportIncludeBody}
+              onValueChange={setExportIncludeBody}
+            />
           </View>
 
           <View style={styles.daysSection}>
-            <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}>
+            <ThemedText
+              type="caption"
+              style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}
+            >
               Filter by status
             </ThemedText>
             <View style={styles.pillRow}>
@@ -310,7 +390,9 @@ export default function PrayerSettingsScreen() {
                     style={[
                       styles.pill,
                       {
-                        backgroundColor: isSelected ? theme.primary : theme.backgroundSecondary,
+                        backgroundColor: isSelected
+                          ? theme.primary
+                          : theme.backgroundSecondary,
                         borderColor: isSelected ? theme.primary : theme.border,
                       },
                     ]}
@@ -337,8 +419,16 @@ export default function PrayerSettingsScreen() {
               { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
             ]}
           >
-            <Feather name="download" size={16} color="#FFFFFF" style={{ marginRight: Spacing.sm }} />
-            <ThemedText type="body" style={{ color: "#FFFFFF", fontWeight: "600" }}>
+            <Feather
+              name="download"
+              size={16}
+              color="#FFFFFF"
+              style={{ marginRight: Spacing.sm }}
+            />
+            <ThemedText
+              type="body"
+              style={{ color: "#FFFFFF", fontWeight: "600" }}
+            >
               Export as CSV
             </ThemedText>
           </Pressable>
@@ -346,7 +436,12 @@ export default function PrayerSettingsScreen() {
 
         <Card elevation={1} style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="tag" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+            <Feather
+              name="tag"
+              size={18}
+              color={theme.primary}
+              style={{ marginRight: Spacing.sm }}
+            />
             <ThemedText type="h3">Categories</ThemedText>
           </View>
           <Pressable
@@ -354,7 +449,11 @@ export default function PrayerSettingsScreen() {
             style={[styles.navRow, { borderColor: theme.border }]}
           >
             <ThemedText type="body">Manage Categories</ThemedText>
-            <Feather name="chevron-right" size={18} color={theme.secondaryText} />
+            <Feather
+              name="chevron-right"
+              size={18}
+              color={theme.secondaryText}
+            />
           </Pressable>
         </Card>
       </ScrollView>

@@ -30,7 +30,13 @@ import {
 } from "@/utils/validation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useRoute, useNavigation, RouteProp, useFocusEffect, CommonActions } from "@react-navigation/native";
+import {
+  useRoute,
+  useNavigation,
+  RouteProp,
+  useFocusEffect,
+  CommonActions,
+} from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { FocusDistrictParams } from "@/navigation/MapStackNavigator";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
@@ -85,8 +91,15 @@ import {
   cancelAnnualReminder,
 } from "@/lib/notifications";
 
-type OfficialProfileParams = { officialId: string; initialSection?: "privateNotes"; initialTab?: "public" | "private" };
-type RouteParams = RouteProp<{ OfficialProfile: OfficialProfileParams }, "OfficialProfile">;
+type OfficialProfileParams = {
+  officialId: string;
+  initialSection?: "privateNotes";
+  initialTab?: "public" | "private";
+};
+type RouteParams = RouteProp<
+  { OfficialProfile: OfficialProfileParams },
+  "OfficialProfile"
+>;
 
 type TabType = "public" | "private";
 
@@ -155,7 +168,14 @@ interface ContactRowProps {
   isPhone?: boolean;
 }
 
-function ContactRow({ icon, label, value, onPress, validationHint, isPhone }: ContactRowProps) {
+function ContactRow({
+  icon,
+  label,
+  value,
+  onPress,
+  validationHint,
+  isPhone,
+}: ContactRowProps) {
   const { theme } = useTheme();
   const displayValue = isPhone && value ? formatPhone(value) : value;
 
@@ -168,18 +188,29 @@ function ContactRow({ icon, label, value, onPress, validationHint, isPhone }: Co
         { opacity: pressed && onPress ? 0.7 : 1 },
       ]}
     >
-      <View style={[styles.contactIcon, { backgroundColor: theme.backgroundDefault }]}>
+      <View
+        style={[
+          styles.contactIcon,
+          { backgroundColor: theme.backgroundDefault },
+        ]}
+      >
         <Feather name={icon} size={16} color={theme.primary} />
       </View>
       <View style={styles.contactContent}>
         <ThemedText type="small" style={{ color: theme.secondaryText }}>
           {label}
         </ThemedText>
-        <ThemedText type="body" style={onPress ? { color: theme.link } : undefined}>
+        <ThemedText
+          type="body"
+          style={onPress ? { color: theme.link } : undefined}
+        >
           {displayValue}
         </ThemedText>
         {validationHint ? (
-          <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+          <ThemedText
+            type="small"
+            style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}
+          >
             {validationHint}
           </ThemedText>
         ) : null}
@@ -191,7 +222,9 @@ function ContactRow({ icon, label, value, onPress, validationHint, isPhone }: Co
   );
 }
 
-type NavigationProp = NativeStackNavigationProp<ProfileStackParamList & BrowseStackParamList>;
+type NavigationProp = NativeStackNavigationProp<
+  ProfileStackParamList & BrowseStackParamList
+>;
 
 export default function OfficialProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -211,12 +244,16 @@ export default function OfficialProfileScreen() {
   const district = official ? getDistrictById(official.districtId) : undefined;
 
   const [activeTab, setActiveTab] = useState<TabType>(
-    initialTab || (initialSection === "privateNotes" ? "private" : "private")
+    initialTab || (initialSection === "privateNotes" ? "private" : "private"),
   );
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [showAnniversaryPicker, setShowAnniversaryPicker] = useState(false);
-  const [birthdayPickerDate, setBirthdayPickerDate] = useState<Date>(new Date());
-  const [anniversaryPickerDate, setAnniversaryPickerDate] = useState<Date>(new Date());
+  const [birthdayPickerDate, setBirthdayPickerDate] = useState<Date>(
+    new Date(),
+  );
+  const [anniversaryPickerDate, setAnniversaryPickerDate] = useState<Date>(
+    new Date(),
+  );
   const [isSaved, setIsSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [privateNotes, setPrivateNotes] = useState<PrivateNotes>({});
@@ -224,24 +261,35 @@ export default function OfficialProfileScreen() {
   const [engagementLog, setEngagementLog] = useState<EngagementEntry[]>([]);
   const [newNoteText, setNewNoteText] = useState("");
   const [newNoteFollowUp, setNewNoteFollowUp] = useState(false);
-  const [newNoteDueDate, setNewNoteDueDate] = useState<string | undefined>(undefined);
-  const [newNotePriority, setNewNotePriority] = useState<"low" | "medium" | "high" | undefined>(undefined);
+  const [newNoteDueDate, setNewNoteDueDate] = useState<string | undefined>(
+    undefined,
+  );
+  const [newNotePriority, setNewNotePriority] = useState<
+    "low" | "medium" | "high" | undefined
+  >(undefined);
   const [showDueDatePicker, setShowDueDatePicker] = useState(false);
   const [dueDatePickerDate, setDueDatePickerDate] = useState<Date>(new Date());
   const [showAddNote, setShowAddNote] = useState(false);
   const [showEngagementPicker, setShowEngagementPicker] = useState(false);
-  const [engagementPickerDate, setEngagementPickerDate] = useState<Date>(new Date());
+  const [engagementPickerDate, setEngagementPickerDate] = useState<Date>(
+    new Date(),
+  );
   const [engagementNote, setEngagementNote] = useState("");
   const officialUuid = official?.id ?? null;
 
-  const { data: committeesData, isLoading: committeesLoading } = useQuery<Array<{
-    committeeId: string;
-    committeeName: string;
-    roleTitle: string | null;
-  }>>({
+  const { data: committeesData, isLoading: committeesLoading } = useQuery<
+    Array<{
+      committeeId: string;
+      committeeName: string;
+      roleTitle: string | null;
+    }>
+  >({
     queryKey: ["/api/officials", officialUuid, "committees"],
     queryFn: async () => {
-      const url = new URL(`/api/officials/${officialUuid}/committees`, getApiUrl());
+      const url = new URL(
+        `/api/officials/${officialUuid}/committees`,
+        getApiUrl(),
+      );
       const res = await fetch(url.toString());
       if (!res.ok) throw new Error("Failed to fetch committees");
       return res.json();
@@ -254,7 +302,11 @@ export default function OfficialProfileScreen() {
 
   const committees = committeesData ?? [];
 
-  const { data: prayerCounts } = useQuery<{ open: number; answered: number; archived: number }>({
+  const { data: prayerCounts } = useQuery<{
+    open: number;
+    answered: number;
+    archived: number;
+  }>({
     queryKey: [`/api/officials/${officialId}/prayer-counts`],
     enabled: !!officialId,
   });
@@ -282,26 +334,42 @@ export default function OfficialProfileScreen() {
       const notes = await getPrivateNotes(official.id);
       if (notes) {
         // Non-destructive auto-fill: if local personalAddress is empty but server has one, use server's
-        const localAddressEmpty = !notes.personalAddress || notes.personalAddress.trim() === '';
+        const localAddressEmpty =
+          !notes.personalAddress || notes.personalAddress.trim() === "";
         const serverAddress = official.privateNotes?.personalAddress;
-        const serverHasAddress = serverAddress && serverAddress.trim() !== '';
+        const serverHasAddress = serverAddress && serverAddress.trim() !== "";
         if (localAddressEmpty && serverHasAddress) {
-          console.log('[OfficialProfile] Auto-filling personalAddress from server:', serverAddress);
+          console.log(
+            "[OfficialProfile] Auto-filling personalAddress from server:",
+            serverAddress,
+          );
           notes.personalAddress = serverAddress;
         }
         setPrivateNotes(notes);
       } else if (official.privateNotes) {
         // Fallback to server data when no local data exists (e.g., hometown auto-fill)
-        console.log('[OfficialProfile] Using server private notes as fallback:', official.privateNotes);
+        console.log(
+          "[OfficialProfile] Using server private notes as fallback:",
+          official.privateNotes,
+        );
         setPrivateNotes(official.privateNotes);
       }
-      
+
       if (official.source && official.districtNumber) {
-        const saved = await isOfficialSavedByKey(official.source, official.districtNumber);
+        const saved = await isOfficialSavedByKey(
+          official.source,
+          official.districtNumber,
+        );
         setIsSaved(saved);
-        const npEntries = await getNotesPrayer(official.source, official.districtNumber);
+        const npEntries = await getNotesPrayer(
+          official.source,
+          official.districtNumber,
+        );
         setNotesPrayer(npEntries);
-        const engEntries = await getEngagementLog(official.source, official.districtNumber);
+        const engEntries = await getEngagementLog(
+          official.source,
+          official.districtNumber,
+        );
         setEngagementLog(engEntries);
       }
     }
@@ -310,7 +378,7 @@ export default function OfficialProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       loadOfficial();
-    }, [loadOfficial])
+    }, [loadOfficial]),
   );
 
   useFocusEffect(
@@ -318,7 +386,7 @@ export default function OfficialProfileScreen() {
       if (official) {
         loadSavedState();
       }
-    }, [official, loadSavedState])
+    }, [official, loadSavedState]),
   );
 
   const handleShare = useCallback(async () => {
@@ -326,14 +394,25 @@ export default function OfficialProfileScreen() {
     const parts: string[] = [`${official.fullName}`];
     if (official.party) parts[0] += ` (${official.party})`;
     if (official.officeType) {
-      const chamber = getOfficeTypeLabel(official.officeType, official.roleTitle);
-      const districtSuffix = official.districtNumber ? ` — District ${official.districtNumber}` : "";
+      const chamber = getOfficeTypeLabel(
+        official.officeType,
+        official.roleTitle,
+      );
+      const districtSuffix = official.districtNumber
+        ? ` — District ${official.districtNumber}`
+        : "";
       parts.push(`${chamber}${districtSuffix}`);
     }
-    const capitolOffice = official.offices?.find((o) => o.officeKind === "capitol");
-    if (capitolOffice?.phone) parts.push(`Capitol: ${formatPhone(capitolOffice.phone)}`);
+    const capitolOffice = official.offices?.find(
+      (o) => o.officeKind === "capitol",
+    );
+    if (capitolOffice?.phone)
+      parts.push(`Capitol: ${formatPhone(capitolOffice.phone)}`);
     try {
-      await Share.share({ title: official.fullName, message: parts.join("\n") });
+      await Share.share({
+        title: official.fullName,
+        message: parts.join("\n"),
+      });
     } catch {}
   }, [official]);
 
@@ -343,7 +422,11 @@ export default function OfficialProfileScreen() {
         headerTitle: official.fullName,
         headerRight: () => (
           <Pressable onPress={handleShare} style={{ paddingHorizontal: 8 }}>
-            <Feather name="share-2" size={20} color={official ? undefined : "transparent"} />
+            <Feather
+              name="share-2"
+              size={20}
+              color={official ? undefined : "transparent"}
+            />
           </Pressable>
         ),
       });
@@ -368,7 +451,6 @@ export default function OfficialProfileScreen() {
     }
   }, [initialSection, notesSectionY, hasScrolledToNotes, isLoading]);
 
-
   const handleNotesSectionLayout = useCallback((event: LayoutChangeEvent) => {
     const { y } = event.nativeEvent.layout;
     setNotesSectionY(y);
@@ -386,7 +468,7 @@ export default function OfficialProfileScreen() {
         official.districtNumber,
         official.fullName,
         undefined,
-        official.photoUrl || undefined
+        official.photoUrl || undefined,
       );
       setIsSaved(true);
     }
@@ -396,28 +478,33 @@ export default function OfficialProfileScreen() {
   const handleJumpToDistrict = useCallback(() => {
     if (!official || !official.source || !district) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
+
     const focusDistrict: FocusDistrictParams = {
-      source: official.source as 'TX_HOUSE' | 'TX_SENATE' | 'US_HOUSE',
+      source: official.source as "TX_HOUSE" | "TX_SENATE" | "US_HOUSE",
       districtNumber: district.districtNumber,
     };
-    
+
     // Navigate to Map tab with focus district params
     navigation.dispatch(
       CommonActions.navigate({
-        name: 'MapTab',
+        name: "MapTab",
         params: {
-          screen: 'Map',
+          screen: "Map",
           params: { focusDistrict },
         },
-      })
+      }),
     );
   }, [official, district, navigation]);
 
   const handleSaveNotes = useCallback(async () => {
-    console.log('[OfficialProfile] handleSaveNotes called');
+    console.log("[OfficialProfile] handleSaveNotes called");
     if (!official) return;
-    console.log('[OfficialProfile] Saving notes for:', official.id, 'address:', privateNotes.personalAddress);
+    console.log(
+      "[OfficialProfile] Saving notes for:",
+      official.id,
+      "address:",
+      privateNotes.personalAddress,
+    );
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await savePrivateNotes(official.id, privateNotes);
 
@@ -427,7 +514,9 @@ export default function OfficialProfileScreen() {
     if (privateNotes.birthday) {
       const [yyyy, mm, dd] = privateNotes.birthday.split("-").map(Number);
       if (mm && dd) {
-        scheduleAnnualReminder(officialId, name, mm, dd, "birthday").catch(() => {});
+        scheduleAnnualReminder(officialId, name, mm, dd, "birthday").catch(
+          () => {},
+        );
       }
     } else {
       cancelAnnualReminder(officialId, "birthday").catch(() => {});
@@ -435,7 +524,9 @@ export default function OfficialProfileScreen() {
     if (privateNotes.anniversary) {
       const [yyyy, mm, dd] = privateNotes.anniversary.split("-").map(Number);
       if (mm && dd) {
-        scheduleAnnualReminder(officialId, name, mm, dd, "anniversary").catch(() => {});
+        scheduleAnnualReminder(officialId, name, mm, dd, "anniversary").catch(
+          () => {},
+        );
       }
     } else {
       cancelAnnualReminder(officialId, "anniversary").catch(() => {});
@@ -460,7 +551,7 @@ export default function OfficialProfileScreen() {
   const handlePhonePress = useCallback((phone: string) => {
     if (!isValidUSPhone(phone)) return;
     const digits = getPhoneDigits(phone);
-    
+
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
         {
@@ -474,18 +565,14 @@ export default function OfficialProfileScreen() {
           } else if (buttonIndex === 2) {
             Linking.openURL(`sms:${digits}`);
           }
-        }
+        },
       );
     } else {
-      Alert.alert(
-        formatPhone(phone),
-        "Choose an action",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Call", onPress: () => Linking.openURL(`tel:${digits}`) },
-          { text: "Send Text", onPress: () => Linking.openURL(`sms:${digits}`) },
-        ]
-      );
+      Alert.alert(formatPhone(phone), "Choose an action", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Call", onPress: () => Linking.openURL(`tel:${digits}`) },
+        { text: "Send Text", onPress: () => Linking.openURL(`sms:${digits}`) },
+      ]);
     }
   }, []);
 
@@ -496,7 +583,8 @@ export default function OfficialProfileScreen() {
   }, []);
 
   const handleAddNotePrayer = useCallback(async () => {
-    if (!official?.source || !official?.districtNumber || !newNoteText.trim()) return;
+    if (!official?.source || !official?.districtNumber || !newNoteText.trim())
+      return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const entry = await addNotePrayer(
       official.source,
@@ -504,9 +592,9 @@ export default function OfficialProfileScreen() {
       newNoteText.trim(),
       newNoteFollowUp,
       newNoteDueDate,
-      newNotePriority
+      newNotePriority,
     );
-    setNotesPrayer(prev => [entry, ...prev]);
+    setNotesPrayer((prev) => [entry, ...prev]);
     setNewNoteText("");
     setNewNoteFollowUp(false);
     setNewNoteDueDate(undefined);
@@ -514,52 +602,75 @@ export default function OfficialProfileScreen() {
     setShowAddNote(false);
   }, [official, newNoteText, newNoteFollowUp, newNoteDueDate, newNotePriority]);
 
-  const handleDeleteNotePrayer = useCallback(async (entryId: string) => {
-    if (!official?.source || !official?.districtNumber) return;
-    Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          await deleteNotePrayer(official.source!, official.districtNumber!, entryId);
-          setNotesPrayer(prev => prev.filter(e => e.id !== entryId));
+  const handleDeleteNotePrayer = useCallback(
+    async (entryId: string) => {
+      if (!official?.source || !official?.districtNumber) return;
+      Alert.alert("Delete Note", "Are you sure you want to delete this note?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            await deleteNotePrayer(
+              official.source!,
+              official.districtNumber!,
+              entryId,
+            );
+            setNotesPrayer((prev) => prev.filter((e) => e.id !== entryId));
+          },
         },
-      },
-    ]);
-  }, [official]);
+      ]);
+    },
+    [official],
+  );
 
-  const handleAddEngagement = useCallback(async (date: Date) => {
-    if (!official?.source || !official?.districtNumber) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const entry = await addEngagement(
-      official.source,
-      official.districtNumber,
-      date.toISOString(),
-      engagementNote.trim() || undefined
-    );
-    setEngagementLog(prev => [entry, ...prev]);
-    addRecentEngaged(official.source, official.districtNumber);
-    setShowEngagementPicker(false);
-    setEngagementNote("");
-  }, [official, engagementNote]);
+  const handleAddEngagement = useCallback(
+    async (date: Date) => {
+      if (!official?.source || !official?.districtNumber) return;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const entry = await addEngagement(
+        official.source,
+        official.districtNumber,
+        date.toISOString(),
+        engagementNote.trim() || undefined,
+      );
+      setEngagementLog((prev) => [entry, ...prev]);
+      addRecentEngaged(official.source, official.districtNumber);
+      setShowEngagementPicker(false);
+      setEngagementNote("");
+    },
+    [official, engagementNote],
+  );
 
-  const handleDeleteEngagement = useCallback(async (entryId: string) => {
-    if (!official?.source || !official?.districtNumber) return;
-    Alert.alert("Delete Engagement", "Remove this engagement from your log?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          await deleteEngagement(official.source!, official.districtNumber!, entryId);
-          setEngagementLog(prev => prev.filter(e => e.id !== entryId));
-        },
-      },
-    ]);
-  }, [official]);
+  const handleDeleteEngagement = useCallback(
+    async (entryId: string) => {
+      if (!official?.source || !official?.districtNumber) return;
+      Alert.alert(
+        "Delete Engagement",
+        "Remove this engagement from your log?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Warning,
+              );
+              await deleteEngagement(
+                official.source!,
+                official.districtNumber!,
+                entryId,
+              );
+              setEngagementLog((prev) => prev.filter((e) => e.id !== entryId));
+            },
+          },
+        ],
+      );
+    },
+    [official],
+  );
 
   if (isLoading) {
     return (
@@ -592,7 +703,9 @@ export default function OfficialProfileScreen() {
 
   if (isVacant) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
+      >
         <KeyboardAwareScrollViewCompat
           style={styles.scrollView}
           contentContainerStyle={[
@@ -605,34 +718,84 @@ export default function OfficialProfileScreen() {
           scrollIndicatorInsets={{ bottom: insets.bottom }}
         >
           <View style={styles.vacantHeader}>
-            <View style={[styles.vacantAvatarContainer, { borderColor: theme.warning }]}>
+            <View
+              style={[
+                styles.vacantAvatarContainer,
+                { borderColor: theme.warning },
+              ]}
+            >
               <Feather name="user-x" size={40} color={theme.secondaryText} />
             </View>
-            <ThemedText type="h2" style={{ marginTop: Spacing.lg, textAlign: "center" }}>
+            <ThemedText
+              type="h2"
+              style={{ marginTop: Spacing.lg, textAlign: "center" }}
+            >
               Vacant Seat
             </ThemedText>
             {district ? (
-              <Pressable onPress={handleJumpToDistrict} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, marginTop: Spacing.xs })}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                  <ThemedText type="body" style={{ color: theme.primary, textAlign: "center" }}>
-                    {getOfficeTypeLabel(official.officeType, official.roleTitle)} - District {district.districtNumber}
+              <Pressable
+                onPress={handleJumpToDistrict}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.7 : 1,
+                  marginTop: Spacing.xs,
+                })}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 4,
+                  }}
+                >
+                  <ThemedText
+                    type="body"
+                    style={{ color: theme.primary, textAlign: "center" }}
+                  >
+                    {getOfficeTypeLabel(
+                      official.officeType,
+                      official.roleTitle,
+                    )}{" "}
+                    - District {district.districtNumber}
                   </ThemedText>
                   <Feather name="map-pin" size={14} color={theme.primary} />
                 </View>
               </Pressable>
             ) : (
-              <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}>
+              <ThemedText
+                type="body"
+                style={{
+                  color: theme.secondaryText,
+                  marginTop: Spacing.xs,
+                  textAlign: "center",
+                }}
+              >
                 {getOfficeTypeLabel(official.officeType, official.roleTitle)}
               </ThemedText>
             )}
           </View>
-          
-          <View style={[styles.vacantCard, { backgroundColor: theme.cardBackground, borderColor: theme.warning }]}>
+
+          <View
+            style={[
+              styles.vacantCard,
+              {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.warning,
+              },
+            ]}
+          >
             <Feather name="info" size={24} color={theme.warning} />
             <View style={styles.vacantCardContent}>
-              <ThemedText type="h3">This District is Currently Vacant</ThemedText>
-              <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.xs }}>
-                There is no representative currently serving this district. A special election or appointment may be pending to fill this seat.
+              <ThemedText type="h3">
+                This District is Currently Vacant
+              </ThemedText>
+              <ThemedText
+                type="body"
+                style={{ color: theme.secondaryText, marginTop: Spacing.xs }}
+              >
+                There is no representative currently serving this district. A
+                special election or appointment may be pending to fill this
+                seat.
               </ThemedText>
             </View>
           </View>
@@ -657,7 +820,7 @@ export default function OfficialProfileScreen() {
       >
         <View style={styles.header}>
           {getProxiedPhotoUrl(official.photoUrl) ? (
-            <Pressable 
+            <Pressable
               onPress={() => setShowPhotoModal(true)}
               style={({ pressed }) => [
                 styles.avatarContainer,
@@ -666,7 +829,10 @@ export default function OfficialProfileScreen() {
               accessibilityRole="button"
               accessibilityLabel="View photo"
             >
-              <Image source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }} style={styles.avatar} />
+              <Image
+                source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }}
+                style={styles.avatar}
+              />
             </Pressable>
           ) : (
             <View style={styles.avatarContainer}>
@@ -682,8 +848,13 @@ export default function OfficialProfileScreen() {
               {getOfficeTypeLabel(official.officeType, official.roleTitle)}
             </ThemedText>
             {district ? (
-              <Pressable onPress={handleJumpToDistrict} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Pressable
+                onPress={handleJumpToDistrict}
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+              >
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                >
                   <ThemedText type="caption" style={{ color: theme.primary }}>
                     {getDistrictTypeLabel(district.districtType)} District{" "}
                     {district.districtNumber}
@@ -693,12 +864,21 @@ export default function OfficialProfileScreen() {
               </Pressable>
             ) : null}
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: Spacing.sm,
+            }}
+          >
             <Pressable
               onPress={() => {
                 navigation.navigate("PrayerTab" as any, {
                   screen: "AddPrayer",
-                  params: { officialId: official?.id?.toString(), officialName: official?.fullName },
+                  params: {
+                    officialId: official?.id?.toString(),
+                    officialName: official?.fullName,
+                  },
                 });
               }}
               style={({ pressed }) => [
@@ -706,7 +886,12 @@ export default function OfficialProfileScreen() {
                 { opacity: pressed ? 0.7 : 1 },
               ]}
             >
-              <Feather name="heart" size={22} color={theme.secondary} style={{ opacity: 0.7 }} />
+              <Feather
+                name="heart"
+                size={22}
+                color={theme.secondary}
+                style={{ opacity: 0.7 }}
+              />
             </Pressable>
             <Pressable
               onPress={handleToggleSaved}
@@ -740,7 +925,10 @@ export default function OfficialProfileScreen() {
         </View>
 
         {activeTab === "public" ? (
-          <Animated.View entering={FadeIn.duration(200)} style={styles.tabContent}>
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={styles.tabContent}
+          >
             <View style={styles.section}>
               <ThemedText type="h3" style={styles.sectionTitle}>
                 Details
@@ -757,7 +945,9 @@ export default function OfficialProfileScreen() {
               return (
                 <View key={office.id} style={styles.section}>
                   <ThemedText type="h3" style={styles.sectionTitle}>
-                    {office.officeKind === "capitol" ? "Capitol Office" : "District Office"}
+                    {office.officeKind === "capitol"
+                      ? "Capitol Office"
+                      : "District Office"}
                   </ThemedText>
                   {office.officeKind === "capitol" && office.room ? (
                     <ContactRow icon="home" label="Room" value={office.room} />
@@ -766,16 +956,32 @@ export default function OfficialProfileScreen() {
                     icon="map"
                     label="Address"
                     value={office.address}
-                    onPress={addressValid ? () => handleAddressPress(office.address) : undefined}
-                    validationHint={!addressValid && office.address ? "Address format not recognized" : undefined}
+                    onPress={
+                      addressValid
+                        ? () => handleAddressPress(office.address)
+                        : undefined
+                    }
+                    validationHint={
+                      !addressValid && office.address
+                        ? "Address format not recognized"
+                        : undefined
+                    }
                   />
                   <ContactRow
                     icon="phone"
                     label="Phone"
                     value={office.phone}
                     isPhone
-                    onPress={phoneValid ? () => handlePhonePress(office.phone) : undefined}
-                    validationHint={!phoneValid && office.phone ? "Invalid phone number" : undefined}
+                    onPress={
+                      phoneValid
+                        ? () => handlePhonePress(office.phone)
+                        : undefined
+                    }
+                    validationHint={
+                      !phoneValid && office.phone
+                        ? "Invalid phone number"
+                        : undefined
+                    }
                   />
                 </View>
               );
@@ -811,37 +1017,79 @@ export default function OfficialProfileScreen() {
                     key={committee.committeeId}
                     style={({ pressed }) => [
                       styles.committeeRow,
-                      { backgroundColor: theme.backgroundDefault, opacity: pressed ? 0.8 : 1 },
+                      {
+                        backgroundColor: theme.backgroundDefault,
+                        opacity: pressed ? 0.8 : 1,
+                      },
                     ]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      navigation.navigate("CommitteeDetail", { 
-                        committeeId: committee.committeeId, 
-                        committeeName: committee.committeeName 
+                      navigation.navigate("CommitteeDetail", {
+                        committeeId: committee.committeeId,
+                        committeeName: committee.committeeName,
                       });
                     }}
                   >
-                    <View style={[styles.committeeIcon, { backgroundColor: theme.primary + "20" }]}>
-                      <Feather name="briefcase" size={14} color={theme.primary} />
+                    <View
+                      style={[
+                        styles.committeeIcon,
+                        { backgroundColor: theme.primary + "20" },
+                      ]}
+                    >
+                      <Feather
+                        name="briefcase"
+                        size={14}
+                        color={theme.primary}
+                      />
                     </View>
                     <View style={styles.committeeContent}>
                       <ThemedText type="body" numberOfLines={2}>
                         {committee.committeeName}
                       </ThemedText>
                       {committee.roleTitle ? (
-                        <View style={[
-                          styles.roleBadge, 
-                          { backgroundColor: committee.roleTitle === "Chair" ? "#FFD70020" : committee.roleTitle === "Vice Chair" ? "#A8D8EA20" : "#C0C0C020" },
-                          committee.roleTitle === "Chair" && { borderWidth: 1.5, borderColor: "#FFD700" },
-                          committee.roleTitle === "Vice Chair" && { borderWidth: 1, borderColor: "#A8D8EA" },
-                        ]}>
-                          <ThemedText type="caption" style={{ color: committee.roleTitle === "Chair" ? "#DAA520" : committee.roleTitle === "Vice Chair" ? "#5B9BD5" : "#C0C0C0", fontWeight: "600" }}>
+                        <View
+                          style={[
+                            styles.roleBadge,
+                            {
+                              backgroundColor:
+                                committee.roleTitle === "Chair"
+                                  ? "#FFD70020"
+                                  : committee.roleTitle === "Vice Chair"
+                                    ? "#A8D8EA20"
+                                    : "#C0C0C020",
+                            },
+                            committee.roleTitle === "Chair" && {
+                              borderWidth: 1.5,
+                              borderColor: "#FFD700",
+                            },
+                            committee.roleTitle === "Vice Chair" && {
+                              borderWidth: 1,
+                              borderColor: "#A8D8EA",
+                            },
+                          ]}
+                        >
+                          <ThemedText
+                            type="caption"
+                            style={{
+                              color:
+                                committee.roleTitle === "Chair"
+                                  ? "#DAA520"
+                                  : committee.roleTitle === "Vice Chair"
+                                    ? "#5B9BD5"
+                                    : "#C0C0C0",
+                              fontWeight: "600",
+                            }}
+                          >
                             {committee.roleTitle}
                           </ThemedText>
                         </View>
                       ) : null}
                     </View>
-                    <Feather name="chevron-right" size={18} color={theme.secondaryText} />
+                    <Feather
+                      name="chevron-right"
+                      size={18}
+                      color={theme.secondaryText}
+                    />
                   </Pressable>
                 ))
               ) : (
@@ -852,11 +1100,17 @@ export default function OfficialProfileScreen() {
             </View>
           </Animated.View>
         ) : (
-          <Animated.View entering={FadeIn.duration(200)} style={styles.tabContent}>
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={styles.tabContent}
+          >
             <View style={styles.editHeader}>
               <ThemedText type="h3">Private Notes</ThemedText>
               {isEditing ? (
-                <Button onPress={handleSaveNotes} style={styles.saveNotesButton}>
+                <Button
+                  onPress={handleSaveNotes}
+                  style={styles.saveNotesButton}
+                >
                   Save
                 </Button>
               ) : (
@@ -868,7 +1122,10 @@ export default function OfficialProfileScreen() {
                   ]}
                 >
                   <Feather name="edit-2" size={18} color={theme.primary} />
-                  <ThemedText type="caption" style={{ color: theme.primary, marginLeft: 4 }}>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.primary, marginLeft: 4 }}
+                  >
                     Edit
                   </ThemedText>
                 </Pressable>
@@ -879,7 +1136,8 @@ export default function OfficialProfileScreen() {
               type="caption"
               style={{ color: theme.secondaryText, marginBottom: Spacing.md }}
             >
-              This information is stored locally on your device and never synced.
+              This information is stored locally on your device and never
+              synced.
             </ThemedText>
 
             <View style={styles.notesSection}>
@@ -892,41 +1150,82 @@ export default function OfficialProfileScreen() {
                     <TextInput
                       style={[
                         styles.noteInput,
-                        { backgroundColor: theme.inputBackground, color: theme.text },
+                        {
+                          backgroundColor: theme.inputBackground,
+                          color: theme.text,
+                        },
                       ]}
                       value={privateNotes.personalPhone || ""}
                       onChangeText={(text) =>
-                        setPrivateNotes({ ...privateNotes, personalPhone: text })
+                        setPrivateNotes({
+                          ...privateNotes,
+                          personalPhone: text,
+                        })
                       }
                       placeholder="Add phone number..."
                       placeholderTextColor={theme.secondaryText}
                       keyboardType="phone-pad"
                     />
-                    {privateNotes.personalPhone && !isValidUSPhone(privateNotes.personalPhone) ? (
-                      <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+                    {privateNotes.personalPhone &&
+                    !isValidUSPhone(privateNotes.personalPhone) ? (
+                      <ThemedText
+                        type="small"
+                        style={{
+                          color: theme.warning,
+                          marginTop: 2,
+                          fontStyle: "italic",
+                        }}
+                      >
                         Enter a valid 10-digit phone number
                       </ThemedText>
                     ) : null}
                   </View>
                 ) : privateNotes.personalPhone ? (
                   <Pressable
-                    onPress={isValidUSPhone(privateNotes.personalPhone) ? () => handlePhonePress(privateNotes.personalPhone!) : undefined}
+                    onPress={
+                      isValidUSPhone(privateNotes.personalPhone)
+                        ? () => handlePhonePress(privateNotes.personalPhone!)
+                        : undefined
+                    }
                     disabled={!isValidUSPhone(privateNotes.personalPhone)}
-                    style={({ pressed }) => [{ opacity: pressed && isValidUSPhone(privateNotes.personalPhone!) ? 0.7 : 1 }]}
+                    style={({ pressed }) => [
+                      {
+                        opacity:
+                          pressed && isValidUSPhone(privateNotes.personalPhone!)
+                            ? 0.7
+                            : 1,
+                      },
+                    ]}
                   >
                     <View style={styles.tappableFieldRow}>
-                      <ThemedText 
-                        type="body" 
-                        style={isValidUSPhone(privateNotes.personalPhone) ? { color: theme.link } : undefined}
+                      <ThemedText
+                        type="body"
+                        style={
+                          isValidUSPhone(privateNotes.personalPhone)
+                            ? { color: theme.link }
+                            : undefined
+                        }
                       >
                         {formatPhone(privateNotes.personalPhone)}
                       </ThemedText>
                       {isValidUSPhone(privateNotes.personalPhone) ? (
-                        <Feather name="phone" size={16} color={theme.secondaryText} style={{ marginLeft: Spacing.xs }} />
+                        <Feather
+                          name="phone"
+                          size={16}
+                          color={theme.secondaryText}
+                          style={{ marginLeft: Spacing.xs }}
+                        />
                       ) : null}
                     </View>
                     {!isValidUSPhone(privateNotes.personalPhone) ? (
-                      <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+                      <ThemedText
+                        type="small"
+                        style={{
+                          color: theme.warning,
+                          marginTop: 2,
+                          fontStyle: "italic",
+                        }}
+                      >
                         Invalid phone number
                       </ThemedText>
                     ) : null}
@@ -945,40 +1244,83 @@ export default function OfficialProfileScreen() {
                     <TextInput
                       style={[
                         styles.noteInput,
-                        { backgroundColor: theme.inputBackground, color: theme.text },
+                        {
+                          backgroundColor: theme.inputBackground,
+                          color: theme.text,
+                        },
                       ]}
                       value={privateNotes.personalAddress || ""}
                       onChangeText={(text) =>
-                        setPrivateNotes({ ...privateNotes, personalAddress: text })
+                        setPrivateNotes({
+                          ...privateNotes,
+                          personalAddress: text,
+                        })
                       }
                       placeholder="Add address..."
                       placeholderTextColor={theme.secondaryText}
                     />
-                    {privateNotes.personalAddress && !isLikelyAddress(privateNotes.personalAddress) ? (
-                      <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+                    {privateNotes.personalAddress &&
+                    !isLikelyAddress(privateNotes.personalAddress) ? (
+                      <ThemedText
+                        type="small"
+                        style={{
+                          color: theme.warning,
+                          marginTop: 2,
+                          fontStyle: "italic",
+                        }}
+                      >
                         Include street number, city and state
                       </ThemedText>
                     ) : null}
                   </View>
                 ) : privateNotes.personalAddress ? (
                   <Pressable
-                    onPress={isLikelyAddress(privateNotes.personalAddress) ? () => handleAddressPress(privateNotes.personalAddress!) : undefined}
+                    onPress={
+                      isLikelyAddress(privateNotes.personalAddress)
+                        ? () =>
+                            handleAddressPress(privateNotes.personalAddress!)
+                        : undefined
+                    }
                     disabled={!isLikelyAddress(privateNotes.personalAddress)}
-                    style={({ pressed }) => [{ opacity: pressed && isLikelyAddress(privateNotes.personalAddress!) ? 0.7 : 1 }]}
+                    style={({ pressed }) => [
+                      {
+                        opacity:
+                          pressed &&
+                          isLikelyAddress(privateNotes.personalAddress!)
+                            ? 0.7
+                            : 1,
+                      },
+                    ]}
                   >
                     <View style={styles.tappableFieldRow}>
-                      <ThemedText 
-                        type="body" 
-                        style={isLikelyAddress(privateNotes.personalAddress) ? { color: theme.link } : undefined}
+                      <ThemedText
+                        type="body"
+                        style={
+                          isLikelyAddress(privateNotes.personalAddress)
+                            ? { color: theme.link }
+                            : undefined
+                        }
                       >
                         {privateNotes.personalAddress}
                       </ThemedText>
                       {isLikelyAddress(privateNotes.personalAddress) ? (
-                        <Feather name="map-pin" size={16} color={theme.secondaryText} style={{ marginLeft: Spacing.xs }} />
+                        <Feather
+                          name="map-pin"
+                          size={16}
+                          color={theme.secondaryText}
+                          style={{ marginLeft: Spacing.xs }}
+                        />
                       ) : null}
                     </View>
                     {!isLikelyAddress(privateNotes.personalAddress) ? (
-                      <ThemedText type="small" style={{ color: theme.warning, marginTop: 2, fontStyle: "italic" }}>
+                      <ThemedText
+                        type="small"
+                        style={{
+                          color: theme.warning,
+                          marginTop: 2,
+                          fontStyle: "italic",
+                        }}
+                      >
                         Address format not recognized
                       </ThemedText>
                     ) : null}
@@ -996,7 +1338,10 @@ export default function OfficialProfileScreen() {
                   <TextInput
                     style={[
                       styles.noteInput,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
+                      {
+                        backgroundColor: theme.inputBackground,
+                        color: theme.text,
+                      },
                     ]}
                     value={privateNotes.spouse || ""}
                     onChangeText={(text) =>
@@ -1020,7 +1365,10 @@ export default function OfficialProfileScreen() {
                   <TextInput
                     style={[
                       styles.noteInput,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
+                      {
+                        backgroundColor: theme.inputBackground,
+                        color: theme.text,
+                      },
                     ]}
                     value={privateNotes.children || ""}
                     onChangeText={(text) =>
@@ -1050,19 +1398,42 @@ export default function OfficialProfileScreen() {
                         { backgroundColor: theme.inputBackground },
                       ]}
                     >
-                      <ThemedText type="body" style={{ color: privateNotes.birthday ? theme.text : theme.secondaryText }}>
-                        {privateNotes.birthday ? formatDateMMDDYYYY(privateNotes.birthday) : "Select birthday..."}
+                      <ThemedText
+                        type="body"
+                        style={{
+                          color: privateNotes.birthday
+                            ? theme.text
+                            : theme.secondaryText,
+                        }}
+                      >
+                        {privateNotes.birthday
+                          ? formatDateMMDDYYYY(privateNotes.birthday)
+                          : "Select birthday..."}
                       </ThemedText>
-                      <Feather name="calendar" size={18} color={theme.secondaryText} />
+                      <Feather
+                        name="calendar"
+                        size={18}
+                        color={theme.secondaryText}
+                      />
                     </Pressable>
                     {showBirthdayPicker ? (
-                      <View style={[styles.inlineDatePicker, { backgroundColor: theme.cardBackground }]}>
+                      <View
+                        style={[
+                          styles.inlineDatePicker,
+                          { backgroundColor: theme.cardBackground },
+                        ]}
+                      >
                         {Platform.OS === "web" ? (
                           <input
                             type="date"
                             value={privateNotes.birthday || ""}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                              setPrivateNotes({ ...privateNotes, birthday: e.target.value });
+                            onChange={(
+                              e: React.ChangeEvent<HTMLInputElement>,
+                            ) => {
+                              setPrivateNotes({
+                                ...privateNotes,
+                                birthday: e.target.value,
+                              });
                               setShowBirthdayPicker(false);
                             }}
                             style={{
@@ -1089,7 +1460,10 @@ export default function OfficialProfileScreen() {
                                 if (date) {
                                   setBirthdayPickerDate(date);
                                   const dateStr = toISODateString(date);
-                                  setPrivateNotes({ ...privateNotes, birthday: dateStr });
+                                  setPrivateNotes({
+                                    ...privateNotes,
+                                    birthday: dateStr,
+                                  });
                                   if (Platform.OS === "android") {
                                     setShowBirthdayPicker(false);
                                   }
@@ -1100,9 +1474,17 @@ export default function OfficialProfileScreen() {
                             {Platform.OS === "ios" ? (
                               <Pressable
                                 onPress={() => setShowBirthdayPicker(false)}
-                                style={[styles.dateConfirmButton, { backgroundColor: theme.primary }]}
+                                style={[
+                                  styles.dateConfirmButton,
+                                  { backgroundColor: theme.primary },
+                                ]}
                               >
-                                <ThemedText type="caption" style={{ color: "#FFFFFF" }}>Done</ThemedText>
+                                <ThemedText
+                                  type="caption"
+                                  style={{ color: "#FFFFFF" }}
+                                >
+                                  Done
+                                </ThemedText>
                               </Pressable>
                             ) : null}
                           </View>
@@ -1110,12 +1492,23 @@ export default function OfficialProfileScreen() {
                         {privateNotes.birthday ? (
                           <Pressable
                             onPress={() => {
-                              setPrivateNotes({ ...privateNotes, birthday: "" });
+                              setPrivateNotes({
+                                ...privateNotes,
+                                birthday: "",
+                              });
                               setShowBirthdayPicker(false);
                             }}
-                            style={{ marginTop: Spacing.xs, alignItems: "center" }}
+                            style={{
+                              marginTop: Spacing.xs,
+                              alignItems: "center",
+                            }}
                           >
-                            <ThemedText type="caption" style={{ color: theme.warning }}>Clear</ThemedText>
+                            <ThemedText
+                              type="caption"
+                              style={{ color: theme.warning }}
+                            >
+                              Clear
+                            </ThemedText>
                           </Pressable>
                         ) : null}
                       </View>
@@ -1123,7 +1516,9 @@ export default function OfficialProfileScreen() {
                   </View>
                 ) : (
                   <ThemedText type="body">
-                    {privateNotes.birthday ? formatDateMMDDYYYY(privateNotes.birthday) : "Not set"}
+                    {privateNotes.birthday
+                      ? formatDateMMDDYYYY(privateNotes.birthday)
+                      : "Not set"}
                   </ThemedText>
                 )}
               </View>
@@ -1135,26 +1530,51 @@ export default function OfficialProfileScreen() {
                 {isEditing ? (
                   <View>
                     <Pressable
-                      onPress={() => setShowAnniversaryPicker(!showAnniversaryPicker)}
+                      onPress={() =>
+                        setShowAnniversaryPicker(!showAnniversaryPicker)
+                      }
                       style={[
                         styles.noteInput,
                         styles.datePickerButton,
                         { backgroundColor: theme.inputBackground },
                       ]}
                     >
-                      <ThemedText type="body" style={{ color: privateNotes.anniversary ? theme.text : theme.secondaryText }}>
-                        {privateNotes.anniversary ? formatDateMMDDYYYY(privateNotes.anniversary) : "Select anniversary..."}
+                      <ThemedText
+                        type="body"
+                        style={{
+                          color: privateNotes.anniversary
+                            ? theme.text
+                            : theme.secondaryText,
+                        }}
+                      >
+                        {privateNotes.anniversary
+                          ? formatDateMMDDYYYY(privateNotes.anniversary)
+                          : "Select anniversary..."}
                       </ThemedText>
-                      <Feather name="calendar" size={18} color={theme.secondaryText} />
+                      <Feather
+                        name="calendar"
+                        size={18}
+                        color={theme.secondaryText}
+                      />
                     </Pressable>
                     {showAnniversaryPicker ? (
-                      <View style={[styles.inlineDatePicker, { backgroundColor: theme.cardBackground }]}>
+                      <View
+                        style={[
+                          styles.inlineDatePicker,
+                          { backgroundColor: theme.cardBackground },
+                        ]}
+                      >
                         {Platform.OS === "web" ? (
                           <input
                             type="date"
                             value={privateNotes.anniversary || ""}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                              setPrivateNotes({ ...privateNotes, anniversary: e.target.value });
+                            onChange={(
+                              e: React.ChangeEvent<HTMLInputElement>,
+                            ) => {
+                              setPrivateNotes({
+                                ...privateNotes,
+                                anniversary: e.target.value,
+                              });
                               setShowAnniversaryPicker(false);
                             }}
                             style={{
@@ -1181,7 +1601,10 @@ export default function OfficialProfileScreen() {
                                 if (date) {
                                   setAnniversaryPickerDate(date);
                                   const dateStr = toISODateString(date);
-                                  setPrivateNotes({ ...privateNotes, anniversary: dateStr });
+                                  setPrivateNotes({
+                                    ...privateNotes,
+                                    anniversary: dateStr,
+                                  });
                                   if (Platform.OS === "android") {
                                     setShowAnniversaryPicker(false);
                                   }
@@ -1192,9 +1615,17 @@ export default function OfficialProfileScreen() {
                             {Platform.OS === "ios" ? (
                               <Pressable
                                 onPress={() => setShowAnniversaryPicker(false)}
-                                style={[styles.dateConfirmButton, { backgroundColor: theme.primary }]}
+                                style={[
+                                  styles.dateConfirmButton,
+                                  { backgroundColor: theme.primary },
+                                ]}
                               >
-                                <ThemedText type="caption" style={{ color: "#FFFFFF" }}>Done</ThemedText>
+                                <ThemedText
+                                  type="caption"
+                                  style={{ color: "#FFFFFF" }}
+                                >
+                                  Done
+                                </ThemedText>
                               </Pressable>
                             ) : null}
                           </View>
@@ -1202,12 +1633,23 @@ export default function OfficialProfileScreen() {
                         {privateNotes.anniversary ? (
                           <Pressable
                             onPress={() => {
-                              setPrivateNotes({ ...privateNotes, anniversary: "" });
+                              setPrivateNotes({
+                                ...privateNotes,
+                                anniversary: "",
+                              });
                               setShowAnniversaryPicker(false);
                             }}
-                            style={{ marginTop: Spacing.xs, alignItems: "center" }}
+                            style={{
+                              marginTop: Spacing.xs,
+                              alignItems: "center",
+                            }}
                           >
-                            <ThemedText type="caption" style={{ color: theme.warning }}>Clear</ThemedText>
+                            <ThemedText
+                              type="caption"
+                              style={{ color: theme.warning }}
+                            >
+                              Clear
+                            </ThemedText>
                           </Pressable>
                         ) : null}
                       </View>
@@ -1215,7 +1657,9 @@ export default function OfficialProfileScreen() {
                   </View>
                 ) : (
                   <ThemedText type="body">
-                    {privateNotes.anniversary ? formatDateMMDDYYYY(privateNotes.anniversary) : "Not set"}
+                    {privateNotes.anniversary
+                      ? formatDateMMDDYYYY(privateNotes.anniversary)
+                      : "Not set"}
                   </ThemedText>
                 )}
               </View>
@@ -1229,7 +1673,10 @@ export default function OfficialProfileScreen() {
                     style={[
                       styles.noteInput,
                       styles.notesTextArea,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
+                      {
+                        backgroundColor: theme.inputBackground,
+                        color: theme.text,
+                      },
                     ]}
                     value={privateNotes.notes || ""}
                     onChangeText={(text) =>
@@ -1256,50 +1703,106 @@ export default function OfficialProfileScreen() {
                   onPress={() => {
                     navigation.navigate("PrayerTab" as any, {
                       screen: "PrayerList",
-                      params: { officialId: officialId, officialName: official?.fullName },
+                      params: {
+                        officialId: officialId,
+                        officialName: official?.fullName,
+                      },
                     });
                   }}
                   style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                 >
-                  <ThemedText type="caption" style={{ color: theme.primary }}>View All</ThemedText>
+                  <ThemedText type="caption" style={{ color: theme.primary }}>
+                    View All
+                  </ThemedText>
                 </Pressable>
               </View>
-              {prayerCounts && (prayerCounts.open > 0 || prayerCounts.answered > 0 || prayerCounts.archived > 0) ? (
-                <View style={{ flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.sm }}>
+              {prayerCounts &&
+              (prayerCounts.open > 0 ||
+                prayerCounts.answered > 0 ||
+                prayerCounts.archived > 0) ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: Spacing.sm,
+                    marginTop: Spacing.sm,
+                  }}
+                >
                   {prayerCounts.open > 0 ? (
-                    <View style={[styles.prayerCountPill, { backgroundColor: theme.primary + "20" }]}>
-                      <View style={[styles.prayerCountDot, { backgroundColor: theme.primary }]} />
-                      <ThemedText type="caption">{prayerCounts.open} Active</ThemedText>
+                    <View
+                      style={[
+                        styles.prayerCountPill,
+                        { backgroundColor: theme.primary + "20" },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.prayerCountDot,
+                          { backgroundColor: theme.primary },
+                        ]}
+                      />
+                      <ThemedText type="caption">
+                        {prayerCounts.open} Active
+                      </ThemedText>
                     </View>
                   ) : null}
                   {prayerCounts.answered > 0 ? (
-                    <View style={[styles.prayerCountPill, { backgroundColor: "#4CAF5020" }]}>
-                      <View style={[styles.prayerCountDot, { backgroundColor: "#4CAF50" }]} />
-                      <ThemedText type="caption">{prayerCounts.answered} Answered</ThemedText>
+                    <View
+                      style={[
+                        styles.prayerCountPill,
+                        { backgroundColor: "#4CAF5020" },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.prayerCountDot,
+                          { backgroundColor: "#4CAF50" },
+                        ]}
+                      />
+                      <ThemedText type="caption">
+                        {prayerCounts.answered} Answered
+                      </ThemedText>
                     </View>
                   ) : null}
                   {prayerCounts.archived > 0 ? (
-                    <View style={[styles.prayerCountPill, { backgroundColor: theme.secondaryText + "20" }]}>
-                      <View style={[styles.prayerCountDot, { backgroundColor: theme.secondaryText }]} />
-                      <ThemedText type="caption">{prayerCounts.archived} Archived</ThemedText>
+                    <View
+                      style={[
+                        styles.prayerCountPill,
+                        { backgroundColor: theme.secondaryText + "20" },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.prayerCountDot,
+                          { backgroundColor: theme.secondaryText },
+                        ]}
+                      />
+                      <ThemedText type="caption">
+                        {prayerCounts.archived} Archived
+                      </ThemedText>
                     </View>
                   ) : null}
                 </View>
               ) : (
-                <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: Spacing.sm }}>
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.secondaryText, marginTop: Spacing.sm }}
+                >
                   No prayers yet. Tap the prayer icon above to add one.
                 </ThemedText>
               )}
             </View>
 
-            <View 
+            <View
               style={[styles.section, { marginTop: Spacing.xl }]}
               onLayout={handleNotesSectionLayout}
             >
               <View style={styles.editHeader}>
                 <View>
                   <ThemedText type="h3">Private Notes</ThemedText>
-                  <ThemedText type="small" style={{ color: theme.secondaryText }}>
+                  <ThemedText
+                    type="small"
+                    style={{ color: theme.secondaryText }}
+                  >
                     Private to this device.
                   </ThemedText>
                 </View>
@@ -1307,23 +1810,41 @@ export default function OfficialProfileScreen() {
                   onPress={() => setShowAddNote(!showAddNote)}
                   style={({ pressed }) => [
                     styles.addButton,
-                    { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                    {
+                      backgroundColor: theme.primary,
+                      opacity: pressed ? 0.7 : 1,
+                    },
                   ]}
                 >
-                  <Feather name={showAddNote ? "x" : "plus"} size={16} color="#FFFFFF" />
-                  <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: 4 }}>
+                  <Feather
+                    name={showAddNote ? "x" : "plus"}
+                    size={16}
+                    color="#FFFFFF"
+                  />
+                  <ThemedText
+                    type="caption"
+                    style={{ color: "#FFFFFF", marginLeft: 4 }}
+                  >
                     {showAddNote ? "Cancel" : "Add Note"}
                   </ThemedText>
                 </Pressable>
               </View>
 
               {showAddNote ? (
-                <View style={[styles.addEntryForm, { backgroundColor: theme.cardBackground }]}>
+                <View
+                  style={[
+                    styles.addEntryForm,
+                    { backgroundColor: theme.cardBackground },
+                  ]}
+                >
                   <TextInput
                     style={[
                       styles.noteInput,
                       styles.notesTextArea,
-                      { backgroundColor: theme.inputBackground, color: theme.text },
+                      {
+                        backgroundColor: theme.inputBackground,
+                        color: theme.text,
+                      },
                     ]}
                     value={newNoteText}
                     onChangeText={setNewNoteText}
@@ -1337,35 +1858,86 @@ export default function OfficialProfileScreen() {
                     onPress={() => setNewNoteFollowUp(!newNoteFollowUp)}
                     style={styles.checkboxRow}
                   >
-                    <View style={[
-                      styles.checkbox,
-                      { borderColor: theme.border },
-                      newNoteFollowUp && { backgroundColor: theme.primary, borderColor: theme.primary },
-                    ]}>
-                      {newNoteFollowUp ? <Feather name="check" size={14} color="#FFFFFF" /> : null}
+                    <View
+                      style={[
+                        styles.checkbox,
+                        { borderColor: theme.border },
+                        newNoteFollowUp && {
+                          backgroundColor: theme.primary,
+                          borderColor: theme.primary,
+                        },
+                      ]}
+                    >
+                      {newNoteFollowUp ? (
+                        <Feather name="check" size={14} color="#FFFFFF" />
+                      ) : null}
                     </View>
                     <ThemedText type="body">Follow-up needed</ThemedText>
                   </Pressable>
 
                   {newNoteFollowUp ? (
                     <View style={{ marginTop: Spacing.sm }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.xs }}>
-                        <ThemedText type="caption" style={{ color: theme.secondaryText, flex: 1 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          marginBottom: Spacing.xs,
+                        }}
+                      >
+                        <ThemedText
+                          type="caption"
+                          style={{ color: theme.secondaryText, flex: 1 }}
+                        >
                           Due date (optional)
                         </ThemedText>
                         {newNoteDueDate ? (
-                          <Pressable onPress={() => setNewNoteDueDate(undefined)}>
-                            <Feather name="x" size={14} color={theme.secondaryText} />
+                          <Pressable
+                            onPress={() => setNewNoteDueDate(undefined)}
+                          >
+                            <Feather
+                              name="x"
+                              size={14}
+                              color={theme.secondaryText}
+                            />
                           </Pressable>
                         ) : null}
                       </View>
                       <Pressable
-                        onPress={() => { setDueDatePickerDate(newNoteDueDate ? new Date(newNoteDueDate + "T12:00:00") : new Date()); setShowDueDatePicker(true); }}
-                        style={[styles.datePickerButton, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+                        onPress={() => {
+                          setDueDatePickerDate(
+                            newNoteDueDate
+                              ? new Date(newNoteDueDate + "T12:00:00")
+                              : new Date(),
+                          );
+                          setShowDueDatePicker(true);
+                        }}
+                        style={[
+                          styles.datePickerButton,
+                          {
+                            backgroundColor: theme.inputBackground,
+                            borderColor: theme.border,
+                          },
+                        ]}
                       >
-                        <Feather name="calendar" size={14} color={theme.secondaryText} />
-                        <ThemedText type="body" style={{ marginLeft: Spacing.xs, color: newNoteDueDate ? theme.text : theme.secondaryText }}>
-                          {newNoteDueDate ? new Date(newNoteDueDate + "T12:00:00").toLocaleDateString() : "Select date..."}
+                        <Feather
+                          name="calendar"
+                          size={14}
+                          color={theme.secondaryText}
+                        />
+                        <ThemedText
+                          type="body"
+                          style={{
+                            marginLeft: Spacing.xs,
+                            color: newNoteDueDate
+                              ? theme.text
+                              : theme.secondaryText,
+                          }}
+                        >
+                          {newNoteDueDate
+                            ? new Date(
+                                newNoteDueDate + "T12:00:00",
+                              ).toLocaleDateString()
+                            : "Select date..."}
                         </ThemedText>
                       </Pressable>
                       {showDueDatePicker ? (
@@ -1373,11 +1945,22 @@ export default function OfficialProfileScreen() {
                           <input
                             type="date"
                             value={newNoteDueDate || ""}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            onChange={(
+                              e: React.ChangeEvent<HTMLInputElement>,
+                            ) => {
                               setNewNoteDueDate(e.target.value || undefined);
                               setShowDueDatePicker(false);
                             }}
-                            style={{ padding: 8, fontSize: 16, borderRadius: 8, border: `1px solid ${theme.border}`, backgroundColor: theme.inputBackground, color: theme.text, width: "100%", marginTop: 8 }}
+                            style={{
+                              padding: 8,
+                              fontSize: 16,
+                              borderRadius: 8,
+                              border: `1px solid ${theme.border}`,
+                              backgroundColor: theme.inputBackground,
+                              color: theme.text,
+                              width: "100%",
+                              marginTop: 8,
+                            }}
                           />
                         ) : (
                           <DateTimePicker
@@ -1386,37 +1969,68 @@ export default function OfficialProfileScreen() {
                             display="spinner"
                             minimumDate={new Date()}
                             onChange={(event, date) => {
-                              if (event.type === "dismissed") { setShowDueDatePicker(false); return; }
+                              if (event.type === "dismissed") {
+                                setShowDueDatePicker(false);
+                                return;
+                              }
                               if (date) {
                                 setDueDatePickerDate(date);
                                 setNewNoteDueDate(toISODateString(date));
-                                if (Platform.OS === "android") setShowDueDatePicker(false);
+                                if (Platform.OS === "android")
+                                  setShowDueDatePicker(false);
                               }
                             }}
                           />
                         )
                       ) : null}
 
-                      <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: Spacing.sm, marginBottom: Spacing.xs }}>
+                      <ThemedText
+                        type="caption"
+                        style={{
+                          color: theme.secondaryText,
+                          marginTop: Spacing.sm,
+                          marginBottom: Spacing.xs,
+                        }}
+                      >
                         Priority (optional)
                       </ThemedText>
                       <View style={{ flexDirection: "row", gap: Spacing.sm }}>
                         {(["low", "medium", "high"] as const).map((p) => {
                           const isSelected = newNotePriority === p;
-                          const color = p === "high" ? theme.error ?? "#DC3545" : p === "medium" ? theme.warning : theme.success;
+                          const color =
+                            p === "high"
+                              ? (theme.error ?? "#DC3545")
+                              : p === "medium"
+                                ? theme.warning
+                                : theme.success;
                           return (
                             <Pressable
                               key={p}
-                              onPress={() => setNewNotePriority(isSelected ? undefined : p)}
+                              onPress={() =>
+                                setNewNotePriority(isSelected ? undefined : p)
+                              }
                               style={[
                                 styles.priorityPill,
                                 {
-                                  backgroundColor: isSelected ? color + "30" : theme.backgroundSecondary,
-                                  borderColor: isSelected ? color : theme.border,
+                                  backgroundColor: isSelected
+                                    ? color + "30"
+                                    : theme.backgroundSecondary,
+                                  borderColor: isSelected
+                                    ? color
+                                    : theme.border,
                                 },
                               ]}
                             >
-                              <ThemedText type="caption" style={{ color: isSelected ? color : theme.secondaryText, fontWeight: isSelected ? "700" : "400", textTransform: "capitalize" }}>
+                              <ThemedText
+                                type="caption"
+                                style={{
+                                  color: isSelected
+                                    ? color
+                                    : theme.secondaryText,
+                                  fontWeight: isSelected ? "700" : "400",
+                                  textTransform: "capitalize",
+                                }}
+                              >
                                 {p}
                               </ThemedText>
                             </Pressable>
@@ -1426,7 +2040,10 @@ export default function OfficialProfileScreen() {
                     </View>
                   ) : null}
 
-                  <Button onPress={handleAddNotePrayer} disabled={!newNoteText.trim()}>
+                  <Button
+                    onPress={handleAddNotePrayer}
+                    disabled={!newNoteText.trim()}
+                  >
                     Save Note
                   </Button>
                 </View>
@@ -1435,49 +2052,123 @@ export default function OfficialProfileScreen() {
               {notesPrayer.length > 0 ? (
                 <View style={styles.entriesList}>
                   {notesPrayer.map((entry) => {
-                    const isOverdue = entry.dueDate && new Date(entry.dueDate + "T23:59:59") < new Date() && entry.followUpNeeded && !entry.followUpArchivedAt;
-                    const priorityColor = entry.priority === "high" ? (theme as any).error ?? "#DC3545" : entry.priority === "medium" ? theme.warning : theme.success;
+                    const isOverdue =
+                      entry.dueDate &&
+                      new Date(entry.dueDate + "T23:59:59") < new Date() &&
+                      entry.followUpNeeded &&
+                      !entry.followUpArchivedAt;
+                    const priorityColor =
+                      entry.priority === "high"
+                        ? ((theme as any).error ?? "#DC3545")
+                        : entry.priority === "medium"
+                          ? theme.warning
+                          : theme.success;
                     return (
-                    <View key={entry.id} style={[styles.entryCard, { backgroundColor: theme.cardBackground }, isOverdue ? { borderLeftWidth: 3, borderLeftColor: (theme as any).error ?? "#DC3545" } : {}]}>
-                      <View style={styles.entryHeader}>
-                        <ThemedText type="small" style={{ color: theme.secondaryText }}>
-                          {new Date(entry.createdAt).toLocaleDateString()}
-                        </ThemedText>
-                        <View style={styles.entryActions}>
-                          {entry.priority ? (
-                            <View style={[styles.followUpBadge, { backgroundColor: priorityColor + "25" }]}>
-                              <ThemedText type="small" style={{ color: priorityColor, textTransform: "capitalize" }}>{entry.priority}</ThemedText>
-                            </View>
-                          ) : null}
-                          {entry.followUpNeeded ? (
-                            <View style={[styles.followUpBadge, { backgroundColor: isOverdue ? ((theme as any).error ?? "#DC3545") : theme.primary }]}>
-                              <ThemedText type="small" style={{ color: "#FFFFFF" }}>{isOverdue ? "Overdue" : "Follow-up"}</ThemedText>
-                            </View>
-                          ) : null}
-                          <Pressable onPress={() => handleDeleteNotePrayer(entry.id)}>
-                            <Feather name="trash-2" size={16} color={theme.secondaryText} />
-                          </Pressable>
+                      <View
+                        key={entry.id}
+                        style={[
+                          styles.entryCard,
+                          { backgroundColor: theme.cardBackground },
+                          isOverdue
+                            ? {
+                                borderLeftWidth: 3,
+                                borderLeftColor:
+                                  (theme as any).error ?? "#DC3545",
+                              }
+                            : {},
+                        ]}
+                      >
+                        <View style={styles.entryHeader}>
+                          <ThemedText
+                            type="small"
+                            style={{ color: theme.secondaryText }}
+                          >
+                            {new Date(entry.createdAt).toLocaleDateString()}
+                          </ThemedText>
+                          <View style={styles.entryActions}>
+                            {entry.priority ? (
+                              <View
+                                style={[
+                                  styles.followUpBadge,
+                                  { backgroundColor: priorityColor + "25" },
+                                ]}
+                              >
+                                <ThemedText
+                                  type="small"
+                                  style={{
+                                    color: priorityColor,
+                                    textTransform: "capitalize",
+                                  }}
+                                >
+                                  {entry.priority}
+                                </ThemedText>
+                              </View>
+                            ) : null}
+                            {entry.followUpNeeded ? (
+                              <View
+                                style={[
+                                  styles.followUpBadge,
+                                  {
+                                    backgroundColor: isOverdue
+                                      ? ((theme as any).error ?? "#DC3545")
+                                      : theme.primary,
+                                  },
+                                ]}
+                              >
+                                <ThemedText
+                                  type="small"
+                                  style={{ color: "#FFFFFF" }}
+                                >
+                                  {isOverdue ? "Overdue" : "Follow-up"}
+                                </ThemedText>
+                              </View>
+                            ) : null}
+                            <Pressable
+                              onPress={() => handleDeleteNotePrayer(entry.id)}
+                            >
+                              <Feather
+                                name="trash-2"
+                                size={16}
+                                color={theme.secondaryText}
+                              />
+                            </Pressable>
+                          </View>
                         </View>
+                        <ThemedText type="body">{entry.text}</ThemedText>
+                        {entry.dueDate && entry.followUpNeeded ? (
+                          <ThemedText
+                            type="small"
+                            style={{
+                              color: isOverdue
+                                ? ((theme as any).error ?? "#DC3545")
+                                : theme.secondaryText,
+                              marginTop: 4,
+                            }}
+                          >
+                            Due:{" "}
+                            {new Date(
+                              entry.dueDate + "T12:00:00",
+                            ).toLocaleDateString()}
+                          </ThemedText>
+                        ) : null}
                       </View>
-                      <ThemedText type="body">{entry.text}</ThemedText>
-                      {entry.dueDate && entry.followUpNeeded ? (
-                        <ThemedText type="small" style={{ color: isOverdue ? ((theme as any).error ?? "#DC3545") : theme.secondaryText, marginTop: 4 }}>
-                          Due: {new Date(entry.dueDate + "T12:00:00").toLocaleDateString()}
-                        </ThemedText>
-                      ) : null}
-                    </View>
                     );
                   })}
                 </View>
               ) : (
-                <ThemedText type="body" style={{ color: theme.secondaryText, fontStyle: "italic" }}>
+                <ThemedText
+                  type="body"
+                  style={{ color: theme.secondaryText, fontStyle: "italic" }}
+                >
                   No notes yet.
                 </ThemedText>
               )}
             </View>
 
             <View style={[styles.section, { marginTop: Spacing.xl }]}>
-              <View style={[styles.sectionHeader, { marginBottom: Spacing.sm }]}>
+              <View
+                style={[styles.sectionHeader, { marginBottom: Spacing.sm }]}
+              >
                 <ThemedText type="h3">Engagement Log</ThemedText>
                 <Pressable
                   onPress={() => {
@@ -1487,23 +2178,42 @@ export default function OfficialProfileScreen() {
                   }}
                   style={({ pressed }) => [
                     styles.addEngagementBtn,
-                    { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                    {
+                      backgroundColor: theme.primary,
+                      opacity: pressed ? 0.7 : 1,
+                    },
                   ]}
                 >
                   <Feather name="plus" size={14} color="#FFFFFF" />
-                  <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: 4 }}>Add</ThemedText>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: "#FFFFFF", marginLeft: 4 }}
+                  >
+                    Add
+                  </ThemedText>
                 </Pressable>
               </View>
 
               {showEngagementPicker ? (
-                <View style={[styles.webDatePickerContainer, { backgroundColor: theme.cardBackground }]}>
-                  <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.xs }}>
+                <View
+                  style={[
+                    styles.webDatePickerContainer,
+                    { backgroundColor: theme.cardBackground },
+                  ]}
+                >
+                  <ThemedText
+                    type="caption"
+                    style={{
+                      color: theme.secondaryText,
+                      marginBottom: Spacing.xs,
+                    }}
+                  >
                     Date of engagement
                   </ThemedText>
                   {Platform.OS === "web" ? (
                     <input
                       type="date"
-                      value={engagementPickerDate.toISOString().split('T')[0]}
+                      value={engagementPickerDate.toISOString().split("T")[0]}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const date = new Date(e.target.value + "T12:00:00");
                         setEngagementPickerDate(date);
@@ -1524,20 +2234,38 @@ export default function OfficialProfileScreen() {
                       mode="date"
                       display="spinner"
                       onChange={(event, date) => {
-                        if (event.type === "dismissed") { setShowEngagementPicker(false); return; }
+                        if (event.type === "dismissed") {
+                          setShowEngagementPicker(false);
+                          return;
+                        }
                         if (date) {
                           setEngagementPickerDate(date);
-                          if (Platform.OS === "android") { handleAddEngagement(date); }
+                          if (Platform.OS === "android") {
+                            handleAddEngagement(date);
+                          }
                         }
                       }}
                       maximumDate={new Date()}
                     />
                   )}
-                  <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: Spacing.sm, marginBottom: Spacing.xs }}>
+                  <ThemedText
+                    type="caption"
+                    style={{
+                      color: theme.secondaryText,
+                      marginTop: Spacing.sm,
+                      marginBottom: Spacing.xs,
+                    }}
+                  >
                     Note (optional)
                   </ThemedText>
                   <TextInput
-                    style={[styles.noteInput, { backgroundColor: theme.inputBackground, color: theme.text }]}
+                    style={[
+                      styles.noteInput,
+                      {
+                        backgroundColor: theme.inputBackground,
+                        color: theme.text,
+                      },
+                    ]}
                     value={engagementNote}
                     onChangeText={setEngagementNote}
                     placeholder="e.g., 'Met at Capitol'"
@@ -1546,17 +2274,46 @@ export default function OfficialProfileScreen() {
                   />
                   <View style={styles.iosPickerButtons}>
                     <Pressable
-                      onPress={() => { setShowEngagementPicker(false); setEngagementNote(""); }}
-                      style={({ pressed }) => [styles.setTodayButton, { backgroundColor: theme.border, opacity: pressed ? 0.7 : 1 }]}
+                      onPress={() => {
+                        setShowEngagementPicker(false);
+                        setEngagementNote("");
+                      }}
+                      style={({ pressed }) => [
+                        styles.setTodayButton,
+                        {
+                          backgroundColor: theme.border,
+                          opacity: pressed ? 0.7 : 1,
+                        },
+                      ]}
                     >
-                      <ThemedText type="caption" style={{ color: theme.text }}>Cancel</ThemedText>
+                      <ThemedText type="caption" style={{ color: theme.text }}>
+                        Cancel
+                      </ThemedText>
                     </Pressable>
                     <Pressable
-                      onPress={() => handleAddEngagement(Platform.OS === "web" ? engagementPickerDate : engagementPickerDate)}
-                      style={({ pressed }) => [styles.setTodayButton, { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1, marginLeft: Spacing.sm }]}
+                      onPress={() =>
+                        handleAddEngagement(
+                          Platform.OS === "web"
+                            ? engagementPickerDate
+                            : engagementPickerDate,
+                        )
+                      }
+                      style={({ pressed }) => [
+                        styles.setTodayButton,
+                        {
+                          backgroundColor: theme.primary,
+                          opacity: pressed ? 0.7 : 1,
+                          marginLeft: Spacing.sm,
+                        },
+                      ]}
                     >
                       <Feather name="check" size={16} color="#FFFFFF" />
-                      <ThemedText type="caption" style={{ color: "#FFFFFF", marginLeft: Spacing.xs }}>Save</ThemedText>
+                      <ThemedText
+                        type="caption"
+                        style={{ color: "#FFFFFF", marginLeft: Spacing.xs }}
+                      >
+                        Save
+                      </ThemedText>
                     </Pressable>
                   </View>
                 </View>
@@ -1565,26 +2322,53 @@ export default function OfficialProfileScreen() {
               {engagementLog.length > 0 ? (
                 <View style={{ marginTop: Spacing.sm }}>
                   {engagementLog.map((entry) => (
-                    <View key={entry.id} style={[styles.entryCard, { backgroundColor: theme.cardBackground }]}>
+                    <View
+                      key={entry.id}
+                      style={[
+                        styles.entryCard,
+                        { backgroundColor: theme.cardBackground },
+                      ]}
+                    >
                       <View style={styles.entryHeader}>
-                        <View style={{ flexDirection: "row", alignItems: "center" }}>
-                          <Feather name="calendar" size={14} color={theme.primary} style={{ marginRight: 6 }} />
-                          <ThemedText type="small" style={{ color: theme.secondaryText }}>
+                        <View
+                          style={{ flexDirection: "row", alignItems: "center" }}
+                        >
+                          <Feather
+                            name="calendar"
+                            size={14}
+                            color={theme.primary}
+                            style={{ marginRight: 6 }}
+                          />
+                          <ThemedText
+                            type="small"
+                            style={{ color: theme.secondaryText }}
+                          >
                             {new Date(entry.engagedAt).toLocaleDateString()}
                           </ThemedText>
                         </View>
-                        <Pressable onPress={() => handleDeleteEngagement(entry.id)}>
-                          <Feather name="trash-2" size={16} color={theme.secondaryText} />
+                        <Pressable
+                          onPress={() => handleDeleteEngagement(entry.id)}
+                        >
+                          <Feather
+                            name="trash-2"
+                            size={16}
+                            color={theme.secondaryText}
+                          />
                         </Pressable>
                       </View>
                       {entry.summary ? (
-                        <ThemedText type="body" style={{ marginTop: 4 }}>{entry.summary}</ThemedText>
+                        <ThemedText type="body" style={{ marginTop: 4 }}>
+                          {entry.summary}
+                        </ThemedText>
                       ) : null}
                     </View>
                   ))}
                 </View>
               ) : (
-                <ThemedText type="body" style={{ color: theme.secondaryText, fontStyle: "italic" }}>
+                <ThemedText
+                  type="body"
+                  style={{ color: theme.secondaryText, fontStyle: "italic" }}
+                >
                   No engagements logged yet. Tap + Add to record one.
                 </ThemedText>
               )}

@@ -78,7 +78,10 @@ export default function ProfileStackNavigator() {
         name="CommitteeList"
         component={CommitteeListScreen}
         options={({ route }) => ({
-          headerTitle: route.params.chamber === "TX_HOUSE" ? "House Committees" : "Senate Committees",
+          headerTitle:
+            route.params.chamber === "TX_HOUSE"
+              ? "House Committees"
+              : "Senate Committees",
         })}
       />
       <Stack.Screen

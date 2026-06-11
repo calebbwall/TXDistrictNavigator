@@ -71,12 +71,16 @@ export async function runDailyRefresh(): Promise<{
     // Refresh both chambers at once (new TLO URL returns all upcoming meetings per chamber)
     for (const chamber of ["H", "S"] as const) {
       try {
-        const { newEvents, updatedEvents } = await refreshChamberUpcomingHearings(chamber, 30);
+        const { newEvents, updatedEvents } =
+          await refreshChamberUpcomingHearings(chamber, 30);
         totalNew += newEvents;
         totalUpdated += updatedEvents;
         committeesRefreshed++;
       } catch (err) {
-        console.error(`[dailyRefresh] Error refreshing chamber ${chamber}:`, err);
+        console.error(
+          `[dailyRefresh] Error refreshing chamber ${chamber}:`,
+          err,
+        );
       }
     }
 
@@ -122,9 +126,15 @@ export async function runDailyRefresh(): Promise<{
 
     // Fetch detail pages for events that have TLO notice URLs but no notice text yet
     const hearingsNeedingDetails = await db
-      .select({ id: legislativeEvents.id, sourceUrl: legislativeEvents.sourceUrl })
+      .select({
+        id: legislativeEvents.id,
+        sourceUrl: legislativeEvents.sourceUrl,
+      })
       .from(legislativeEvents)
-      .leftJoin(hearingDetails, sql`${hearingDetails.eventId} = ${legislativeEvents.id}`)
+      .leftJoin(
+        hearingDetails,
+        sql`${hearingDetails.eventId} = ${legislativeEvents.id}`,
+      )
       .where(
         sql`(${legislativeEvents.sourceUrl} LIKE '%tlodocs%' OR ${legislativeEvents.sourceUrl} LIKE '%MtgNotice%')
             AND (${isNull(hearingDetails.noticeText)} OR length(${hearingDetails.noticeText}) < 50)`,
@@ -141,7 +151,9 @@ export async function runDailyRefresh(): Promise<{
       }
     }
 
-    console.log(`[dailyRefresh] Chamber refresh took ${Date.now() - refreshStart}ms`);
+    console.log(
+      `[dailyRefresh] Chamber refresh took ${Date.now() - refreshStart}ms`,
+    );
 
     const duration = Date.now() - jobStart;
     console.log("========================================");
@@ -187,7 +199,8 @@ export function msUntilNext5amChicago(): number {
     second: "2-digit",
     hour12: false,
   }).formatToParts(now);
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  const get = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value ?? "0");
   const h = get("hour") % 24; // normalize the "24" midnight quirk to 0
   const m = get("minute");
   const s = get("second");

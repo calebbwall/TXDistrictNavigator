@@ -28,15 +28,15 @@ function normalizeText(text: string): string {
 // Extract city names and ZIP codes from an address string
 function extractCityAndZip(address: string): string[] {
   if (!address) return [];
-  
+
   const results: string[] = [];
-  
+
   // Extract ZIP codes (5-digit or 5+4 format)
   const zipMatches = address.match(/\b(\d{5})(?:-\d{4})?\b/g);
   if (zipMatches) {
-    results.push(...zipMatches.map(z => z.slice(0, 5))); // Only keep 5-digit part
+    results.push(...zipMatches.map((z) => z.slice(0, 5))); // Only keep 5-digit part
   }
-  
+
   // Try to extract city from common address patterns
   // Pattern: "City, TX" or "City, Texas" or "City TX"
   const cityStatePattern = /([a-zA-Z\s]+),?\s*(?:TX|Texas)\b/gi;
@@ -47,18 +47,18 @@ function extractCityAndZip(address: string): string[] {
       results.push(city);
     }
   }
-  
+
   // Also add normalized full address for broader matching
   const normalized = normalizeText(address);
   if (normalized) {
     results.push(normalized);
   }
-  
+
   return results;
 }
 
 function removeCommonTokens(tokens: string[]): string[] {
-  return tokens.filter(t => !SUFFIX_TOKENS.has(t) && !TITLE_TOKENS.has(t));
+  return tokens.filter((t) => !SUFFIX_TOKENS.has(t) && !TITLE_TOKENS.has(t));
 }
 
 function extractLastName(fullName: string): string {
@@ -75,25 +75,32 @@ function extractFirstName(fullName: string): string {
   return cleaned[0] || "";
 }
 
-export function buildSearchableOfficial(official: Official): SearchableOfficial {
+export function buildSearchableOfficial(
+  official: Official,
+): SearchableOfficial {
   const normalizedName = normalizeText(official.fullName);
   const tokens = normalizedName.split(" ");
   const cleanedTokens = removeCommonTokens(tokens);
-  
+
   const firstName = cleanedTokens[0] || "";
   const lastName = cleanedTokens[cleanedTokens.length - 1] || "";
-  
+
   const normalizedFirstLast = cleanedTokens.join(" ");
-  const normalizedLastFirst = lastName + " " + cleanedTokens.slice(0, -1).join(" ");
-  
-  const chamberLabel = official.source === "TX_HOUSE" ? "tx house" 
-    : official.source === "TX_SENATE" ? "tx senate" 
-    : official.source === "US_HOUSE" ? "us house congress"
-    : "";
-  
+  const normalizedLastFirst =
+    lastName + " " + cleanedTokens.slice(0, -1).join(" ");
+
+  const chamberLabel =
+    official.source === "TX_HOUSE"
+      ? "tx house"
+      : official.source === "TX_SENATE"
+        ? "tx senate"
+        : official.source === "US_HOUSE"
+          ? "us house congress"
+          : "";
+
   const partyLabel = official.party?.toLowerCase() || "";
   const districtLabel = `district ${official.districtNumber} ${official.districtNumber}`;
-  
+
   // Extract cities and ZIPs from district office addresses
   const districtAddressTokens: string[] = [];
   if (official.districtAddresses && official.districtAddresses.length > 0) {
@@ -101,16 +108,18 @@ export function buildSearchableOfficial(official: Official): SearchableOfficial 
       districtAddressTokens.push(...extractCityAndZip(addr));
     }
   }
-  
+
   // Extract city and ZIP from private personal address (if available)
   const personalAddressTokens: string[] = [];
   if (official.private?.personalAddress) {
-    personalAddressTokens.push(...extractCityAndZip(official.private.personalAddress));
+    personalAddressTokens.push(
+      ...extractCityAndZip(official.private.personalAddress),
+    );
   }
-  
+
   // Include the city field if available
   const cityLabel = official.city ? normalizeText(official.city) : "";
-  
+
   const searchKey = [
     normalizedName,
     normalizedFirstLast,
@@ -122,7 +131,7 @@ export function buildSearchableOfficial(official: Official): SearchableOfficial 
     ...districtAddressTokens,
     ...personalAddressTokens,
   ].join(" ");
-  
+
   return {
     ...official,
     searchKey,
@@ -141,7 +150,7 @@ function levenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
   const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
-    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
   );
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
@@ -164,7 +173,11 @@ function minDistToNameTokens(queryToken: string, nameTokens: string[]): number {
   return best;
 }
 
-function scoreCandidate(candidate: SearchableOfficial, queryTokens: string[], normalizedQuery: string): number {
+function scoreCandidate(
+  candidate: SearchableOfficial,
+  queryTokens: string[],
+  normalizedQuery: string,
+): number {
   let score = 0;
 
   if (candidate.normalizedFirstLast.startsWith(normalizedQuery)) {
@@ -201,8 +214,8 @@ function scoreCandidate(candidate: SearchableOfficial, queryTokens: string[], no
     score += 30;
   }
 
-  const allTokensPresent = queryTokens.every(qt =>
-    candidate.searchKey.includes(qt)
+  const allTokensPresent = queryTokens.every((qt) =>
+    candidate.searchKey.includes(qt),
   );
   if (!allTokensPresent) {
     // Fuzzy pass: check if each missing token is within edit distance of a name token
@@ -231,37 +244,37 @@ function scoreCandidate(candidate: SearchableOfficial, queryTokens: string[], no
 export function searchOfficials(
   searchIndex: SearchableOfficial[],
   query: string,
-  maxResults: number = 20
+  maxResults: number = 20,
 ): ScoredResult[] {
   const normalizedQuery = normalizeText(query);
-  
+
   if (!normalizedQuery) {
     return [];
   }
-  
-  const queryTokens = normalizedQuery.split(" ").filter(t => t.length > 0);
-  
+
+  const queryTokens = normalizedQuery.split(" ").filter((t) => t.length > 0);
+
   if (queryTokens.length === 0) {
     return [];
   }
-  
+
   const scored: ScoredResult[] = [];
-  
+
   for (const candidate of searchIndex) {
     const score = scoreCandidate(candidate, queryTokens, normalizedQuery);
-    
+
     if (score > 0) {
       scored.push({ official: candidate, score });
     }
   }
-  
+
   scored.sort((a, b) => {
     if (b.score !== a.score) {
       return b.score - a.score;
     }
     return a.official.lastName.localeCompare(b.official.lastName);
   });
-  
+
   return scored.slice(0, maxResults);
 }
 
@@ -269,16 +282,16 @@ export function isNameSearch(query: string): boolean {
   const normalized = normalizeText(query);
   const startsWithDigit = /^\d/.test(normalized);
   const isZipCode = /^\d{5}$/.test(normalized);
-  
+
   if (startsWithDigit || isZipCode) {
     return false;
   }
-  
+
   const cityIndicators = ["tx", "texas"];
   const tokens = normalized.split(" ");
-  if (tokens.some(t => cityIndicators.includes(t))) {
+  if (tokens.some((t) => cityIndicators.includes(t))) {
     return false;
   }
-  
+
   return true;
 }

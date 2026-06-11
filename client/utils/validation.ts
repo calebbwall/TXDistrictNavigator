@@ -4,7 +4,9 @@ export function cleanPhone(phone: string): string {
 
 export function isValidUSPhone(phone: string): boolean {
   const cleaned = cleanPhone(phone);
-  return cleaned.length === 10 || (cleaned.length === 11 && cleaned.startsWith("1"));
+  return (
+    cleaned.length === 10 || (cleaned.length === 11 && cleaned.startsWith("1"))
+  );
 }
 
 export function formatPhone(phone: string): string {
@@ -64,17 +66,30 @@ export function isValidZipCode(zip: string): boolean {
  */
 export function formatDateFriendly(dateString: string): string {
   if (!dateString) return "";
-  
+
   // Parse the date string manually to avoid timezone issues
   const parsed = parseDateString(dateString);
   if (!parsed) return dateString;
-  
+
   const { year, month, day } = parsed;
-  
+
   // Format as "Mon DD, YYYY"
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const monthName = monthNames[month - 1];
-  
+
   return `${monthName} ${day}, ${year}`;
 }
 
@@ -84,10 +99,10 @@ export function formatDateFriendly(dateString: string): string {
  */
 export function formatDateMMDDYYYY(dateString: string): string {
   if (!dateString) return "";
-  
+
   const parsed = parseDateString(dateString);
   if (!parsed) return dateString;
-  
+
   const { year, month, day } = parsed;
   return `${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}-${year}`;
 }
@@ -97,35 +112,37 @@ export function formatDateMMDDYYYY(dateString: string): string {
  * Returns null if the format is invalid.
  * IMPORTANT: This does NOT use Date object to avoid timezone issues.
  */
-export function parseDateString(dateString: string): { year: number; month: number; day: number } | null {
+export function parseDateString(
+  dateString: string,
+): { year: number; month: number; day: number } | null {
   if (!dateString) return null;
-  
+
   const trimmed = dateString.trim();
-  
+
   // Try YYYY-MM-DD format (ISO/internal storage format)
   const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (isoMatch) {
     const year = parseInt(isoMatch[1], 10);
     const month = parseInt(isoMatch[2], 10);
     const day = parseInt(isoMatch[3], 10);
-    
+
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
       return { year, month, day };
     }
   }
-  
+
   // Try MM-DD-YYYY format (user input format)
   const usMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
   if (usMatch) {
     const month = parseInt(usMatch[1], 10);
     const day = parseInt(usMatch[2], 10);
     const year = parseInt(usMatch[3], 10);
-    
+
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
       return { year, month, day };
     }
   }
-  
+
   return null;
 }
 
@@ -136,10 +153,10 @@ export function parseDateString(dateString: string): { year: number; month: numb
  */
 export function toStorageDateString(dateString: string): string {
   if (!dateString) return "";
-  
+
   const parsed = parseDateString(dateString);
   if (!parsed) return dateString;
-  
+
   const { year, month, day } = parsed;
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
@@ -161,10 +178,10 @@ export function toISODateString(date: Date): string {
  */
 export function parseISODate(dateString: string): Date | null {
   if (!dateString) return null;
-  
+
   const parsed = parseDateString(dateString);
   if (!parsed) return null;
-  
+
   const { year, month, day } = parsed;
   // Use local Date constructor (year, monthIndex, day) - no timezone shift
   return new Date(year, month - 1, day);

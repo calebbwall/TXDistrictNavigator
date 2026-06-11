@@ -38,15 +38,25 @@ function setCache(key: string, result: PlaceResult | null): void {
 
 const ZIP_REGEX = /^\d{5}(-\d{4})?$/;
 
-export async function lookupPlace(query: string): Promise<{ result: PlaceResult | null; fromCache: boolean; error?: string }> {
+export async function lookupPlace(
+  query: string,
+): Promise<{ result: PlaceResult | null; fromCache: boolean; error?: string }> {
   const username = process.env.GEONAMES_USERNAME;
   if (!username) {
-    return { result: null, fromCache: false, error: "GEONAMES_USERNAME secret is not configured" };
+    return {
+      result: null,
+      fromCache: false,
+      error: "GEONAMES_USERNAME secret is not configured",
+    };
   }
 
   const normalized = normalizeQuery(query);
   if (normalized.length < 2) {
-    return { result: null, fromCache: false, error: "Query too short (min 2 characters)" };
+    return {
+      result: null,
+      fromCache: false,
+      error: "Query too short (min 2 characters)",
+    };
   }
 
   const cacheKey = `place:${normalized}`;
@@ -69,28 +79,45 @@ export async function lookupPlace(query: string): Promise<{ result: PlaceResult 
     return { result, fromCache: false };
   } catch (err) {
     console.error("[GeoNames] API error:", err);
-    return { result: null, fromCache: false, error: "GeoNames API request failed" };
+    return {
+      result: null,
+      fromCache: false,
+      error: "GeoNames API request failed",
+    };
   }
 }
 
-async function lookupZIP(zip: string, username: string): Promise<PlaceResult | null> {
+async function lookupZIP(
+  zip: string,
+  username: string,
+): Promise<PlaceResult | null> {
   const cleanZip = zip.split("-")[0];
   const url = `${GEONAMES_BASE}/postalCodeSearchJSON?postalcode=${cleanZip}&country=US&maxRows=5&username=${username}`;
-  console.log(`[GeoNames] ZIP lookup: ${GEONAMES_BASE}/postalCodeSearchJSON?postalcode=${cleanZip}&country=US&maxRows=5`);
+  console.log(
+    `[GeoNames] ZIP lookup: ${GEONAMES_BASE}/postalCodeSearchJSON?postalcode=${cleanZip}&country=US&maxRows=5`,
+  );
 
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
   }
 
-  const data = await response.json() as { postalCodes?: Array<{ lat: number; lng: number; placeName: string; adminCode1: string; postalCode: string }> };
-  
+  const data = (await response.json()) as {
+    postalCodes?: Array<{
+      lat: number;
+      lng: number;
+      placeName: string;
+      adminCode1: string;
+      postalCode: string;
+    }>;
+  };
+
   if (!data.postalCodes || data.postalCodes.length === 0) {
     console.log(`[GeoNames] No results for ZIP ${cleanZip}`);
     return null;
   }
 
-  const texasResult = data.postalCodes.find(p => p.adminCode1 === "TX");
+  const texasResult = data.postalCodes.find((p) => p.adminCode1 === "TX");
   if (!texasResult) {
     console.log(`[GeoNames] ZIP ${cleanZip} exists but not in Texas`);
     return null;
@@ -103,27 +130,44 @@ async function lookupZIP(zip: string, username: string): Promise<PlaceResult | n
     postalCode: texasResult.postalCode,
   };
 
-  console.log(`[GeoNames] ZIP resolved: ${result.name} at (${result.lat}, ${result.lng})`);
+  console.log(
+    `[GeoNames] ZIP resolved: ${result.name} at (${result.lat}, ${result.lng})`,
+  );
   return result;
 }
 
-async function lookupCity(query: string, username: string): Promise<PlaceResult | null> {
+async function lookupCity(
+  query: string,
+  username: string,
+): Promise<PlaceResult | null> {
   const url = `${GEONAMES_BASE}/searchJSON?q=${encodeURIComponent(query)}&country=US&adminCode1=TX&featureClass=P&maxRows=5&username=${username}`;
-  console.log(`[GeoNames] City lookup: ${GEONAMES_BASE}/searchJSON?q=${encodeURIComponent(query)}&country=US&adminCode1=TX&featureClass=P&maxRows=5`);
+  console.log(
+    `[GeoNames] City lookup: ${GEONAMES_BASE}/searchJSON?q=${encodeURIComponent(query)}&country=US&adminCode1=TX&featureClass=P&maxRows=5`,
+  );
 
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
   }
 
-  const data = await response.json() as { geonames?: Array<{ lat: string; lng: string; name: string; adminName1: string; geonameId: number }> };
+  const data = (await response.json()) as {
+    geonames?: Array<{
+      lat: string;
+      lng: string;
+      name: string;
+      adminName1: string;
+      geonameId: number;
+    }>;
+  };
 
   if (!data.geonames || data.geonames.length === 0) {
     console.log(`[GeoNames] No Texas places found for "${query}"`);
     return null;
   }
 
-  const exactMatch = data.geonames.find(g => g.name.toLowerCase() === query.toLowerCase());
+  const exactMatch = data.geonames.find(
+    (g) => g.name.toLowerCase() === query.toLowerCase(),
+  );
   const best = exactMatch || data.geonames[0];
 
   if (best.adminName1 !== "Texas") {
@@ -138,7 +182,9 @@ async function lookupCity(query: string, username: string): Promise<PlaceResult 
     geonameId: best.geonameId,
   };
 
-  console.log(`[GeoNames] City resolved: ${result.name} at (${result.lat}, ${result.lng})`);
+  console.log(
+    `[GeoNames] City resolved: ${result.name} at (${result.lat}, ${result.lng})`,
+  );
   return result;
 }
 
@@ -170,15 +216,26 @@ function setMultiCache(key: string, results: PlaceResult[]): void {
   multiCache.set(key, { results, timestamp: Date.now() });
 }
 
-export async function lookupPlaceCandidates(query: string, maxResults: number = 5): Promise<{ results: PlaceResult[]; fromCache: boolean; error?: string }> {
+export async function lookupPlaceCandidates(
+  query: string,
+  maxResults: number = 5,
+): Promise<{ results: PlaceResult[]; fromCache: boolean; error?: string }> {
   const username = process.env.GEONAMES_USERNAME;
   if (!username) {
-    return { results: [], fromCache: false, error: "GEONAMES_USERNAME secret is not configured" };
+    return {
+      results: [],
+      fromCache: false,
+      error: "GEONAMES_USERNAME secret is not configured",
+    };
   }
 
   const normalized = normalizeQuery(query);
   if (normalized.length < 2) {
-    return { results: [], fromCache: false, error: "Query too short (min 2 characters)" };
+    return {
+      results: [],
+      fromCache: false,
+      error: "Query too short (min 2 characters)",
+    };
   }
 
   const cacheKey = `multi:${normalized}`;
@@ -201,34 +258,53 @@ export async function lookupPlaceCandidates(query: string, maxResults: number = 
     return { results, fromCache: false };
   } catch (err) {
     console.error("[GeoNames] API error:", err);
-    return { results: [], fromCache: false, error: "GeoNames API request failed" };
+    return {
+      results: [],
+      fromCache: false,
+      error: "GeoNames API request failed",
+    };
   }
 }
 
-async function lookupZIPMulti(zip: string, username: string, maxResults: number): Promise<PlaceResult[]> {
+async function lookupZIPMulti(
+  zip: string,
+  username: string,
+  maxResults: number,
+): Promise<PlaceResult[]> {
   const cleanZip = zip.split("-")[0];
   const url = `${GEONAMES_BASE}/postalCodeSearchJSON?postalcode=${cleanZip}&country=US&maxRows=${maxResults}&username=${username}`;
-  console.log(`[GeoNames] ZIP multi lookup: ${GEONAMES_BASE}/postalCodeSearchJSON?postalcode=${cleanZip}&country=US&maxRows=${maxResults}`);
+  console.log(
+    `[GeoNames] ZIP multi lookup: ${GEONAMES_BASE}/postalCodeSearchJSON?postalcode=${cleanZip}&country=US&maxRows=${maxResults}`,
+  );
 
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
   }
 
-  const data = await response.json() as { postalCodes?: Array<{ lat: number; lng: number; placeName: string; adminCode1: string; postalCode: string; adminName2?: string }> };
-  
+  const data = (await response.json()) as {
+    postalCodes?: Array<{
+      lat: number;
+      lng: number;
+      placeName: string;
+      adminCode1: string;
+      postalCode: string;
+      adminName2?: string;
+    }>;
+  };
+
   if (!data.postalCodes || data.postalCodes.length === 0) {
     console.log(`[GeoNames] No results for ZIP ${cleanZip}`);
     return [];
   }
 
-  const texasResults = data.postalCodes.filter(p => p.adminCode1 === "TX");
+  const texasResults = data.postalCodes.filter((p) => p.adminCode1 === "TX");
   if (texasResults.length === 0) {
     console.log(`[GeoNames] ZIP ${cleanZip} exists but not in Texas`);
     return [];
   }
 
-  const results = texasResults.map(p => ({
+  const results = texasResults.map((p) => ({
     name: `${p.placeName}, Texas ${p.postalCode}`,
     lat: p.lat,
     lng: p.lng,
@@ -240,25 +316,41 @@ async function lookupZIPMulti(zip: string, username: string, maxResults: number)
   return results;
 }
 
-async function lookupCityMulti(query: string, username: string, maxResults: number): Promise<PlaceResult[]> {
+async function lookupCityMulti(
+  query: string,
+  username: string,
+  maxResults: number,
+): Promise<PlaceResult[]> {
   const url = `${GEONAMES_BASE}/searchJSON?q=${encodeURIComponent(query)}&country=US&adminCode1=TX&featureClass=P&maxRows=${maxResults}&username=${username}`;
-  console.log(`[GeoNames] City multi lookup: ${GEONAMES_BASE}/searchJSON?q=${encodeURIComponent(query)}&country=US&adminCode1=TX&featureClass=P&maxRows=${maxResults}`);
+  console.log(
+    `[GeoNames] City multi lookup: ${GEONAMES_BASE}/searchJSON?q=${encodeURIComponent(query)}&country=US&adminCode1=TX&featureClass=P&maxRows=${maxResults}`,
+  );
 
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
   }
 
-  const data = await response.json() as { geonames?: Array<{ lat: string; lng: string; name: string; adminName1: string; adminName2?: string; geonameId: number; population?: number }> };
+  const data = (await response.json()) as {
+    geonames?: Array<{
+      lat: string;
+      lng: string;
+      name: string;
+      adminName1: string;
+      adminName2?: string;
+      geonameId: number;
+      population?: number;
+    }>;
+  };
 
   if (!data.geonames || data.geonames.length === 0) {
     console.log(`[GeoNames] No Texas places found for "${query}"`);
     return [];
   }
 
-  const texasResults = data.geonames.filter(g => g.adminName1 === "Texas");
-  
-  const results = texasResults.map(g => ({
+  const texasResults = data.geonames.filter((g) => g.adminName1 === "Texas");
+
+  const results = texasResults.map((g) => ({
     name: `${g.name}, Texas`,
     lat: parseFloat(g.lat),
     lng: parseFloat(g.lng),

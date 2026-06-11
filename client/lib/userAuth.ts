@@ -23,10 +23,13 @@ let cached: UserCredentials | null = null;
 let inFlight: Promise<UserCredentials> | null = null;
 
 function getApiBase(): string {
-  if (process.env.EXPO_PUBLIC_API_BASE_URL) return process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (process.env.EXPO_PUBLIC_API_BASE_URL)
+    return process.env.EXPO_PUBLIC_API_BASE_URL;
   const host = process.env.EXPO_PUBLIC_DOMAIN;
   if (host) return `https://${host}`;
-  const extra = (Constants.expoConfig?.extra as { API_BASE_URL?: string } | undefined)?.API_BASE_URL;
+  const extra = (
+    Constants.expoConfig?.extra as { API_BASE_URL?: string } | undefined
+  )?.API_BASE_URL;
   if (extra && extra !== "YOUR_DEPLOYED_REPLIT_URL_HERE") return extra;
   throw new Error("No API URL configured for userAuth");
 }
@@ -121,7 +124,9 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
  * Replace the stored credentials with admin-issued ones (e.g. to adopt the
  * legacy "default" data set). Exposed for a future settings/import UI.
  */
-export async function importUserCredentials(creds: UserCredentials): Promise<void> {
+export async function importUserCredentials(
+  creds: UserCredentials,
+): Promise<void> {
   if (!creds.userId || !creds.token) throw new Error("Invalid credentials");
   await Promise.all([
     writeStored(USER_ID_KEY, creds.userId),

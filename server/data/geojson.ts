@@ -36,13 +36,17 @@ async function loadGeoJSONAsync(filename: string): Promise<GeoJSONCollection> {
   try {
     const filePath = findGeoJSONPath(filename);
     if (!filePath) {
-      console.error(`[GeoJSON] File not found: ${filename} (cwd=${process.cwd()})`);
+      console.error(
+        `[GeoJSON] File not found: ${filename} (cwd=${process.cwd()})`,
+      );
       return EMPTY;
     }
     console.log(`[GeoJSON] Loading ${filename} from: ${filePath}`);
     const data = await fs.promises.readFile(filePath, "utf8");
     const parsed = JSON.parse(data) as GeoJSONCollection;
-    console.log(`[GeoJSON] Successfully loaded ${filename}: ${parsed.features.length} features`);
+    console.log(
+      `[GeoJSON] Successfully loaded ${filename}: ${parsed.features.length} features`,
+    );
     return parsed;
   } catch (err) {
     console.error(`[GeoJSON] Error loading ${filename}:`, err);

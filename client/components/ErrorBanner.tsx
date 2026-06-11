@@ -1,6 +1,11 @@
 import React from "react";
 import { View, StyleSheet, Pressable } from "react-native";
-import Animated, { FadeIn, FadeOut, SlideInUp, SlideOutUp } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  SlideInUp,
+  SlideOutUp,
+} from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -12,7 +17,11 @@ interface ErrorBannerProps {
   type?: "error" | "warning";
 }
 
-export function ErrorBanner({ message, onRetry, type = "error" }: ErrorBannerProps) {
+export function ErrorBanner({
+  message,
+  onRetry,
+  type = "error",
+}: ErrorBannerProps) {
   const { theme } = useTheme();
   const backgroundColor = type === "error" ? "#DC3545" : "#FFC107";
   const textColor = type === "error" ? "#FFFFFF" : "#212529";
@@ -46,7 +55,10 @@ export function ErrorBanner({ message, onRetry, type = "error" }: ErrorBannerPro
             { opacity: pressed ? 0.7 : 1 },
           ]}
         >
-          <ThemedText type="small" style={[styles.retryText, { color: textColor }]}>
+          <ThemedText
+            type="small"
+            style={[styles.retryText, { color: textColor }]}
+          >
             Retry
           </ThemedText>
           <Feather name="refresh-cw" size={14} color={iconColor} />

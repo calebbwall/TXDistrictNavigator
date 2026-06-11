@@ -13,7 +13,7 @@ const TEXAS_CENTER = { latitude: 31.0, longitude: -99.5 };
 function generateDistrictGrid(
   type: DistrictType,
   prefix: string,
-  count: number
+  count: number,
 ): DistrictPolygon[] {
   const districts: DistrictPolygon[] = [];
   const rows = 4;
@@ -52,9 +52,21 @@ function generateDistrictGrid(
   return districts;
 }
 
-export const senatePolygons: DistrictPolygon[] = generateDistrictGrid("senate", "s", 24);
-export const housePolygons: DistrictPolygon[] = generateDistrictGrid("house", "h", 24);
-export const congressPolygons: DistrictPolygon[] = generateDistrictGrid("congress", "c", 24);
+export const senatePolygons: DistrictPolygon[] = generateDistrictGrid(
+  "senate",
+  "s",
+  24,
+);
+export const housePolygons: DistrictPolygon[] = generateDistrictGrid(
+  "house",
+  "h",
+  24,
+);
+export const congressPolygons: DistrictPolygon[] = generateDistrictGrid(
+  "congress",
+  "c",
+  24,
+);
 
 export function getPolygonsByType(type: DistrictType): DistrictPolygon[] {
   switch (type) {
@@ -69,7 +81,7 @@ export function getPolygonsByType(type: DistrictType): DistrictPolygon[] {
 
 export function getPolygonById(id: string): DistrictPolygon | undefined {
   return [...senatePolygons, ...housePolygons, ...congressPolygons].find(
-    (p) => p.id === id
+    (p) => p.id === id,
   );
 }
 

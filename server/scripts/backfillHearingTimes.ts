@@ -17,7 +17,9 @@ import {
   parseMeetingsUpcomingPage,
 } from "../jobs/targetedRefresh";
 
-async function backfillChamber(chamber: "H" | "S"): Promise<{ checked: number; updated: number; missing: number }> {
+async function backfillChamber(
+  chamber: "H" | "S",
+): Promise<{ checked: number; updated: number; missing: number }> {
   const url = `${TLO_BASE}/Committees/MeetingsUpcoming.aspx?chamber=${chamber}`;
   console.log(`[Backfill ${chamber}] Fetching ${url}`);
   const res = await fetchWithRetry(url);
@@ -38,7 +40,10 @@ async function backfillChamber(chamber: "H" | "S"): Promise<{ checked: number; u
     checked++;
 
     const rows = await db
-      .select({ id: legislativeEvents.id, startsAt: legislativeEvents.startsAt })
+      .select({
+        id: legislativeEvents.id,
+        startsAt: legislativeEvents.startsAt,
+      })
       .from(legislativeEvents)
       .where(eq(legislativeEvents.externalId, meeting.externalId))
       .limit(1);
@@ -78,9 +83,15 @@ async function main(): Promise<void> {
   const senate = await backfillChamber("S");
 
   console.log("----------------------------------------");
-  console.log(`[Backfill House ] checked=${house.checked} updated=${house.updated} missing=${house.missing}`);
-  console.log(`[Backfill Senate] checked=${senate.checked} updated=${senate.updated} missing=${senate.missing}`);
-  console.log(`[Backfill] Done in ${((Date.now() - start) / 1000).toFixed(1)}s`);
+  console.log(
+    `[Backfill House ] checked=${house.checked} updated=${house.updated} missing=${house.missing}`,
+  );
+  console.log(
+    `[Backfill Senate] checked=${senate.checked} updated=${senate.updated} missing=${senate.missing}`,
+  );
+  console.log(
+    `[Backfill] Done in ${((Date.now() - start) / 1000).toFixed(1)}s`,
+  );
 }
 
 main()

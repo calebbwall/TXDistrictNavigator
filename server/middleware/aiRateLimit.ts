@@ -45,7 +45,11 @@ function prune(timestamps: number[], windowMs: number, now: number): number[] {
   return idx === -1 ? [] : timestamps.slice(idx);
 }
 
-export function aiRateLimit(req: Request, res: Response, next: NextFunction): void {
+export function aiRateLimit(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const key = getKey(req);
   const now = Date.now();
 

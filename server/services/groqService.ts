@@ -5,7 +5,8 @@ let _groq: Groq | null = null;
 function getClient(): Groq {
   if (!_groq) {
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error("GROQ_API_KEY environment variable is not set");
+    if (!apiKey)
+      throw new Error("GROQ_API_KEY environment variable is not set");
     _groq = new Groq({ apiKey });
   }
   return _groq;
@@ -20,7 +21,7 @@ export interface NLSearchFilters {
 }
 
 export async function parseNaturalLanguageSearch(
-  query: string
+  query: string,
 ): Promise<NLSearchFilters> {
   const completion = await getClient().chat.completions.create({
     model: "llama-3.3-70b-versatile",
@@ -73,7 +74,9 @@ export interface IntentClassification {
   };
 }
 
-export async function classifyIntent(question: string): Promise<IntentClassification> {
+export async function classifyIntent(
+  question: string,
+): Promise<IntentClassification> {
   const completion = await getClient().chat.completions.create({
     model: "llama-3.3-70b-versatile",
     messages: [
@@ -129,15 +132,18 @@ export async function searchWeb(query: string): Promise<string> {
       q: query,
       num: "5",
     });
-    const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
+    const res = await fetch(
+      `https://www.googleapis.com/customsearch/v1?${params}`,
+    );
     if (!res.ok) return "";
 
     const data = await res.json();
     const items = (data.items ?? []).slice(0, 5);
     if (items.length === 0) return "";
 
-    const lines = items.map((item: any, i: number) =>
-      `${i + 1}. ${item.title}\n   ${item.snippet ?? ""}\n   Source: ${item.link}`
+    const lines = items.map(
+      (item: any, i: number) =>
+        `${i + 1}. ${item.title}\n   ${item.snippet ?? ""}\n   Source: ${item.link}`,
     );
     return `Web search results for "${query}":\n${lines.join("\n\n")}`;
   } catch {
@@ -145,7 +151,11 @@ export async function searchWeb(query: string): Promise<string> {
   }
 }
 
-export async function answerQuestion(question: string, dataContext: string, webContext?: string): Promise<string> {
+export async function answerQuestion(
+  question: string,
+  dataContext: string,
+  webContext?: string,
+): Promise<string> {
   const hasWeb = webContext && webContext.length > 0;
 
   const systemPrompt = `You are a knowledgeable Texas legislative aide embedded in TXDistrictNavigator, an app for tracking Texas state government. Your audience understands how Texas government works (House, Senate, committees, the legislative process) but relies on you to stay current on who's where and what's happening.
@@ -174,10 +184,15 @@ Guidelines:
     temperature: 0.3,
     max_tokens: 800,
   });
-  return completion.choices[0].message.content?.trim() ?? "I couldn't generate an answer. Please try again.";
+  return (
+    completion.choices[0].message.content?.trim() ??
+    "I couldn't generate an answer. Please try again."
+  );
 }
 
-export async function summarizeBill(context: BillSummaryContext): Promise<string> {
+export async function summarizeBill(
+  context: BillSummaryContext,
+): Promise<string> {
   const witnessLine = context.witnessPositions
     ? `Registered witnesses: ${context.witnessPositions.for} for, ${context.witnessPositions.against} against, ${context.witnessPositions.on} neutral.`
     : "";
@@ -189,20 +204,20 @@ export async function summarizeBill(context: BillSummaryContext): Promise<string
   const isEnacted =
     context.enacted ??
     context.actionHistory?.some((a) =>
-      /signed|enrolled|effective|chaptered/i.test(a)
+      /signed|enrolled|effective|chaptered/i.test(a),
     ) ??
     false;
   const isPassed =
     !isEnacted &&
     (context.billStatus?.match(/passed|engrossed/i) != null ||
       (context.actionHistory?.some((a) => /passed (house|senate)/i.test(a)) ??
-      false));
+        false));
 
   const lifecycleInstruction = isEnacted
     ? `This bill has been signed into law${context.effectiveDate ? ` (effective ${context.effectiveDate})` : ""}. Describe what it does in present tense — do NOT say "if passed" or "would".`
     : isPassed
-    ? "This bill has passed at least one chamber. Describe what it does in present or near-certain future tense."
-    : "Describe what this bill proposes to do if passed.";
+      ? "This bill has passed at least one chamber. Describe what it does in present or near-certain future tense."
+      : "Describe what this bill proposes to do if passed.";
 
   const prompt = `Bill: ${context.billNumber} (Session ${context.session})
 Caption: ${context.caption ?? "Not provided"}
@@ -222,5 +237,7 @@ ${witnessLine}`;
     temperature: 0.3,
     max_tokens: 200,
   });
-  return completion.choices[0].message.content?.trim() ?? "Summary unavailable.";
+  return (
+    completion.choices[0].message.content?.trim() ?? "Summary unavailable."
+  );
 }

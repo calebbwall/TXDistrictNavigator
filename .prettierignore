@@ -1,0 +1,6 @@
+# Generated build artifacts (Expo static export) — minified, not hand-edited
+static-build/
+
+# Dependency and build output directories
+node_modules/
+server_dist/

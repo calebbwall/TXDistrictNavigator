@@ -11,24 +11,42 @@ export type DistrictType = "tx_house" | "tx_senate" | "us_congress";
 
 export function sourceFromDistrictType(dt: DistrictType): DistrictSourceType {
   switch (dt) {
-    case "tx_house": return "TX_HOUSE";
-    case "tx_senate": return "TX_SENATE";
-    case "us_congress": return "US_HOUSE";
+    case "tx_house":
+      return "TX_HOUSE";
+    case "tx_senate":
+      return "TX_SENATE";
+    case "us_congress":
+      return "US_HOUSE";
   }
 }
 
-export function mergeOfficial(pub: OfficialPublic, priv: OfficialPrivate | null): MergedOfficial {
+export function mergeOfficial(
+  pub: OfficialPublic,
+  priv: OfficialPrivate | null,
+): MergedOfficial {
   const merged: MergedOfficial = { ...pub };
   if (priv) {
-    const { id: _id, officialPublicId: _oid, personId: _pid, ...privData } = priv;
+    const {
+      id: _id,
+      officialPublicId: _oid,
+      personId: _pid,
+      ...privData
+    } = priv;
     merged.private = privData;
   }
   return merged;
 }
 
-export function createVacantOfficial(source: DistrictSourceType, district: number): MergedOfficial {
+export function createVacantOfficial(
+  source: DistrictSourceType,
+  district: number,
+): MergedOfficial {
   const chamber =
-    source === "TX_HOUSE" ? "TX House" : source === "TX_SENATE" ? "TX Senate" : "US House";
+    source === "TX_HOUSE"
+      ? "TX House"
+      : source === "TX_SENATE"
+        ? "TX Senate"
+        : "US House";
   const vacantId = `VACANT-${source}-${district}`;
   return {
     id: vacantId,
@@ -59,7 +77,7 @@ export function createVacantOfficial(source: DistrictSourceType, district: numbe
 
 export function fillVacancies(
   officials: MergedOfficial[],
-  source: DistrictSourceType
+  source: DistrictSourceType,
 ): MergedOfficial[] {
   const range = DISTRICT_RANGES[source];
   const districtMap = new Map<string, MergedOfficial>();
@@ -69,7 +87,11 @@ export function fillVacancies(
   const result: MergedOfficial[] = [];
   for (let d = range.min; d <= range.max; d++) {
     const districtStr = String(d);
-    result.push(districtMap.has(districtStr) ? districtMap.get(districtStr)! : createVacantOfficial(source, d));
+    result.push(
+      districtMap.has(districtStr)
+        ? districtMap.get(districtStr)!
+        : createVacantOfficial(source, d),
+    );
   }
   return result;
 }

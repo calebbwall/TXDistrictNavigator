@@ -39,13 +39,13 @@ function getSecret(): string {
   // production deploy. Dev/test may still derive a stable fallback.
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "[userAuth] USER_TOKEN_SECRET must be set in production. Refusing to start with a derived fallback secret."
+      "[userAuth] USER_TOKEN_SECRET must be set in production. Refusing to start with a derived fallback secret.",
     );
   }
   const dbUrl = process.env.DATABASE_URL ?? "";
   if (!dbUrl) {
     throw new Error(
-      "[userAuth] USER_TOKEN_SECRET is not set and DATABASE_URL is empty; cannot derive a fallback token secret."
+      "[userAuth] USER_TOKEN_SECRET is not set and DATABASE_URL is empty; cannot derive a fallback token secret.",
     );
   }
   cachedSecret = crypto
@@ -54,7 +54,7 @@ function getSecret(): string {
     .digest("hex");
   console.warn(
     "[userAuth] USER_TOKEN_SECRET is not set. Derived a deterministic fallback from DATABASE_URL. " +
-      "Set USER_TOKEN_SECRET to a long random value in production secrets."
+      "Set USER_TOKEN_SECRET to a long random value in production secrets.",
   );
   return cachedSecret;
 }
@@ -79,7 +79,9 @@ export function signUserToken(userId: string): string {
   return `${userId}.${sign(userId)}`;
 }
 
-export function verifyUserToken(token: string | undefined | null): string | null {
+export function verifyUserToken(
+  token: string | undefined | null,
+): string | null {
   if (!token || typeof token !== "string") return null;
   if (token.length > 1024) return null;
   const dot = token.lastIndexOf(".");
@@ -104,7 +106,11 @@ function extractBearer(req: Request): string | null {
 }
 
 /** Strict middleware — 401 if no valid bearer token. Sets req.userId. */
-export function requireUser(req: Request, res: Response, next: NextFunction): void {
+export function requireUser(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const token = extractBearer(req);
   const userId = verifyUserToken(token);
   if (!userId) {

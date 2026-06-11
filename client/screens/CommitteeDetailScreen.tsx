@@ -1,8 +1,22 @@
 import React, { useState, useCallback } from "react";
-import { StyleSheet, View, FlatList, Pressable, ActivityIndicator, Image, ScrollView, RefreshControl } from "react-native";
+import {
+  StyleSheet,
+  View,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  RefreshControl,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useNavigation, useRoute, RouteProp, useFocusEffect } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  RouteProp,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
@@ -51,14 +65,25 @@ function MemberRow({ member, chamber }: MemberRowProps) {
   const handlePress = () => {
     if (!member.officialPublicId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate("OfficialProfile", { officialId: member.officialPublicId });
+    navigation.navigate("OfficialProfile", {
+      officialId: member.officialPublicId,
+    });
   };
 
   const isChair = member.roleTitle === "Chair";
   const isViceChair = member.roleTitle === "Vice Chair";
-  const roleColor = isChair ? "#FFD700" : isViceChair ? "#A8D8EA" : theme.secondaryText;
+  const roleColor = isChair
+    ? "#FFD700"
+    : isViceChair
+      ? "#A8D8EA"
+      : theme.secondaryText;
 
-  const partyColor = member.officialParty === "R" ? "#E94B3C" : member.officialParty === "D" ? "#4A90E2" : theme.secondaryText;
+  const partyColor =
+    member.officialParty === "R"
+      ? "#E94B3C"
+      : member.officialParty === "D"
+        ? "#4A90E2"
+        : theme.secondaryText;
 
   return (
     <Pressable
@@ -78,7 +103,16 @@ function MemberRow({ member, chamber }: MemberRowProps) {
           style={styles.memberPhoto}
         />
       ) : (
-        <View style={[styles.memberPhoto, { backgroundColor: theme.backgroundDefault, justifyContent: "center", alignItems: "center" }]}>
+        <View
+          style={[
+            styles.memberPhoto,
+            {
+              backgroundColor: theme.backgroundDefault,
+              justifyContent: "center",
+              alignItems: "center",
+            },
+          ]}
+        >
           <Feather name="user" size={20} color={theme.secondaryText} />
         </View>
       )}
@@ -88,13 +122,25 @@ function MemberRow({ member, chamber }: MemberRowProps) {
         </ThemedText>
         <View style={styles.memberMeta}>
           {member.roleTitle ? (
-            <View style={[
-              styles.roleBadge, 
-              { backgroundColor: roleColor + "20" },
-              isChair && { borderWidth: 1.5, borderColor: "#FFD700" },
-              isViceChair && { borderWidth: 1, borderColor: "#A8D8EA" },
-            ]}>
-              <ThemedText type="caption" style={{ color: isChair ? "#DAA520" : isViceChair ? "#5B9BD5" : roleColor, fontWeight: "600" }}>
+            <View
+              style={[
+                styles.roleBadge,
+                { backgroundColor: roleColor + "20" },
+                isChair && { borderWidth: 1.5, borderColor: "#FFD700" },
+                isViceChair && { borderWidth: 1, borderColor: "#A8D8EA" },
+              ]}
+            >
+              <ThemedText
+                type="caption"
+                style={{
+                  color: isChair
+                    ? "#DAA520"
+                    : isViceChair
+                      ? "#5B9BD5"
+                      : roleColor,
+                  fontWeight: "600",
+                }}
+              >
                 {member.roleTitle}
               </ThemedText>
             </View>
@@ -105,8 +151,16 @@ function MemberRow({ member, chamber }: MemberRowProps) {
             </ThemedText>
           ) : null}
           {member.officialParty ? (
-            <View style={[styles.partyBadge, { backgroundColor: partyColor + "20" }]}>
-              <ThemedText type="caption" style={{ color: partyColor, fontWeight: "600" }}>
+            <View
+              style={[
+                styles.partyBadge,
+                { backgroundColor: partyColor + "20" },
+              ]}
+            >
+              <ThemedText
+                type="caption"
+                style={{ color: partyColor, fontWeight: "600" }}
+              >
                 {member.officialParty}
               </ThemedText>
             </View>
@@ -140,21 +194,33 @@ function HearingsTab({ committeeId }: { committeeId: string }) {
   const { data, isLoading } = useQuery<{ hearings: CommitteeHearing[] }>({
     queryKey: ["/api/committees", committeeId, "hearings"],
     queryFn: async () => {
-      const url = new URL(`/api/committees/${committeeId}/hearings?range=upcoming`, getApiUrl());
+      const url = new URL(
+        `/api/committees/${committeeId}/hearings?range=upcoming`,
+        getApiUrl(),
+      );
       const res = await fetch(url.toString());
       if (!res.ok) throw new Error("Failed to fetch hearings");
       return res.json();
     },
   });
 
-  if (isLoading) return <ActivityIndicator style={{ marginTop: Spacing.xl }} color={theme.primary} />;
+  if (isLoading)
+    return (
+      <ActivityIndicator
+        style={{ marginTop: Spacing.xl }}
+        color={theme.primary}
+      />
+    );
 
   const hearings = data?.hearings ?? [];
   if (hearings.length === 0) {
     return (
       <View style={styles.emptyContainer}>
         <Feather name="calendar" size={48} color={theme.secondaryText} />
-        <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.md }}>
+        <ThemedText
+          type="body"
+          style={{ color: theme.secondaryText, marginTop: Spacing.md }}
+        >
           No upcoming hearings
         </ThemedText>
       </View>
@@ -162,19 +228,38 @@ function HearingsTab({ committeeId }: { committeeId: string }) {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: insets.bottom + Spacing.xl }}>
+    <ScrollView
+      contentContainerStyle={{
+        paddingHorizontal: Spacing.lg,
+        paddingTop: Spacing.md,
+        paddingBottom: insets.bottom + Spacing.xl,
+      }}
+    >
       {hearings.map((h) => (
         <Pressable
           key={h.id}
-          onPress={() => (navigation as any).navigate("HearingDetail", { eventId: h.id, title: h.title })}
+          onPress={() =>
+            (navigation as any).navigate("HearingDetail", {
+              eventId: h.id,
+              title: h.title,
+            })
+          }
           style={({ pressed }) => [
             styles.hearingRow,
-            { backgroundColor: theme.cardBackground, opacity: pressed ? 0.85 : 1 },
+            {
+              backgroundColor: theme.cardBackground,
+              opacity: pressed ? 0.85 : 1,
+            },
           ]}
         >
           <View style={{ flex: 1 }}>
-            <ThemedText type="body" style={{ fontWeight: "600" }}>{h.title}</ThemedText>
-            <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }}>
+            <ThemedText type="body" style={{ fontWeight: "600" }}>
+              {h.title}
+            </ThemedText>
+            <ThemedText
+              type="small"
+              style={{ color: theme.secondaryText, marginTop: 2 }}
+            >
               {h.startsAt
                 ? new Date(h.startsAt).toLocaleString("en-US", {
                     weekday: "short",
@@ -187,11 +272,18 @@ function HearingsTab({ committeeId }: { committeeId: string }) {
                 : "TBD"}
               {h.location ? ` · ${h.location}` : ""}
             </ThemedText>
-            {h.billCount > 0 || (h.witnessCount != null && h.witnessCount > 0) ? (
+            {h.billCount > 0 ||
+            (h.witnessCount != null && h.witnessCount > 0) ? (
               <ThemedText type="small" style={{ color: theme.secondaryText }}>
-                {h.billCount > 0 ? `${h.billCount} bill${h.billCount !== 1 ? "s" : ""}` : ""}
-                {h.billCount > 0 && h.witnessCount != null && h.witnessCount > 0 ? " · " : ""}
-                {h.witnessCount != null && h.witnessCount > 0 ? `${h.witnessCount} witness${h.witnessCount !== 1 ? "es" : ""}` : ""}
+                {h.billCount > 0
+                  ? `${h.billCount} bill${h.billCount !== 1 ? "s" : ""}`
+                  : ""}
+                {h.billCount > 0 && h.witnessCount != null && h.witnessCount > 0
+                  ? " · "
+                  : ""}
+                {h.witnessCount != null && h.witnessCount > 0
+                  ? `${h.witnessCount} witness${h.witnessCount !== 1 ? "es" : ""}`
+                  : ""}
               </ThemedText>
             ) : null}
           </View>
@@ -216,24 +308,38 @@ function BillsTab({ committeeId }: { committeeId: string }) {
   const insets = useSafeAreaInsets();
 
   // Fetch recent bill referrals to this committee via bill_actions
-  const { data, isLoading } = useQuery<{ hearings: { id: string; title: string; startsAt: string | null }[] }>({
+  const { data, isLoading } = useQuery<{
+    hearings: { id: string; title: string; startsAt: string | null }[];
+  }>({
     queryKey: ["/api/committees", committeeId, "hearings", "past"],
     queryFn: async () => {
-      const url = new URL(`/api/committees/${committeeId}/hearings?range=past`, getApiUrl());
+      const url = new URL(
+        `/api/committees/${committeeId}/hearings?range=past`,
+        getApiUrl(),
+      );
       const res = await fetch(url.toString());
       if (!res.ok) throw new Error("Failed to fetch past hearings");
       return res.json();
     },
   });
 
-  if (isLoading) return <ActivityIndicator style={{ marginTop: Spacing.xl }} color={theme.primary} />;
+  if (isLoading)
+    return (
+      <ActivityIndicator
+        style={{ marginTop: Spacing.xl }}
+        color={theme.primary}
+      />
+    );
 
   const past = data?.hearings ?? [];
   if (past.length === 0) {
     return (
       <View style={styles.emptyContainer}>
         <Feather name="file-text" size={48} color={theme.secondaryText} />
-        <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.md }}>
+        <ThemedText
+          type="body"
+          style={{ color: theme.secondaryText, marginTop: Spacing.md }}
+        >
           No past hearings with bill data
         </ThemedText>
       </View>
@@ -241,16 +347,33 @@ function BillsTab({ committeeId }: { committeeId: string }) {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: insets.bottom + Spacing.xl }}>
-      <ThemedText type="caption" style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}>
+    <ScrollView
+      contentContainerStyle={{
+        paddingHorizontal: Spacing.lg,
+        paddingTop: Spacing.md,
+        paddingBottom: insets.bottom + Spacing.xl,
+      }}
+    >
+      <ThemedText
+        type="caption"
+        style={{ color: theme.secondaryText, marginBottom: Spacing.sm }}
+      >
         PAST HEARINGS ({past.length})
       </ThemedText>
       {past.map((h) => (
-        <View key={h.id} style={[styles.hearingRow, { backgroundColor: theme.cardBackground }]}>
+        <View
+          key={h.id}
+          style={[styles.hearingRow, { backgroundColor: theme.cardBackground }]}
+        >
           <ThemedText type="body">{h.title}</ThemedText>
           {h.startsAt ? (
             <ThemedText type="small" style={{ color: theme.secondaryText }}>
-              {new Date(h.startsAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" })}
+              {new Date(h.startsAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                timeZone: "America/Chicago",
+              })}
             </ThemedText>
           ) : null}
         </View>
@@ -275,27 +398,32 @@ export default function CommitteeDetailScreen() {
   const { committeeId } = route.params;
   const [activeTab, setActiveTab] = useState<TabKey>("members");
 
-  const { data, isLoading, isFetching, error, refetch } = useQuery<CommitteeDetailData>({
-    queryKey: ["/api/committees", committeeId],
-    queryFn: async () => {
-      const baseUrl = getApiUrl();
-      const url = new URL(`/api/committees/${committeeId}`, baseUrl);
-      const response = await fetch(url.toString());
-      if (!response.ok) throw new Error("Failed to fetch committee details");
-      return response.json();
-    },
-    // Always fetch fresh data — committee rosters change and must be up-to-date.
-    staleTime: 0,
-    refetchOnMount: "always",
-  });
+  const { data, isLoading, isFetching, error, refetch } =
+    useQuery<CommitteeDetailData>({
+      queryKey: ["/api/committees", committeeId],
+      queryFn: async () => {
+        const baseUrl = getApiUrl();
+        const url = new URL(`/api/committees/${committeeId}`, baseUrl);
+        const response = await fetch(url.toString());
+        if (!response.ok) throw new Error("Failed to fetch committee details");
+        return response.json();
+      },
+      // Always fetch fresh data — committee rosters change and must be up-to-date.
+      staleTime: 0,
+      refetchOnMount: "always",
+    });
 
   // Force a fresh fetch whenever the user navigates back to this screen
   // (useFocusEffect fires on every focus, not just on mount).
   useFocusEffect(
-    useCallback(() => { refetch(); }, [refetch])
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
   );
 
-  const handleRefresh = useCallback(() => { refetch(); }, [refetch]);
+  const handleRefresh = useCallback(() => {
+    refetch();
+  }, [refetch]);
 
   const renderItem = ({ item }: { item: CommitteeMember }) => (
     <MemberRow member={item} chamber={data?.committee.chamber || "TX_HOUSE"} />
@@ -303,14 +431,20 @@ export default function CommitteeDetailScreen() {
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
-      <View style={[styles.committeeIcon, { backgroundColor: theme.primary + "20" }]}>
+      <View
+        style={[
+          styles.committeeIcon,
+          { backgroundColor: theme.primary + "20" },
+        ]}
+      >
         <Feather name="briefcase" size={24} color={theme.primary} />
       </View>
       <ThemedText type="h3" style={styles.committeeName}>
         {data?.committee.name}
       </ThemedText>
       <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-        {data?.members.length || 0} member{data?.members.length !== 1 ? "s" : ""}
+        {data?.members.length || 0} member
+        {data?.members.length !== 1 ? "s" : ""}
       </ThemedText>
       <View style={styles.divider} />
     </View>
@@ -319,7 +453,10 @@ export default function CommitteeDetailScreen() {
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Feather name="users" size={48} color={theme.secondaryText} />
-      <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.md }}>
+      <ThemedText
+        type="body"
+        style={{ color: theme.secondaryText, marginTop: Spacing.md }}
+      >
         No members found
       </ThemedText>
     </View>
@@ -327,7 +464,12 @@ export default function CommitteeDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[
+          styles.loadingContainer,
+          { backgroundColor: theme.backgroundRoot },
+        ]}
+      >
         <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
@@ -335,9 +477,17 @@ export default function CommitteeDetailScreen() {
 
   if (error || !data) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[
+          styles.loadingContainer,
+          { backgroundColor: theme.backgroundRoot },
+        ]}
+      >
         <Feather name="alert-circle" size={48} color="#DC3545" />
-        <ThemedText type="body" style={{ color: "#DC3545", marginTop: Spacing.md }}>
+        <ThemedText
+          type="body"
+          style={{ color: "#DC3545", marginTop: Spacing.md }}
+        >
           Failed to load committee details
         </ThemedText>
       </View>
@@ -347,8 +497,18 @@ export default function CommitteeDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       {/* Committee header */}
-      <View style={[styles.headerContainer, { paddingTop: headerHeight + Spacing.md }]}>
-        <View style={[styles.committeeIcon, { backgroundColor: theme.primary + "20" }]}>
+      <View
+        style={[
+          styles.headerContainer,
+          { paddingTop: headerHeight + Spacing.md },
+        ]}
+      >
+        <View
+          style={[
+            styles.committeeIcon,
+            { backgroundColor: theme.primary + "20" },
+          ]}
+        >
           <Feather name="briefcase" size={24} color={theme.primary} />
         </View>
         <ThemedText type="h3" style={styles.committeeName}>
@@ -360,16 +520,34 @@ export default function CommitteeDetailScreen() {
       </View>
 
       {/* Tab bar */}
-      <View style={[styles.tabBar, { borderBottomColor: theme.border, backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[
+          styles.tabBar,
+          {
+            borderBottomColor: theme.border,
+            backgroundColor: theme.backgroundRoot,
+          },
+        ]}
+      >
         {TABS.map((tab) => (
           <Pressable
             key={tab.key}
             onPress={() => setActiveTab(tab.key)}
-            style={[styles.tabItem, activeTab === tab.key && { borderBottomColor: theme.primary, borderBottomWidth: 2 }]}
+            style={[
+              styles.tabItem,
+              activeTab === tab.key && {
+                borderBottomColor: theme.primary,
+                borderBottomWidth: 2,
+              },
+            ]}
           >
             <ThemedText
               type="body"
-              style={{ color: activeTab === tab.key ? theme.primary : theme.secondaryText, fontWeight: activeTab === tab.key ? "700" : "400" }}
+              style={{
+                color:
+                  activeTab === tab.key ? theme.primary : theme.secondaryText,
+                fontWeight: activeTab === tab.key ? "700" : "400",
+              }}
             >
               {tab.label}
             </ThemedText>

@@ -6,13 +6,7 @@ import React, {
   useRef,
   useEffect,
 } from "react";
-import {
-  View,
-  Animated,
-  Pressable,
-  StyleSheet,
-  Platform,
-} from "react-native";
+import { View, Animated, Pressable, StyleSheet, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
@@ -97,7 +91,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         dismissToast();
       }, duration);
     },
-    [slideAnim, opacityAnim, dismissToast]
+    [slideAnim, opacityAnim, dismissToast],
   );
 
   useEffect(() => {

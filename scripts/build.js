@@ -121,12 +121,20 @@ async function startMetro(expoPublicDomain) {
   };
   metroProcess = spawn(
     "npx",
-    ["expo", "start", "--no-dev", "--minify", "--localhost", "--port", METRO_PORT.toString()],
+    [
+      "expo",
+      "start",
+      "--no-dev",
+      "--minify",
+      "--localhost",
+      "--port",
+      METRO_PORT.toString(),
+    ],
     {
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
       env,
-    }
+    },
   );
 
   if (metroProcess.stdout) {
@@ -367,7 +375,9 @@ async function downloadAssets(assets, timestamp) {
   const downloadPromises = assets.map(async (asset) => {
     const platform = Array.from(asset.platforms)[0];
 
-    const tempUrl = new URL(`http://localhost:${METRO_PORT}${asset.originalPath}`);
+    const tempUrl = new URL(
+      `http://localhost:${METRO_PORT}${asset.originalPath}`,
+    );
     const unstablePath = tempUrl.searchParams.get("unstable_path");
 
     if (!unstablePath) {
@@ -435,7 +445,9 @@ function updateBundleUrls(timestamp, baseUrl) {
     bundle = bundle.replace(
       /httpServerLocation:"(\/[^"]+)"/g,
       (_match, capturedPath) => {
-        const tempUrl = new URL(`http://localhost:${METRO_PORT}${capturedPath}`);
+        const tempUrl = new URL(
+          `http://localhost:${METRO_PORT}${capturedPath}`,
+        );
         const unstablePath = tempUrl.searchParams.get("unstable_path");
 
         if (!unstablePath) {

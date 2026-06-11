@@ -17,20 +17,24 @@ import { useTheme } from "@/hooks/useTheme";
 
 export type PrayerStackParamList = {
   PrayerDashboard: undefined;
-  PrayerList: {
-    status?: string;
-    officialId?: string;
-    officialName?: string;
-    categoryId?: string;
-    categoryName?: string;
-  } | undefined;
+  PrayerList:
+    | {
+        status?: string;
+        officialId?: string;
+        officialName?: string;
+        categoryId?: string;
+        categoryName?: string;
+      }
+    | undefined;
   AllPrayers: { categoryId?: string } | undefined;
-  AddPrayer: {
-    officialId?: string;
-    officialName?: string;
-    categoryId?: string;
-    categoryName?: string;
-  } | undefined;
+  AddPrayer:
+    | {
+        officialId?: string;
+        officialName?: string;
+        categoryId?: string;
+        categoryName?: string;
+      }
+    | undefined;
   PrayerDetail: { prayerId: string };
   FocusedMode: { prayerIds: string[]; startIndex: number };
   UpcomingEvents: undefined;
@@ -63,8 +67,15 @@ export default function PrayerStackNavigator() {
             <Pressable
               onPress={() => navigation.navigate("PrayerSettings")}
               hitSlop={12}
-              style={{ padding: Platform.OS === "android" ? 8 : 6, marginRight: Platform.OS === "android" ? 4 : 2 }}
-              android_ripple={{ color: "transparent", borderless: true, radius: 20 }}
+              style={{
+                padding: Platform.OS === "android" ? 8 : 6,
+                marginRight: Platform.OS === "android" ? 4 : 2,
+              }}
+              android_ripple={{
+                color: "transparent",
+                borderless: true,
+                radius: 20,
+              }}
             >
               <Feather name="settings" size={20} color={theme.text} />
             </Pressable>
@@ -94,7 +105,8 @@ export default function PrayerStackNavigator() {
             <Pressable
               onPress={() => {
                 const state = navigation.getState();
-                const hasStackHistory = state && state.routes && state.routes.length > 1;
+                const hasStackHistory =
+                  state && state.routes && state.routes.length > 1;
                 if (hasStackHistory) {
                   navigation.goBack();
                 } else {
@@ -105,8 +117,15 @@ export default function PrayerStackNavigator() {
                 }
               }}
               hitSlop={12}
-              style={{ padding: Platform.OS === "android" ? 8 : 6, marginLeft: Platform.OS === "android" ? 4 : 2 }}
-              android_ripple={{ color: "transparent", borderless: true, radius: 20 }}
+              style={{
+                padding: Platform.OS === "android" ? 8 : 6,
+                marginLeft: Platform.OS === "android" ? 4 : 2,
+              }}
+              android_ripple={{
+                color: "transparent",
+                borderless: true,
+                radius: 20,
+              }}
             >
               <Feather name="arrow-left" size={22} color={theme.text} />
             </Pressable>

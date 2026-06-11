@@ -51,22 +51,36 @@ function timeAgo(isoStr: string): string {
 
 function alertIcon(alertType: string): keyof typeof Feather.glyphMap {
   switch (alertType) {
-    case "HEARING_POSTED": return "calendar";
-    case "HEARING_UPDATED": return "edit-2";
-    case "CALENDAR_UPDATED": return "grid";
-    case "BILL_ACTION": return "file-text";
-    case "COMMITTEE_MEMBER_CHANGE": return "users";
-    default: return "bell";
+    case "HEARING_POSTED":
+      return "calendar";
+    case "HEARING_UPDATED":
+      return "edit-2";
+    case "CALENDAR_UPDATED":
+      return "grid";
+    case "BILL_ACTION":
+      return "file-text";
+    case "COMMITTEE_MEMBER_CHANGE":
+      return "users";
+    default:
+      return "bell";
   }
 }
 
-function alertAccentColor(alertType: string, theme: { primary: string; success: string; warning: string }): string {
+function alertAccentColor(
+  alertType: string,
+  theme: { primary: string; success: string; warning: string },
+): string {
   switch (alertType) {
-    case "HEARING_POSTED": return theme.success;
-    case "HEARING_UPDATED": return theme.warning;
-    case "BILL_ACTION": return theme.primary;
-    case "COMMITTEE_MEMBER_CHANGE": return theme.warning;
-    default: return theme.primary;
+    case "HEARING_POSTED":
+      return theme.success;
+    case "HEARING_UPDATED":
+      return theme.warning;
+    case "BILL_ACTION":
+      return theme.primary;
+    case "COMMITTEE_MEMBER_CHANGE":
+      return theme.warning;
+    default:
+      return theme.primary;
   }
 }
 
@@ -99,13 +113,13 @@ function AlertRow({
           backgroundColor: isSelected
             ? theme.primary + "15"
             : isUnread
-            ? color + "08"
-            : theme.cardBackground,
+              ? color + "08"
+              : theme.cardBackground,
           borderLeftColor: isSelecting
             ? "transparent"
             : isUnread
-            ? color
-            : "transparent",
+              ? color
+              : "transparent",
           opacity: pressed ? 0.8 : 1,
         },
       ]}
@@ -120,9 +134,7 @@ function AlertRow({
             },
           ]}
         >
-          {isSelected ? (
-            <Feather name="check" size={12} color="#fff" />
-          ) : null}
+          {isSelected ? <Feather name="check" size={12} color="#fff" /> : null}
         </View>
       ) : (
         <View style={[styles.iconWrap, { backgroundColor: color + "18" }]}>
@@ -166,7 +178,11 @@ export default function AlertsScreen() {
   const qClient = useQueryClient();
   const headerHeight = useHeaderHeight();
   let tabBarHeight = 0;
-  try { tabBarHeight = useBottomTabBarHeight(); } catch { tabBarHeight = 80; }
+  try {
+    tabBarHeight = useBottomTabBarHeight();
+  } catch {
+    tabBarHeight = 80;
+  }
 
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -176,7 +192,10 @@ export default function AlertsScreen() {
   const { data, isLoading, refetch } = useQuery<AlertsResponse>({
     queryKey: ["/api/alerts", { unreadOnly }],
     queryFn: async () => {
-      const url = new URL(`/api/alerts${unreadOnly ? "?unreadOnly=true" : ""}`, getApiUrl());
+      const url = new URL(
+        `/api/alerts${unreadOnly ? "?unreadOnly=true" : ""}`,
+        getApiUrl(),
+      );
       const res = await fetch(url.toString());
       if (!res.ok) throw new Error("Failed to fetch alerts");
       return res.json();
@@ -309,7 +328,9 @@ export default function AlertsScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}
+      >
         <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
@@ -325,15 +346,25 @@ export default function AlertsScreen() {
             { borderBottomColor: theme.border, paddingTop: headerHeight },
           ]}
         >
-          <Pressable onPress={exitSelecting} style={styles.selectionHeaderBtn} hitSlop={8}>
+          <Pressable
+            onPress={exitSelecting}
+            style={styles.selectionHeaderBtn}
+            hitSlop={8}
+          >
             <ThemedText type="body" style={{ color: theme.primary }}>
               Cancel
             </ThemedText>
           </Pressable>
           <ThemedText type="body" style={{ fontWeight: "600" }}>
-            {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select items"}
+            {selectedIds.size > 0
+              ? `${selectedIds.size} selected`
+              : "Select items"}
           </ThemedText>
-          <Pressable onPress={toggleSelectAll} style={styles.selectionHeaderBtn} hitSlop={8}>
+          <Pressable
+            onPress={toggleSelectAll}
+            style={styles.selectionHeaderBtn}
+            hitSlop={8}
+          >
             <ThemedText type="body" style={{ color: theme.primary }}>
               {allSelected ? "Deselect All" : "Select All"}
             </ThemedText>
@@ -349,22 +380,40 @@ export default function AlertsScreen() {
           <View style={styles.filterTabs}>
             <Pressable
               onPress={() => setUnreadOnly(false)}
-              style={[styles.filterTab, !unreadOnly && { borderBottomWidth: 2, borderBottomColor: theme.primary }]}
+              style={[
+                styles.filterTab,
+                !unreadOnly && {
+                  borderBottomWidth: 2,
+                  borderBottomColor: theme.primary,
+                },
+              ]}
             >
               <ThemedText
                 type="body"
-                style={{ color: !unreadOnly ? theme.primary : theme.secondaryText, fontWeight: !unreadOnly ? "700" : "400" }}
+                style={{
+                  color: !unreadOnly ? theme.primary : theme.secondaryText,
+                  fontWeight: !unreadOnly ? "700" : "400",
+                }}
               >
                 All
               </ThemedText>
             </Pressable>
             <Pressable
               onPress={() => setUnreadOnly(true)}
-              style={[styles.filterTab, unreadOnly && { borderBottomWidth: 2, borderBottomColor: theme.primary }]}
+              style={[
+                styles.filterTab,
+                unreadOnly && {
+                  borderBottomWidth: 2,
+                  borderBottomColor: theme.primary,
+                },
+              ]}
             >
               <ThemedText
                 type="body"
-                style={{ color: unreadOnly ? theme.primary : theme.secondaryText, fontWeight: unreadOnly ? "700" : "400" }}
+                style={{
+                  color: unreadOnly ? theme.primary : theme.secondaryText,
+                  fontWeight: unreadOnly ? "700" : "400",
+                }}
               >
                 {"Unread"}
                 {data && data.unreadCount > 0 ? (
@@ -406,20 +455,33 @@ export default function AlertsScreen() {
             <Feather name="bell-off" size={56} color={theme.secondaryText} />
             <ThemedText
               type="h3"
-              style={{ color: theme.secondaryText, marginTop: Spacing.md, textAlign: "center" }}
+              style={{
+                color: theme.secondaryText,
+                marginTop: Spacing.md,
+                textAlign: "center",
+              }}
             >
               {unreadOnly ? "No unread alerts" : "No alerts yet"}
             </ThemedText>
             <ThemedText
               type="body"
-              style={{ color: theme.secondaryText, marginTop: Spacing.sm, textAlign: "center" }}
+              style={{
+                color: theme.secondaryText,
+                marginTop: Spacing.sm,
+                textAlign: "center",
+              }}
             >
               Alerts appear when new hearings are posted or bills are referred
             </ThemedText>
           </View>
         )}
         ItemSeparatorComponent={() => (
-          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />
+          <View
+            style={{
+              height: StyleSheet.hairlineWidth,
+              backgroundColor: theme.border,
+            }}
+          />
         )}
         contentContainerStyle={{
           paddingBottom: isSelecting
@@ -455,7 +517,8 @@ export default function AlertsScreen() {
               styles.actionBtn,
               {
                 backgroundColor: theme.primary + "15",
-                opacity: !someUnreadSelected || isBusy ? 0.4 : pressed ? 0.7 : 1,
+                opacity:
+                  !someUnreadSelected || isBusy ? 0.4 : pressed ? 0.7 : 1,
               },
             ]}
           >
@@ -466,13 +529,19 @@ export default function AlertsScreen() {
             )}
             <ThemedText
               type="body"
-              style={{ color: theme.primary, fontWeight: "600", marginLeft: Spacing.xs }}
+              style={{
+                color: theme.primary,
+                fontWeight: "600",
+                marginLeft: Spacing.xs,
+              }}
             >
               Mark Read
             </ThemedText>
           </Pressable>
 
-          <View style={[styles.actionDivider, { backgroundColor: theme.border }]} />
+          <View
+            style={[styles.actionDivider, { backgroundColor: theme.border }]}
+          />
 
           <Pressable
             onPress={handleBulkDelete}
@@ -481,7 +550,8 @@ export default function AlertsScreen() {
               styles.actionBtn,
               {
                 backgroundColor: "#DC354515",
-                opacity: selectedIds.size === 0 || isBusy ? 0.4 : pressed ? 0.7 : 1,
+                opacity:
+                  selectedIds.size === 0 || isBusy ? 0.4 : pressed ? 0.7 : 1,
               },
             ]}
           >
@@ -492,7 +562,11 @@ export default function AlertsScreen() {
             )}
             <ThemedText
               type="body"
-              style={{ color: "#DC3545", fontWeight: "600", marginLeft: Spacing.xs }}
+              style={{
+                color: "#DC3545",
+                fontWeight: "600",
+                marginLeft: Spacing.xs,
+              }}
             >
               Delete
             </ThemedText>

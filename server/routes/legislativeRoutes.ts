@@ -28,14 +28,30 @@ import {
   type InsertUserSubscription,
   type InsertPushToken,
 } from "@shared/schema";
-import { eq, and, isNull, desc, asc, gte, lte, sql, inArray } from "drizzle-orm";
-import { triggerRssPoll, triggerDailyRefresh, triggerFullLegislativeBootstrap } from "../jobs/scheduler";
+import {
+  eq,
+  and,
+  isNull,
+  desc,
+  asc,
+  gte,
+  lte,
+  sql,
+  inArray,
+} from "drizzle-orm";
+import {
+  triggerRssPoll,
+  triggerDailyRefresh,
+  triggerFullLegislativeBootstrap,
+} from "../jobs/scheduler";
 import { requireUser } from "../middleware/userAuth";
 
 function requireAdminSecret(req: Request, res: Response): boolean {
   const secret = process.env.ADMIN_CRON_SECRET;
   if (!secret) {
-    res.status(503).json({ error: "Admin endpoint disabled: ADMIN_CRON_SECRET not configured" });
+    res.status(503).json({
+      error: "Admin endpoint disabled: ADMIN_CRON_SECRET not configured",
+    });
     return false;
   }
   const provided =
@@ -75,7 +91,10 @@ export function registerLegislativeRoutes(app: Express): void {
         .from(alerts)
         .where(and(eq(alerts.userId, userId), isNull(alerts.readAt)));
 
-      res.json({ alerts: rows, unreadCount: Number(unreadCount[0]?.count ?? 0) });
+      res.json({
+        alerts: rows,
+        unreadCount: Number(unreadCount[0]?.count ?? 0),
+      });
     } catch (err) {
       console.error("[api/alerts] Error:", err);
       res.status(500).json({ error: "Failed to fetch alerts" });
@@ -86,96 +105,124 @@ export function registerLegislativeRoutes(app: Express): void {
    * POST /api/alerts/:id/read
    * Marks a single alert as read.
    */
-  app.post("/api/alerts/:id/read", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const { id } = req.params;
-      const [updated] = await db
-        .update(alerts)
-        .set({ readAt: new Date() })
-        .where(and(eq(alerts.id, id), eq(alerts.userId, userId), isNull(alerts.readAt)))
-        .returning({ id: alerts.id });
+  app.post(
+    "/api/alerts/:id/read",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { id } = req.params;
+        const [updated] = await db
+          .update(alerts)
+          .set({ readAt: new Date() })
+          .where(
+            and(
+              eq(alerts.id, id),
+              eq(alerts.userId, userId),
+              isNull(alerts.readAt),
+            ),
+          )
+          .returning({ id: alerts.id });
 
-      if (!updated) {
-        return res.status(404).json({ error: "Alert not found or already read" });
+        if (!updated) {
+          return res
+            .status(404)
+            .json({ error: "Alert not found or already read" });
+        }
+        res.json({ success: true, id: updated.id });
+      } catch (err) {
+        console.error("[api/alerts/:id/read] Error:", err);
+        res.status(500).json({ error: "Failed to mark alert as read" });
       }
-      res.json({ success: true, id: updated.id });
-    } catch (err) {
-      console.error("[api/alerts/:id/read] Error:", err);
-      res.status(500).json({ error: "Failed to mark alert as read" });
-    }
-  });
+    },
+  );
 
   /**
    * POST /api/alerts/mark-read
    * Marks multiple alerts as read.
    * Body: { ids: string[] }  — pass [] to mark all as read.
    */
-  app.post("/api/alerts/mark-read", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const { ids } = req.body as { ids: string[] };
-      const now = new Date();
-      if (Array.isArray(ids) && ids.length > 0) {
-        await db
-          .update(alerts)
-          .set({ readAt: now })
-          .where(and(eq(alerts.userId, userId), isNull(alerts.readAt), inArray(alerts.id, ids)));
-      } else {
-        await db
-          .update(alerts)
-          .set({ readAt: now })
-          .where(and(eq(alerts.userId, userId), isNull(alerts.readAt)));
+  app.post(
+    "/api/alerts/mark-read",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { ids } = req.body as { ids: string[] };
+        const now = new Date();
+        if (Array.isArray(ids) && ids.length > 0) {
+          await db
+            .update(alerts)
+            .set({ readAt: now })
+            .where(
+              and(
+                eq(alerts.userId, userId),
+                isNull(alerts.readAt),
+                inArray(alerts.id, ids),
+              ),
+            );
+        } else {
+          await db
+            .update(alerts)
+            .set({ readAt: now })
+            .where(and(eq(alerts.userId, userId), isNull(alerts.readAt)));
+        }
+        res.json({ success: true });
+      } catch (err) {
+        console.error("[api/alerts/mark-read] Error:", err);
+        res.status(500).json({ error: "Failed to mark alerts as read" });
       }
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[api/alerts/mark-read] Error:", err);
-      res.status(500).json({ error: "Failed to mark alerts as read" });
-    }
-  });
+    },
+  );
 
   /**
    * DELETE /api/alerts/bulk
    * Deletes multiple alerts.
    * Body: { ids: string[] }  — pass [] to delete all.
    */
-  app.delete("/api/alerts/bulk", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const { ids } = req.body as { ids: string[] };
-      if (Array.isArray(ids) && ids.length > 0) {
-        await db
-          .delete(alerts)
-          .where(and(eq(alerts.userId, userId), inArray(alerts.id, ids)));
-      } else {
-        await db
-          .delete(alerts)
-          .where(eq(alerts.userId, userId));
+  app.delete(
+    "/api/alerts/bulk",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { ids } = req.body as { ids: string[] };
+        if (Array.isArray(ids) && ids.length > 0) {
+          await db
+            .delete(alerts)
+            .where(and(eq(alerts.userId, userId), inArray(alerts.id, ids)));
+        } else {
+          await db.delete(alerts).where(eq(alerts.userId, userId));
+        }
+        res.json({ success: true });
+      } catch (err) {
+        console.error("[api/alerts/bulk] Error:", err);
+        res.status(500).json({ error: "Failed to delete alerts" });
       }
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[api/alerts/bulk] Error:", err);
-      res.status(500).json({ error: "Failed to delete alerts" });
-    }
-  });
+    },
+  );
 
   /**
    * DELETE /api/alerts/:id
    * Deletes a single alert.
    */
-  app.delete("/api/alerts/:id", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const { id } = req.params;
-      await db
-        .delete(alerts)
-        .where(and(eq(alerts.id, id), eq(alerts.userId, userId)));
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[api/alerts/:id] Error:", err);
-      res.status(500).json({ error: "Failed to delete alert" });
-    }
-  });
+  app.delete(
+    "/api/alerts/:id",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { id } = req.params;
+        await db
+          .delete(alerts)
+          .where(and(eq(alerts.id, id), eq(alerts.userId, userId)));
+        res.json({ success: true });
+      } catch (err) {
+        console.error("[api/alerts/:id] Error:", err);
+        res.status(500).json({ error: "Failed to delete alert" });
+      }
+    },
+  );
 
   // ── Events ──
 
@@ -186,7 +233,10 @@ export function registerLegislativeRoutes(app: Express): void {
    */
   app.get("/api/events/upcoming", async (req: Request, res: Response) => {
     try {
-      const days = Math.min(parseInt(String(req.query.days ?? "7"), 10) || 7, 60);
+      const days = Math.min(
+        parseInt(String(req.query.days ?? "7"), 10) || 7,
+        60,
+      );
       const cutoff = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
       const now = new Date();
 
@@ -210,7 +260,10 @@ export function registerLegislativeRoutes(app: Express): void {
         })
         .from(legislativeEvents)
         .leftJoin(committees, eq(committees.id, legislativeEvents.committeeId))
-        .leftJoin(hearingDetails, eq(hearingDetails.eventId, legislativeEvents.id))
+        .leftJoin(
+          hearingDetails,
+          eq(hearingDetails.eventId, legislativeEvents.id),
+        )
         .where(
           and(
             gte(legislativeEvents.startsAt, now),
@@ -253,64 +306,73 @@ export function registerLegislativeRoutes(app: Express): void {
    * GET /api/committees/:id/hearings
    * Query: range=upcoming (default) | past
    */
-  app.get("/api/committees/:id/hearings", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      const range = req.query.range === "past" ? "past" : "upcoming";
-      const now = new Date();
+  app.get(
+    "/api/committees/:id/hearings",
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const range = req.query.range === "past" ? "past" : "upcoming";
+        const now = new Date();
 
-      const rows = await db
-        .select({
-          id: legislativeEvents.id,
-          title: legislativeEvents.title,
-          startsAt: legislativeEvents.startsAt,
-          location: legislativeEvents.location,
-          status: legislativeEvents.status,
-          sourceUrl: legislativeEvents.sourceUrl,
-          externalId: legislativeEvents.externalId,
-          witnessCount: hearingDetails.witnessCount,
-          noticeText: hearingDetails.noticeText,
-        })
-        .from(legislativeEvents)
-        .leftJoin(hearingDetails, eq(hearingDetails.eventId, legislativeEvents.id))
-        .where(
-          and(
-            eq(legislativeEvents.committeeId, id),
-            eq(legislativeEvents.eventType, "COMMITTEE_HEARING"),
-            range === "upcoming"
-              ? gte(legislativeEvents.startsAt, now)
-              : lte(legislativeEvents.startsAt, now),
-          ),
-        )
-        .orderBy(
-          range === "upcoming"
-            ? asc(legislativeEvents.startsAt)
-            : desc(legislativeEvents.startsAt),
-        )
-        .limit(50);
-
-      // Attach per-event bill (agenda item) counts
-      const eventIds = rows.map((r) => r.id);
-      const agendaCounts: Record<string, number> = {};
-      if (eventIds.length > 0) {
-        const counts = await db
+        const rows = await db
           .select({
-            eventId: hearingAgendaItems.eventId,
-            count: sql<number>`count(*)`,
+            id: legislativeEvents.id,
+            title: legislativeEvents.title,
+            startsAt: legislativeEvents.startsAt,
+            location: legislativeEvents.location,
+            status: legislativeEvents.status,
+            sourceUrl: legislativeEvents.sourceUrl,
+            externalId: legislativeEvents.externalId,
+            witnessCount: hearingDetails.witnessCount,
+            noticeText: hearingDetails.noticeText,
           })
-          .from(hearingAgendaItems)
-          .where(inArray(hearingAgendaItems.eventId, eventIds))
-          .groupBy(hearingAgendaItems.eventId);
-        counts.forEach((c) => (agendaCounts[c.eventId] = Number(c.count)));
-      }
+          .from(legislativeEvents)
+          .leftJoin(
+            hearingDetails,
+            eq(hearingDetails.eventId, legislativeEvents.id),
+          )
+          .where(
+            and(
+              eq(legislativeEvents.committeeId, id),
+              eq(legislativeEvents.eventType, "COMMITTEE_HEARING"),
+              range === "upcoming"
+                ? gte(legislativeEvents.startsAt, now)
+                : lte(legislativeEvents.startsAt, now),
+            ),
+          )
+          .orderBy(
+            range === "upcoming"
+              ? asc(legislativeEvents.startsAt)
+              : desc(legislativeEvents.startsAt),
+          )
+          .limit(50);
 
-      const hearings = rows.map((r) => ({ ...r, billCount: agendaCounts[r.id] ?? 0 }));
-      res.json({ hearings, total: hearings.length });
-    } catch (err) {
-      console.error("[api/committees/:id/hearings] Error:", err);
-      res.status(500).json({ error: "Failed to fetch hearings" });
-    }
-  });
+        // Attach per-event bill (agenda item) counts
+        const eventIds = rows.map((r) => r.id);
+        const agendaCounts: Record<string, number> = {};
+        if (eventIds.length > 0) {
+          const counts = await db
+            .select({
+              eventId: hearingAgendaItems.eventId,
+              count: sql<number>`count(*)`,
+            })
+            .from(hearingAgendaItems)
+            .where(inArray(hearingAgendaItems.eventId, eventIds))
+            .groupBy(hearingAgendaItems.eventId);
+          counts.forEach((c) => (agendaCounts[c.eventId] = Number(c.count)));
+        }
+
+        const hearings = rows.map((r) => ({
+          ...r,
+          billCount: agendaCounts[r.id] ?? 0,
+        }));
+        res.json({ hearings, total: hearings.length });
+      } catch (err) {
+        console.error("[api/committees/:id/hearings] Error:", err);
+        res.status(500).json({ error: "Failed to fetch hearings" });
+      }
+    },
+  );
 
   // ── Hearing detail ──
 
@@ -345,7 +407,10 @@ export function registerLegislativeRoutes(app: Express): void {
         })
         .from(legislativeEvents)
         .leftJoin(committees, eq(committees.id, legislativeEvents.committeeId))
-        .leftJoin(hearingDetails, eq(hearingDetails.eventId, legislativeEvents.id))
+        .leftJoin(
+          hearingDetails,
+          eq(hearingDetails.eventId, legislativeEvents.id),
+        )
         .where(eq(legislativeEvents.id, eventId))
         .limit(1);
 
@@ -401,79 +466,97 @@ export function registerLegislativeRoutes(app: Express): void {
    * POST /api/subscriptions
    * Body: { type, committeeId?, billId?, chamber?, officialPublicId? }
    */
-  app.post("/api/subscriptions", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const { type, committeeId, billId, chamber, officialPublicId } = req.body as {
-        type: string;
-        committeeId?: string;
-        billId?: string;
-        chamber?: string;
-        officialPublicId?: string;
-      };
+  app.post(
+    "/api/subscriptions",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { type, committeeId, billId, chamber, officialPublicId } =
+          req.body as {
+            type: string;
+            committeeId?: string;
+            billId?: string;
+            chamber?: string;
+            officialPublicId?: string;
+          };
 
-      if (!["COMMITTEE", "BILL", "CHAMBER", "OFFICIAL"].includes(type)) {
-        return res.status(400).json({ error: "Invalid subscription type" });
+        if (!["COMMITTEE", "BILL", "CHAMBER", "OFFICIAL"].includes(type)) {
+          return res.status(400).json({ error: "Invalid subscription type" });
+        }
+
+        const [inserted] = await db
+          .insert(userSubscriptions)
+          .values({
+            userId,
+            type: type as InsertUserSubscription["type"],
+            committeeId: committeeId ?? undefined,
+            billId: billId ?? undefined,
+            chamber: chamber ?? undefined,
+            officialPublicId: officialPublicId ?? undefined,
+          })
+          .returning();
+
+        res.status(201).json({ subscription: inserted });
+      } catch (err) {
+        console.error("[api/subscriptions POST] Error:", err);
+        res.status(500).json({ error: "Failed to create subscription" });
       }
-
-      const [inserted] = await db
-        .insert(userSubscriptions)
-        .values({
-          userId,
-          type: type as InsertUserSubscription["type"],
-          committeeId: committeeId ?? undefined,
-          billId: billId ?? undefined,
-          chamber: chamber ?? undefined,
-          officialPublicId: officialPublicId ?? undefined,
-        })
-        .returning();
-
-      res.status(201).json({ subscription: inserted });
-    } catch (err) {
-      console.error("[api/subscriptions POST] Error:", err);
-      res.status(500).json({ error: "Failed to create subscription" });
-    }
-  });
+    },
+  );
 
   /**
    * DELETE /api/subscriptions/:id
    */
-  app.delete("/api/subscriptions/:id", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const { id } = req.params;
-      const [deleted] = await db
-        .delete(userSubscriptions)
-        .where(and(eq(userSubscriptions.id, id), eq(userSubscriptions.userId, userId)))
-        .returning({ id: userSubscriptions.id });
+  app.delete(
+    "/api/subscriptions/:id",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { id } = req.params;
+        const [deleted] = await db
+          .delete(userSubscriptions)
+          .where(
+            and(
+              eq(userSubscriptions.id, id),
+              eq(userSubscriptions.userId, userId),
+            ),
+          )
+          .returning({ id: userSubscriptions.id });
 
-      if (!deleted) {
-        return res.status(404).json({ error: "Subscription not found" });
+        if (!deleted) {
+          return res.status(404).json({ error: "Subscription not found" });
+        }
+        res.json({ success: true });
+      } catch (err) {
+        console.error("[api/subscriptions DELETE] Error:", err);
+        res.status(500).json({ error: "Failed to delete subscription" });
       }
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[api/subscriptions DELETE] Error:", err);
-      res.status(500).json({ error: "Failed to delete subscription" });
-    }
-  });
+    },
+  );
 
   /**
    * GET /api/subscriptions
    */
-  app.get("/api/subscriptions", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const rows = await db
-        .select()
-        .from(userSubscriptions)
-        .where(eq(userSubscriptions.userId, userId))
-        .orderBy(desc(userSubscriptions.createdAt));
-      res.json({ subscriptions: rows });
-    } catch (err) {
-      console.error("[api/subscriptions GET] Error:", err);
-      res.status(500).json({ error: "Failed to fetch subscriptions" });
-    }
-  });
+  app.get(
+    "/api/subscriptions",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const rows = await db
+          .select()
+          .from(userSubscriptions)
+          .where(eq(userSubscriptions.userId, userId))
+          .orderBy(desc(userSubscriptions.createdAt));
+        res.json({ subscriptions: rows });
+      } catch (err) {
+        console.error("[api/subscriptions GET] Error:", err);
+        res.status(500).json({ error: "Failed to fetch subscriptions" });
+      }
+    },
+  );
 
   // ── Admin manual triggers ──
   // Secured by ADMIN_CRON_SECRET env var (see README).
@@ -511,15 +594,18 @@ export function registerLegislativeRoutes(app: Express): void {
    * Full legislative data bootstrap: committees → RSS feeds → events.
    * Use this to force-seed data on a fresh DB or after a reset.
    */
-  app.post("/api/admin/bootstrap-legislative", async (req: Request, res: Response) => {
-    if (!requireAdminSecret(req, res)) return;
-    try {
-      const result = await triggerFullLegislativeBootstrap();
-      res.json(result);
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
+  app.post(
+    "/api/admin/bootstrap-legislative",
+    async (req: Request, res: Response) => {
+      if (!requireAdminSecret(req, res)) return;
+      try {
+        const result = await triggerFullLegislativeBootstrap();
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    },
+  );
 
   // ── Push Tokens ──
 
@@ -528,48 +614,61 @@ export function registerLegislativeRoutes(app: Express): void {
    * Body: { token: string, platform?: "android" | "ios" }
    * Registers or refreshes a device push token (idempotent).
    */
-  app.post("/api/push-tokens", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const { token, platform } = req.body as { token?: string; platform?: string };
-      if (!token || typeof token !== "string") {
-        res.status(400).json({ error: "token is required" });
-        return;
+  app.post(
+    "/api/push-tokens",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { token, platform } = req.body as {
+          token?: string;
+          platform?: string;
+        };
+        if (!token || typeof token !== "string") {
+          res.status(400).json({ error: "token is required" });
+          return;
+        }
+
+        await db
+          .insert(pushTokens)
+          .values({
+            userId,
+            token,
+            platform: platform ?? null,
+            lastSeenAt: new Date(),
+          } satisfies InsertPushToken)
+          .onConflictDoUpdate({
+            target: pushTokens.token,
+            set: { userId, lastSeenAt: new Date(), platform: platform ?? null },
+          });
+
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
       }
-
-      await db
-        .insert(pushTokens)
-        .values({
-          userId,
-          token,
-          platform: platform ?? null,
-          lastSeenAt: new Date(),
-        } satisfies InsertPushToken)
-        .onConflictDoUpdate({
-          target: pushTokens.token,
-          set: { userId, lastSeenAt: new Date(), platform: platform ?? null },
-        });
-
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
+    },
+  );
 
   /**
    * DELETE /api/push-tokens/:token
    * Unregisters a device push token.
    */
-  app.delete("/api/push-tokens/:token", requireUser, async (req: Request, res: Response) => {
-    try {
-      const userId = req.userId!;
-      const { token } = req.params;
-      await db
-        .delete(pushTokens)
-        .where(and(eq(pushTokens.token, token), eq(pushTokens.userId, userId)));
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
+  app.delete(
+    "/api/push-tokens/:token",
+    requireUser,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = req.userId!;
+        const { token } = req.params;
+        await db
+          .delete(pushTokens)
+          .where(
+            and(eq(pushTokens.token, token), eq(pushTokens.userId, userId)),
+          );
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    },
+  );
 }

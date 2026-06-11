@@ -38,7 +38,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 // Schedule a daily prayer reminder. Cancels any existing one first.
 export async function scheduleDailyPrayerReminder(
   hour: number,
-  minute: number
+  minute: number,
 ): Promise<void> {
   if (Platform.OS === "web") return;
   try {
@@ -75,7 +75,7 @@ export async function scheduleAnnualReminder(
   name: string,
   month: number, // 1-based
   day: number,
-  type: "birthday" | "anniversary"
+  type: "birthday" | "anniversary",
 ): Promise<void> {
   if (Platform.OS === "web") return;
   try {
@@ -105,7 +105,7 @@ export async function scheduleAnnualReminder(
 
 export async function cancelAnnualReminder(
   officialId: string,
-  type: "birthday" | "anniversary"
+  type: "birthday" | "anniversary",
 ): Promise<void> {
   if (Platform.OS === "web") return;
   try {
@@ -122,7 +122,7 @@ export async function cancelAnnualReminder(
 export async function scheduleFollowUpReminder(
   entryId: string,
   text: string,
-  dueDate: Date
+  dueDate: Date,
 ): Promise<void> {
   if (Platform.OS === "web") return;
   try {

@@ -1,4 +1,10 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import React, {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useMemo,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -14,7 +20,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  useFocusEffect,
+} from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { PrayerStackParamList } from "@/navigation/PrayerStackNavigator";
 import { ThemedText } from "@/components/ThemedText";
@@ -70,12 +80,19 @@ type SortKey = (typeof SORT_OPTIONS)[number]["key"];
 export default function PrayerListScreen() {
   const { theme } = useTheme();
   const headerHeight = useHeaderHeight();
-  const navigation = useNavigation<NativeStackNavigationProp<PrayerStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<PrayerStackParamList>>();
   const route = useRoute();
   const queryClient = useQueryClient();
 
   const routeParams = route.params as
-    | { status?: string; officialId?: string; officialName?: string; categoryId?: string; categoryName?: string }
+    | {
+        status?: string;
+        officialId?: string;
+        officialName?: string;
+        categoryId?: string;
+        categoryName?: string;
+      }
     | undefined;
   const initialStatus = routeParams?.status || "OPEN";
   const officialId = routeParams?.officialId;
@@ -113,7 +130,11 @@ export default function PrayerListScreen() {
     navigation.setOptions({
       headerRight: () => (
         <View style={{ flexDirection: "row", gap: Spacing.sm }}>
-          <Pressable onPress={handleExport} hitSlop={8} style={{ padding: Spacing.xs }}>
+          <Pressable
+            onPress={handleExport}
+            hitSlop={8}
+            style={{ padding: Spacing.xs }}
+          >
             <Feather name="download" size={20} color={theme.text} />
           </Pressable>
           <Pressable
@@ -128,7 +149,11 @@ export default function PrayerListScreen() {
             hitSlop={8}
             style={{ padding: Spacing.xs }}
           >
-            <Feather name={selectMode ? "x" : "check-square"} size={20} color={theme.text} />
+            <Feather
+              name={selectMode ? "x" : "check-square"}
+              size={20}
+              color={theme.text}
+            />
           </Pressable>
         </View>
       ),
@@ -149,7 +174,11 @@ export default function PrayerListScreen() {
   const qs = queryParams.toString();
   const prayersUrl = qs ? `/api/prayers?${qs}` : "/api/prayers";
 
-  const { data: rawPrayers = [], isLoading, refetch } = useQuery<Prayer[]>({
+  const {
+    data: rawPrayers = [],
+    isLoading,
+    refetch,
+  } = useQuery<Prayer[]>({
     queryKey: [prayersUrl],
   });
 
@@ -162,7 +191,9 @@ export default function PrayerListScreen() {
         if (!a.answeredAt && !b.answeredAt) return 0;
         if (!a.answeredAt) return 1;
         if (!b.answeredAt) return -1;
-        return new Date(b.answeredAt).getTime() - new Date(a.answeredAt).getTime();
+        return (
+          new Date(b.answeredAt).getTime() - new Date(a.answeredAt).getTime()
+        );
       });
     }
     return list;
@@ -175,13 +206,19 @@ export default function PrayerListScreen() {
   useFocusEffect(
     useCallback(() => {
       refetch();
-    }, [refetch])
+    }, [refetch]),
   );
 
   const { showToast } = useToast();
 
   const bulkMutation = useMutation({
-    mutationFn: async ({ action, prayerIds }: { action: string; prayerIds: string[] }) => {
+    mutationFn: async ({
+      action,
+      prayerIds,
+    }: {
+      action: string;
+      prayerIds: string[];
+    }) => {
       await apiRequest("POST", "/api/prayers/bulk", { action, prayerIds });
     },
     onSuccess: () => {
@@ -291,7 +328,7 @@ export default function PrayerListScreen() {
       if (ids.length === 0) return;
       bulkMutation.mutate({ action, prayerIds: ids });
     },
-    [selectedIds, bulkMutation]
+    [selectedIds, bulkMutation],
   );
 
   const cycleSortKey = useCallback(() => {
@@ -301,12 +338,17 @@ export default function PrayerListScreen() {
     });
   }, []);
 
-  const currentSortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label || "Newest";
+  const currentSortLabel =
+    SORT_OPTIONS.find((o) => o.key === sortKey)?.label || "Newest";
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "";
     const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
   const getStatusColor = (status: string) => {
@@ -357,7 +399,9 @@ export default function PrayerListScreen() {
             <Feather
               name={selectedIds.has(item.id) ? "check-square" : "square"}
               size={20}
-              color={selectedIds.has(item.id) ? theme.primary : theme.secondaryText}
+              color={
+                selectedIds.has(item.id) ? theme.primary : theme.secondaryText
+              }
             />
           </Pressable>
         ) : null}
@@ -395,7 +439,10 @@ export default function PrayerListScreen() {
               >
                 <ThemedText
                   type="small"
-                  style={{ color: getStatusColor(item.status), fontWeight: "600" }}
+                  style={{
+                    color: getStatusColor(item.status),
+                    fontWeight: "600",
+                  }}
                 >
                   {getStatusLabel(item.status)}
                 </ThemedText>
@@ -414,20 +461,44 @@ export default function PrayerListScreen() {
               {item.status === "OPEN" ? (
                 <>
                   <Pressable
-                    style={[styles.quickActionPill, { backgroundColor: theme.primary + "18", borderColor: theme.primary + "40" }]}
-                    onPress={(e) => { e.stopPropagation?.(); answerMutation.mutate(item.id); }}
+                    style={[
+                      styles.quickActionPill,
+                      {
+                        backgroundColor: theme.primary + "18",
+                        borderColor: theme.primary + "40",
+                      },
+                    ]}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      answerMutation.mutate(item.id);
+                    }}
                     hitSlop={4}
                   >
-                    <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                    <ThemedText
+                      type="caption"
+                      style={{ color: theme.primary, fontWeight: "600" }}
+                    >
                       Mark Answered
                     </ThemedText>
                   </Pressable>
                   <Pressable
-                    style={[styles.quickActionPill, { backgroundColor: theme.secondaryText + "12", borderColor: theme.secondaryText + "30" }]}
-                    onPress={(e) => { e.stopPropagation?.(); archiveMutation.mutate(item.id); }}
+                    style={[
+                      styles.quickActionPill,
+                      {
+                        backgroundColor: theme.secondaryText + "12",
+                        borderColor: theme.secondaryText + "30",
+                      },
+                    ]}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      archiveMutation.mutate(item.id);
+                    }}
                     hitSlop={4}
                   >
-                    <ThemedText type="caption" style={{ color: theme.secondaryText, fontWeight: "600" }}>
+                    <ThemedText
+                      type="caption"
+                      style={{ color: theme.secondaryText, fontWeight: "600" }}
+                    >
                       Archive
                     </ThemedText>
                   </Pressable>
@@ -435,22 +506,46 @@ export default function PrayerListScreen() {
               ) : null}
               {item.status === "ANSWERED" ? (
                 <Pressable
-                  style={[styles.quickActionPill, { backgroundColor: theme.primary + "18", borderColor: theme.primary + "40" }]}
-                  onPress={(e) => { e.stopPropagation?.(); reopenMutation.mutate(item.id); }}
+                  style={[
+                    styles.quickActionPill,
+                    {
+                      backgroundColor: theme.primary + "18",
+                      borderColor: theme.primary + "40",
+                    },
+                  ]}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    reopenMutation.mutate(item.id);
+                  }}
                   hitSlop={4}
                 >
-                  <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.primary, fontWeight: "600" }}
+                  >
                     Reopen
                   </ThemedText>
                 </Pressable>
               ) : null}
               {item.status === "ARCHIVED" ? (
                 <Pressable
-                  style={[styles.quickActionPill, { backgroundColor: theme.primary + "18", borderColor: theme.primary + "40" }]}
-                  onPress={(e) => { e.stopPropagation?.(); unarchiveMutation.mutate(item.id); }}
+                  style={[
+                    styles.quickActionPill,
+                    {
+                      backgroundColor: theme.primary + "18",
+                      borderColor: theme.primary + "40",
+                    },
+                  ]}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    unarchiveMutation.mutate(item.id);
+                  }}
                   hitSlop={4}
                 >
-                  <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600" }}>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.primary, fontWeight: "600" }}
+                  >
                     Unarchive
                   </ThemedText>
                 </Pressable>
@@ -458,22 +553,33 @@ export default function PrayerListScreen() {
             </View>
           )}
           <View style={styles.prayerFooter}>
-            {item.categoryId ? (
-              (() => {
-                const cat = categories.find((c) => c.id === item.categoryId);
-                return cat ? (
-                  <View style={[styles.categoryBadge, { backgroundColor: theme.primary + "12" }]}>
-                    <ThemedText type="small" style={{ color: theme.primary, fontWeight: "500" }}>
-                      {cat.name}
-                    </ThemedText>
-                  </View>
-                ) : null;
-              })()
-            ) : null}
+            {item.categoryId
+              ? (() => {
+                  const cat = categories.find((c) => c.id === item.categoryId);
+                  return cat ? (
+                    <View
+                      style={[
+                        styles.categoryBadge,
+                        { backgroundColor: theme.primary + "12" },
+                      ]}
+                    >
+                      <ThemedText
+                        type="small"
+                        style={{ color: theme.primary, fontWeight: "500" }}
+                      >
+                        {cat.name}
+                      </ThemedText>
+                    </View>
+                  ) : null;
+                })()
+              : null}
             {item.eventDate ? (
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Feather name="calendar" size={12} color={theme.warning} />
-                <ThemedText type="small" style={{ color: theme.warning, marginLeft: 3 }}>
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.warning, marginLeft: 3 }}
+                >
                   {formatDate(item.eventDate)}
                 </ThemedText>
               </View>
@@ -529,19 +635,28 @@ export default function PrayerListScreen() {
               onPress={() => handleBulkAction(a.action)}
               disabled={count === 0}
             >
-              <ThemedText type="small" style={{ color: theme.buttonText, fontWeight: "600" }}>
+              <ThemedText
+                type="small"
+                style={{ color: theme.buttonText, fontWeight: "600" }}
+              >
                 {a.label}
               </ThemedText>
             </Pressable>
           ))}
           <Pressable
-            style={[styles.bulkButton, { backgroundColor: theme.backgroundSecondary }]}
+            style={[
+              styles.bulkButton,
+              { backgroundColor: theme.backgroundSecondary },
+            ]}
             onPress={() => {
               setSelectMode(false);
               setSelectedIds(new Set());
             }}
           >
-            <ThemedText type="small" style={{ color: theme.text, fontWeight: "600" }}>
+            <ThemedText
+              type="small"
+              style={{ color: theme.text, fontWeight: "600" }}
+            >
               Cancel
             </ThemedText>
           </Pressable>
@@ -552,19 +667,56 @@ export default function PrayerListScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      <View style={{ paddingTop: headerHeight + Spacing.sm, paddingHorizontal: Spacing.md }}>
+      <View
+        style={{
+          paddingTop: headerHeight + Spacing.sm,
+          paddingHorizontal: Spacing.md,
+        }}
+      >
         {officialName || routeCategoryName ? (
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm, flexWrap: "wrap", gap: Spacing.xs }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginBottom: Spacing.sm,
+              flexWrap: "wrap",
+              gap: Spacing.xs,
+            }}
+          >
             {activeTab !== "ALL" ? (
-              <View style={[styles.officialFilterChip, { backgroundColor: theme.success + "15" }]}>
-                <ThemedText type="caption" style={{ color: theme.success, fontWeight: "600" }}>
+              <View
+                style={[
+                  styles.officialFilterChip,
+                  { backgroundColor: theme.success + "15" },
+                ]}
+              >
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.success, fontWeight: "600" }}
+                >
                   {getStatusLabel(activeTab)}
                 </ThemedText>
               </View>
             ) : null}
-            <View style={[styles.officialFilterChip, { backgroundColor: theme.primary + "15" }]}>
-              <Feather name={officialName ? "user" : "tag"} size={14} color={theme.primary} />
-              <ThemedText type="caption" style={{ color: theme.primary, marginLeft: Spacing.xs, fontWeight: "600" }}>
+            <View
+              style={[
+                styles.officialFilterChip,
+                { backgroundColor: theme.primary + "15" },
+              ]}
+            >
+              <Feather
+                name={officialName ? "user" : "tag"}
+                size={14}
+                color={theme.primary}
+              />
+              <ThemedText
+                type="caption"
+                style={{
+                  color: theme.primary,
+                  marginLeft: Spacing.xs,
+                  fontWeight: "600",
+                }}
+              >
                 {officialName || routeCategoryName}
               </ThemedText>
               <Pressable
@@ -586,7 +738,8 @@ export default function PrayerListScreen() {
                 style={[
                   styles.tab,
                   {
-                    backgroundColor: activeTab === tab.key ? theme.primary : "transparent",
+                    backgroundColor:
+                      activeTab === tab.key ? theme.primary : "transparent",
                     borderColor: theme.border,
                   },
                 ]}
@@ -595,7 +748,8 @@ export default function PrayerListScreen() {
                 <ThemedText
                   type="caption"
                   style={{
-                    color: activeTab === tab.key ? theme.buttonText : theme.text,
+                    color:
+                      activeTab === tab.key ? theme.buttonText : theme.text,
                     fontWeight: activeTab === tab.key ? "600" : "400",
                   }}
                 >
@@ -610,7 +764,10 @@ export default function PrayerListScreen() {
           <View
             style={[
               styles.searchBox,
-              { backgroundColor: theme.inputBackground, borderColor: theme.border },
+              {
+                backgroundColor: theme.inputBackground,
+                borderColor: theme.border,
+              },
             ]}
           >
             <Feather name="search" size={16} color={theme.secondaryText} />
@@ -624,19 +781,29 @@ export default function PrayerListScreen() {
             />
             {searchText.length > 0 ? (
               <Pressable onPress={() => setSearchText("")} hitSlop={8}>
-                <Feather name="x-circle" size={16} color={theme.secondaryText} />
+                <Feather
+                  name="x-circle"
+                  size={16}
+                  color={theme.secondaryText}
+                />
               </Pressable>
             ) : null}
           </View>
           <Pressable
             style={[
               styles.sortButton,
-              { backgroundColor: theme.inputBackground, borderColor: theme.border },
+              {
+                backgroundColor: theme.inputBackground,
+                borderColor: theme.border,
+              },
             ]}
             onPress={cycleSortKey}
           >
             <Feather name="sliders" size={14} color={theme.text} />
-            <ThemedText type="small" style={{ color: theme.text, marginLeft: 4 }}>
+            <ThemedText
+              type="small"
+              style={{ color: theme.text, marginLeft: 4 }}
+            >
               {currentSortLabel}
             </ThemedText>
           </Pressable>
@@ -682,7 +849,9 @@ export default function PrayerListScreen() {
               </ThemedText>
             </View>
           }
-          refreshControl={<RefreshControl refreshing={false} onRefresh={() => refetch()} />}
+          refreshControl={
+            <RefreshControl refreshing={false} onRefresh={() => refetch()} />
+          }
         />
       )}
 
@@ -692,13 +861,25 @@ export default function PrayerListScreen() {
         <Pressable
           style={[
             styles.fab,
-            { backgroundColor: theme.primary, bottom: tabBarHeight + Spacing.lg },
+            {
+              backgroundColor: theme.primary,
+              bottom: tabBarHeight + Spacing.lg,
+            },
           ]}
           onPress={() => {
             const addParams: any = {};
-            if (officialId) { addParams.officialId = officialId; addParams.officialName = officialName; }
-            if (routeCategoryId && routeCategoryId !== "uncategorized") { addParams.categoryId = routeCategoryId; addParams.categoryName = routeCategoryName; }
-            navigation.navigate("AddPrayer", Object.keys(addParams).length > 0 ? addParams : undefined);
+            if (officialId) {
+              addParams.officialId = officialId;
+              addParams.officialName = officialName;
+            }
+            if (routeCategoryId && routeCategoryId !== "uncategorized") {
+              addParams.categoryId = routeCategoryId;
+              addParams.categoryName = routeCategoryName;
+            }
+            navigation.navigate(
+              "AddPrayer",
+              Object.keys(addParams).length > 0 ? addParams : undefined,
+            );
           }}
         >
           <Feather name="plus" size={24} color={theme.buttonText} />

@@ -81,7 +81,9 @@ const BROWSE_MODES = [
 ] as const;
 
 function getTodayDateKey(): string {
-  const localeStr = new Date().toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+  const localeStr = new Date().toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+  });
   const parts = localeStr.split("/");
   const month = parts[0].padStart(2, "0");
   const day = parts[1].padStart(2, "0");
@@ -92,17 +94,26 @@ function getTodayDateKey(): string {
 export default function PrayerDashboardScreen() {
   const { theme } = useTheme();
   const headerHeight = useHeaderHeight();
-  const navigation = useNavigation<NativeStackNavigationProp<PrayerStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<PrayerStackParamList>>();
   const queryClient = useQueryClient();
 
   let tabBarHeight = 0;
-  try { tabBarHeight = useBottomTabBarHeight(); } catch { tabBarHeight = 0; }
+  try {
+    tabBarHeight = useBottomTabBarHeight();
+  } catch {
+    tabBarHeight = 0;
+  }
 
   const [statusTab, setStatusTab] = useState<string>("OPEN");
   const [browseMode, setBrowseMode] = useState<string>("officials");
   const [showCompletedPicks, setShowCompletedPicks] = useState(false);
 
-  const { data: dailyPicks, isLoading: dailyLoading, refetch: refetchDaily } = useQuery<DailyPicksResponse>({
+  const {
+    data: dailyPicks,
+    isLoading: dailyLoading,
+    refetch: refetchDaily,
+  } = useQuery<DailyPicksResponse>({
     queryKey: ["/api/daily-prayer-picks"],
   });
 
@@ -111,18 +122,26 @@ export default function PrayerDashboardScreen() {
   });
 
   const groupedUrl = `/api/prayers/grouped?status=${statusTab}&groupBy=${browseMode}`;
-  const { data: groupedData, isLoading: groupedLoading, refetch: refetchGrouped } = useQuery<GroupedResponse>({
+  const {
+    data: groupedData,
+    isLoading: groupedLoading,
+    refetch: refetchGrouped,
+  } = useQuery<GroupedResponse>({
     queryKey: [groupedUrl],
   });
 
-  const { data: upcomingPrayers = [], refetch: refetchUpcoming } = useQuery<Prayer[]>({
+  const { data: upcomingPrayers = [], refetch: refetchUpcoming } = useQuery<
+    Prayer[]
+  >({
     queryKey: ["/api/prayers/upcoming"],
   });
 
   const { data: officialsData } = useQuery<{ officials: OfficialItem[] }>({
     queryKey: ["/api/officials"],
   });
-  const officialsMap = new Map((officialsData?.officials ?? []).map((o) => [o.id, o.fullName]));
+  const officialsMap = new Map(
+    (officialsData?.officials ?? []).map((o) => [o.id, o.fullName]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -130,7 +149,7 @@ export default function PrayerDashboardScreen() {
       refetchStreak();
       refetchGrouped();
       refetchUpcoming();
-    }, [refetchDaily, refetchStreak, refetchGrouped, refetchUpcoming])
+    }, [refetchDaily, refetchStreak, refetchGrouped, refetchUpcoming]),
   );
 
   const completeTodayMutation = useMutation({
@@ -153,7 +172,9 @@ export default function PrayerDashboardScreen() {
       // Check if all today's picks are now prayed — if so, auto-complete streak
       if (dailyPicks) {
         const updatedPicks = dailyPicks.prayers.map((p) =>
-          p.id === prayerId ? { ...p, lastPrayedAt: new Date().toISOString() } : p
+          p.id === prayerId
+            ? { ...p, lastPrayedAt: new Date().toISOString() }
+            : p,
         );
         const allPrayed = updatedPicks.every((p) => isPrayedToday(p));
         if (allPrayed) {
@@ -173,8 +194,10 @@ export default function PrayerDashboardScreen() {
   const isPrayedToday = (prayer: Prayer): boolean => {
     if (!prayer.lastPrayedAt) return false;
     const prayedDate = new Date(prayer.lastPrayedAt);
-    const prayedKey = prayedDate.toLocaleDateString("en-US", { timeZone: "America/Chicago" })
-      .split("/").map((p, i) => i === 2 ? p : p.padStart(2, "0"))
+    const prayedKey = prayedDate
+      .toLocaleDateString("en-US", { timeZone: "America/Chicago" })
+      .split("/")
+      .map((p, i) => (i === 2 ? p : p.padStart(2, "0")))
       .reduce((_, __, i, arr) => `${arr[2]}-${arr[0]}-${arr[1]}`);
     return prayedKey === todayKey;
   };
@@ -189,7 +212,9 @@ export default function PrayerDashboardScreen() {
     return `${allNames[0]} +${allNames.length - 1} more`;
   };
 
-  const completedToday = streak ? streak.lastCompletedDateKey === todayKey : false;
+  const completedToday = streak
+    ? streak.lastCompletedDateKey === todayKey
+    : false;
 
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -208,7 +233,11 @@ export default function PrayerDashboardScreen() {
     eventDay.setHours(0, 0, 0, 0);
     const diffMs = eventDay.getTime() - today.getTime();
     const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-    const formatted = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    const formatted = d.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
     if (diffDays === 0) return `Today, ${formatted}`;
     if (diffDays === 1) return `Tomorrow, ${formatted}`;
     return `In ${diffDays} days, ${formatted}`;
@@ -263,19 +292,32 @@ export default function PrayerDashboardScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
-              <Feather name="sun" size={18} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+              <Feather
+                name="sun"
+                size={18}
+                color={theme.primary}
+                style={{ marginRight: Spacing.sm }}
+              />
               <ThemedText type="h3">Today's 3</ThemedText>
             </View>
             {streak ? (
               streak.currentStreak > 0 ? (
                 <View style={styles.streakBadge}>
-                  <Feather name="zap" size={16} color={theme.warning} style={{ marginRight: 4 }} />
+                  <Feather
+                    name="zap"
+                    size={16}
+                    color={theme.warning}
+                    style={{ marginRight: 4 }}
+                  />
                   <ThemedText type="h3" style={{ color: theme.warning }}>
                     Day {streak.currentStreak}
                   </ThemedText>
                 </View>
               ) : (
-                <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.secondaryText }}
+                >
                   Day {streak.currentStreak}
                 </ThemedText>
               )
@@ -304,8 +346,16 @@ export default function PrayerDashboardScreen() {
                       }
                     >
                       <View style={styles.dailyCardContent}>
-                        <View style={[styles.numberBadge, { backgroundColor: theme.primary + "18" }]}>
-                          <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "700" }}>
+                        <View
+                          style={[
+                            styles.numberBadge,
+                            { backgroundColor: theme.primary + "18" },
+                          ]}
+                        >
+                          <ThemedText
+                            type="caption"
+                            style={{ color: theme.primary, fontWeight: "700" }}
+                          >
                             {originalIndex + 1}
                           </ThemedText>
                         </View>
@@ -314,24 +364,53 @@ export default function PrayerDashboardScreen() {
                             {prayer.title}
                           </ThemedText>
                           {peopleLabel ? (
-                            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                              <Feather name="user" size={11} color={theme.primary} style={{ marginRight: 3 }} />
-                              <ThemedText type="small" style={{ color: theme.primary }} numberOfLines={1}>
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                marginTop: 2,
+                              }}
+                            >
+                              <Feather
+                                name="user"
+                                size={11}
+                                color={theme.primary}
+                                style={{ marginRight: 3 }}
+                              />
+                              <ThemedText
+                                type="small"
+                                style={{ color: theme.primary }}
+                                numberOfLines={1}
+                              >
                                 {peopleLabel}
                               </ThemedText>
                             </View>
                           ) : null}
-                          <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: 2 }} numberOfLines={1}>
+                          <ThemedText
+                            type="small"
+                            style={{ color: theme.secondaryText, marginTop: 2 }}
+                            numberOfLines={1}
+                          >
                             {getFirstLine(prayer.body)}
                           </ThemedText>
                         </View>
                         <Pressable
-                          onPress={(e) => { e.stopPropagation?.(); markPrayedMutation.mutate(prayer.id); }}
-                          style={[styles.markPrayedBtn, { borderColor: theme.success + "80" }]}
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            markPrayedMutation.mutate(prayer.id);
+                          }}
+                          style={[
+                            styles.markPrayedBtn,
+                            { borderColor: theme.success + "80" },
+                          ]}
                           hitSlop={4}
                           disabled={markPrayedMutation.isPending}
                         >
-                          <Feather name="check" size={16} color={theme.success} />
+                          <Feather
+                            name="check"
+                            size={16}
+                            color={theme.success}
+                          />
                         </Pressable>
                       </View>
                     </Card>
@@ -339,13 +418,24 @@ export default function PrayerDashboardScreen() {
                 })}
 
               {(() => {
-                const completedPrayers = dailyPicks.prayers.filter((p) => isPrayedToday(p));
-                const allDone = completedPrayers.length === dailyPicks.prayers.length;
+                const completedPrayers = dailyPicks.prayers.filter((p) =>
+                  isPrayedToday(p),
+                );
+                const allDone =
+                  completedPrayers.length === dailyPicks.prayers.length;
                 if (allDone) {
                   return (
                     <View style={styles.completedRow}>
-                      <Feather name="check-circle" size={18} color={theme.success} style={{ marginRight: Spacing.sm }} />
-                      <ThemedText type="body" style={{ color: theme.success, fontWeight: "600" }}>
+                      <Feather
+                        name="check-circle"
+                        size={18}
+                        color={theme.success}
+                        style={{ marginRight: Spacing.sm }}
+                      />
+                      <ThemedText
+                        type="body"
+                        style={{ color: theme.success, fontWeight: "600" }}
+                      >
                         Completed today
                       </ThemedText>
                     </View>
@@ -355,7 +445,12 @@ export default function PrayerDashboardScreen() {
                   return (
                     <Pressable
                       onPress={() => setShowCompletedPicks((v) => !v)}
-                      style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: Spacing.sm }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingVertical: Spacing.sm,
+                      }}
                     >
                       <Feather
                         name={showCompletedPicks ? "eye-off" : "eye"}
@@ -363,8 +458,13 @@ export default function PrayerDashboardScreen() {
                         color={theme.secondaryText}
                         style={{ marginRight: Spacing.xs }}
                       />
-                      <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-                        {showCompletedPicks ? "Hide completed" : `Show ${completedPrayers.length} completed`}
+                      <ThemedText
+                        type="caption"
+                        style={{ color: theme.secondaryText }}
+                      >
+                        {showCompletedPicks
+                          ? "Hide completed"
+                          : `Show ${completedPrayers.length} completed`}
                       </ThemedText>
                     </Pressable>
                   );
@@ -384,21 +484,51 @@ export default function PrayerDashboardScreen() {
                           elevation={0}
                           style={[styles.dailyCard, { opacity: 0.55 }]}
                           onPress={() =>
-                            navigation.navigate("PrayerDetail", { prayerId: prayer.id })
+                            navigation.navigate("PrayerDetail", {
+                              prayerId: prayer.id,
+                            })
                           }
                         >
                           <View style={styles.dailyCardContent}>
-                            <View style={[styles.numberBadge, { backgroundColor: theme.success + "18" }]}>
-                              <Feather name="check" size={14} color={theme.success} />
+                            <View
+                              style={[
+                                styles.numberBadge,
+                                { backgroundColor: theme.success + "18" },
+                              ]}
+                            >
+                              <Feather
+                                name="check"
+                                size={14}
+                                color={theme.success}
+                              />
                             </View>
                             <View style={{ flex: 1 }}>
-                              <ThemedText type="h3" numberOfLines={1} style={{ color: theme.secondaryText }}>
+                              <ThemedText
+                                type="h3"
+                                numberOfLines={1}
+                                style={{ color: theme.secondaryText }}
+                              >
                                 {prayer.title}
                               </ThemedText>
                               {peopleLabel ? (
-                                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                                  <Feather name="user" size={11} color={theme.secondaryText} style={{ marginRight: 3 }} />
-                                  <ThemedText type="small" style={{ color: theme.secondaryText }} numberOfLines={1}>
+                                <View
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  <Feather
+                                    name="user"
+                                    size={11}
+                                    color={theme.secondaryText}
+                                    style={{ marginRight: 3 }}
+                                  />
+                                  <ThemedText
+                                    type="small"
+                                    style={{ color: theme.secondaryText }}
+                                    numberOfLines={1}
+                                  >
                                     {peopleLabel}
                                   </ThemedText>
                                 </View>
@@ -413,8 +543,20 @@ export default function PrayerDashboardScreen() {
           ) : (
             <Card elevation={0} style={styles.emptyCard}>
               <View style={styles.emptyContent}>
-                <Feather name="sunrise" size={36} color={theme.secondaryText} style={{ marginBottom: Spacing.md }} />
-                <ThemedText type="body" style={{ color: theme.secondaryText, textAlign: "center", marginBottom: Spacing.md }}>
+                <Feather
+                  name="sunrise"
+                  size={36}
+                  color={theme.secondaryText}
+                  style={{ marginBottom: Spacing.md }}
+                />
+                <ThemedText
+                  type="body"
+                  style={{
+                    color: theme.secondaryText,
+                    textAlign: "center",
+                    marginBottom: Spacing.md,
+                  }}
+                >
                   No active prayers yet. Add one, or reopen an answered prayer.
                 </ThemedText>
                 <Button onPress={() => navigation.navigate("AddPrayer", {})}>
@@ -430,14 +572,26 @@ export default function PrayerDashboardScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
-              <Feather name="calendar" size={18} color={theme.warning} style={{ marginRight: Spacing.sm }} />
+              <Feather
+                name="calendar"
+                size={18}
+                color={theme.warning}
+                style={{ marginRight: Spacing.sm }}
+              />
               <ThemedText type="h3">Upcoming Events</ThemedText>
             </View>
             <Pressable
               onPress={() => navigation.navigate("UpcomingEvents")}
               style={{ flexDirection: "row", alignItems: "center" }}
             >
-              <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "600", marginRight: 4 }}>
+              <ThemedText
+                type="caption"
+                style={{
+                  color: theme.primary,
+                  fontWeight: "600",
+                  marginRight: 4,
+                }}
+              >
                 View All
               </ThemedText>
               <Feather name="arrow-right" size={14} color={theme.primary} />
@@ -448,25 +602,53 @@ export default function PrayerDashboardScreen() {
             <Card
               elevation={1}
               style={styles.upcomingCard}
-              onPress={() => navigation.navigate("PrayerDetail", { prayerId: nextUpcoming.id })}
+              onPress={() =>
+                navigation.navigate("PrayerDetail", {
+                  prayerId: nextUpcoming.id,
+                })
+              }
             >
               <View style={styles.upcomingHeader}>
-                <View style={[styles.upcomingIcon, { backgroundColor: theme.warning + "18" }]}>
+                <View
+                  style={[
+                    styles.upcomingIcon,
+                    { backgroundColor: theme.warning + "18" },
+                  ]}
+                >
                   <Feather name="calendar" size={16} color={theme.warning} />
                 </View>
-                <ThemedText type="body" style={{ fontWeight: "600", flex: 1 }} numberOfLines={1}>
+                <ThemedText
+                  type="body"
+                  style={{ fontWeight: "600", flex: 1 }}
+                  numberOfLines={1}
+                >
                   {nextUpcoming.title}
                 </ThemedText>
-                <Feather name="chevron-right" size={16} color={theme.secondaryText} />
+                <Feather
+                  name="chevron-right"
+                  size={16}
+                  color={theme.secondaryText}
+                />
               </View>
-              <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: 4, marginLeft: 40 }}>
+              <ThemedText
+                type="caption"
+                style={{
+                  color: theme.secondaryText,
+                  marginTop: 4,
+                  marginLeft: 40,
+                }}
+              >
                 {formatEventDate(nextUpcoming.eventDate!)}
               </ThemedText>
             </Card>
           ) : (
             <View style={{ paddingVertical: Spacing.md, alignItems: "center" }}>
-              <ThemedText type="caption" style={{ color: theme.secondaryText, textAlign: "center" }}>
-                No upcoming events. Set event dates on your prayers to track them here.
+              <ThemedText
+                type="caption"
+                style={{ color: theme.secondaryText, textAlign: "center" }}
+              >
+                No upcoming events. Set event dates on your prayers to track
+                them here.
               </ThemedText>
             </View>
           )}
@@ -482,7 +664,8 @@ export default function PrayerDashboardScreen() {
                 style={[
                   styles.segmentItem,
                   {
-                    backgroundColor: statusTab === tab.key ? theme.primary : "transparent",
+                    backgroundColor:
+                      statusTab === tab.key ? theme.primary : "transparent",
                     borderColor: theme.border,
                   },
                 ]}
@@ -491,7 +674,8 @@ export default function PrayerDashboardScreen() {
                 <ThemedText
                   type="caption"
                   style={{
-                    color: statusTab === tab.key ? theme.buttonText : theme.text,
+                    color:
+                      statusTab === tab.key ? theme.buttonText : theme.text,
                     fontWeight: statusTab === tab.key ? "700" : "400",
                   }}
                 >
@@ -508,8 +692,12 @@ export default function PrayerDashboardScreen() {
                 style={[
                   styles.browseSegmentItem,
                   {
-                    backgroundColor: browseMode === mode.key ? theme.backgroundSecondary : "transparent",
-                    borderColor: browseMode === mode.key ? theme.primary : theme.border,
+                    backgroundColor:
+                      browseMode === mode.key
+                        ? theme.backgroundSecondary
+                        : "transparent",
+                    borderColor:
+                      browseMode === mode.key ? theme.primary : theme.border,
                     borderWidth: browseMode === mode.key ? 1.5 : 1,
                   },
                 ]}
@@ -518,7 +706,11 @@ export default function PrayerDashboardScreen() {
                 <Feather
                   name={mode.key === "officials" ? "users" : "folder"}
                   size={14}
-                  color={browseMode === mode.key ? theme.primary : theme.secondaryText}
+                  color={
+                    browseMode === mode.key
+                      ? theme.primary
+                      : theme.secondaryText
+                  }
                   style={{ marginRight: Spacing.xs }}
                 />
                 <ThemedText
@@ -546,8 +738,13 @@ export default function PrayerDashboardScreen() {
                 color={theme.secondaryText}
                 style={{ marginBottom: Spacing.sm }}
               />
-              <ThemedText type="body" style={{ color: theme.secondaryText, textAlign: "center" }}>
-                No {browseMode === "officials" ? "officials" : "categories"} with {statusTab === "ALL" ? "" : statusTab.toLowerCase() + " "}prayers
+              <ThemedText
+                type="body"
+                style={{ color: theme.secondaryText, textAlign: "center" }}
+              >
+                No {browseMode === "officials" ? "officials" : "categories"}{" "}
+                with {statusTab === "ALL" ? "" : statusTab.toLowerCase() + " "}
+                prayers
               </ThemedText>
             </View>
           ) : (
@@ -557,25 +754,55 @@ export default function PrayerDashboardScreen() {
                 style={[styles.groupRow, { borderBottomColor: theme.border }]}
                 onPress={() => handleGroupPress(group)}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: Spacing.sm }}>
-                  <View style={[styles.groupIcon, { backgroundColor: theme.primary + "12" }]}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    flex: 1,
+                    marginRight: Spacing.sm,
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.groupIcon,
+                      { backgroundColor: theme.primary + "12" },
+                    ]}
+                  >
                     <Feather
                       name={browseMode === "officials" ? "user" : "tag"}
                       size={14}
                       color={theme.primary}
                     />
                   </View>
-                  <ThemedText type="body" style={{ flex: 1, fontWeight: "500" }} numberOfLines={1}>
-                    {browseMode === "officials" ? resolveOfficialName(group) : group.name}
+                  <ThemedText
+                    type="body"
+                    style={{ flex: 1, fontWeight: "500" }}
+                    numberOfLines={1}
+                  >
+                    {browseMode === "officials"
+                      ? resolveOfficialName(group)
+                      : group.name}
                   </ThemedText>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View style={[styles.countBadge, { backgroundColor: theme.primary + "18" }]}>
-                    <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "700" }}>
+                  <View
+                    style={[
+                      styles.countBadge,
+                      { backgroundColor: theme.primary + "18" },
+                    ]}
+                  >
+                    <ThemedText
+                      type="caption"
+                      style={{ color: theme.primary, fontWeight: "700" }}
+                    >
                       {group.count}
                     </ThemedText>
                   </View>
-                  <Feather name="chevron-right" size={16} color={theme.secondaryText} />
+                  <Feather
+                    name="chevron-right"
+                    size={16}
+                    color={theme.secondaryText}
+                  />
                 </View>
               </Pressable>
             ))
@@ -585,7 +812,10 @@ export default function PrayerDashboardScreen() {
             style={[styles.viewAllRow]}
             onPress={() => navigation.navigate("AllPrayers", {})}
           >
-            <ThemedText type="body" style={{ color: theme.primary, fontWeight: "600" }}>
+            <ThemedText
+              type="body"
+              style={{ color: theme.primary, fontWeight: "600" }}
+            >
               View All Prayers
             </ThemedText>
             <Feather name="arrow-right" size={16} color={theme.primary} />

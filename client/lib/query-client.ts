@@ -24,7 +24,7 @@ export function getApiUrl(): string {
   }
 
   throw new Error(
-    "No API URL configured. Set EXPO_PUBLIC_API_BASE_URL or update app.json extra.API_BASE_URL"
+    "No API URL configured. Set EXPO_PUBLIC_API_BASE_URL or update app.json extra.API_BASE_URL",
   );
 }
 

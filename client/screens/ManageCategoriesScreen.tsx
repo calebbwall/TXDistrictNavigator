@@ -36,7 +36,11 @@ export default function ManageCategoriesScreen() {
 
   const [newCategoryName, setNewCategoryName] = useState("");
 
-  const { data: categories = [], isLoading, refetch } = useQuery<PrayerCategory[]>({
+  const {
+    data: categories = [],
+    isLoading,
+    refetch,
+  } = useQuery<PrayerCategory[]>({
     queryKey: ["/api/prayer-categories"],
   });
 
@@ -53,7 +57,10 @@ export default function ManageCategoriesScreen() {
     onError: (err: Error) => {
       const msg = err.message;
       if (msg.includes("already exists")) {
-        Alert.alert("Duplicate", "A category with this name already exists. Please choose a different name.");
+        Alert.alert(
+          "Duplicate",
+          "A category with this name already exists. Please choose a different name.",
+        );
       } else {
         Alert.alert("Error", "Could not create category. Please try again.");
       }
@@ -110,7 +117,7 @@ export default function ManageCategoriesScreen() {
         },
       ],
       "plain-text",
-      category.name
+      category.name,
     );
   };
 
@@ -127,7 +134,7 @@ export default function ManageCategoriesScreen() {
             deleteMutation.mutate(category.id);
           },
         },
-      ]
+      ],
     );
   };
 

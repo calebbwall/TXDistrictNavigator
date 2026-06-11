@@ -72,11 +72,13 @@ function formatDateShort(iso: string | null): string {
     });
     return `${day} ${timeStr}`;
   }
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "America/Chicago",
-  }) + ` ${timeStr}`;
+  return (
+    d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      timeZone: "America/Chicago",
+    }) + ` ${timeStr}`
+  );
 }
 
 function getDayGroup(iso: string | null): string {
@@ -113,8 +115,11 @@ function EventCard({
   onPress: () => void;
 }) {
   const { theme } = useTheme();
-  const isSenate = event.chamber === "TX_SENATE" || event.committeeChamber === "TX_SENATE";
-  const accentColor = isSenate ? theme.overlaySenate.replace("0.4", "1") : theme.overlayHouse.replace("0.4", "1");
+  const isSenate =
+    event.chamber === "TX_SENATE" || event.committeeChamber === "TX_SENATE";
+  const accentColor = isSenate
+    ? theme.overlaySenate.replace("0.4", "1")
+    : theme.overlayHouse.replace("0.4", "1");
 
   return (
     <Pressable
@@ -125,17 +130,33 @@ function EventCard({
       ]}
     >
       {/* Chamber accent bar */}
-      <View style={[styles.chamberBar, { backgroundColor: isSenate ? "#4A90E2" : "#E94B3C" }]} />
+      <View
+        style={[
+          styles.chamberBar,
+          { backgroundColor: isSenate ? "#4A90E2" : "#E94B3C" },
+        ]}
+      />
 
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
           <View style={styles.chamberBadge}>
-            <ThemedText type="small" style={{ color: isSenate ? "#4A90E2" : "#E94B3C", fontWeight: "700" }}>
+            <ThemedText
+              type="small"
+              style={{
+                color: isSenate ? "#4A90E2" : "#E94B3C",
+                fontWeight: "700",
+              }}
+            >
               {chamberLabel(event.chamber ?? event.committeeChamber)}
             </ThemedText>
           </View>
           {event.status !== "POSTED" && (
-            <View style={[styles.statusBadge, { backgroundColor: theme.backgroundSecondary }]}>
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: theme.backgroundSecondary },
+              ]}
+            >
               <ThemedText type="small" style={{ color: theme.secondaryText }}>
                 {event.status}
               </ThemedText>
@@ -149,7 +170,10 @@ function EventCard({
 
         <View style={styles.metaRow}>
           <Feather name="clock" size={13} color={theme.secondaryText} />
-          <ThemedText type="small" style={{ color: theme.secondaryText, marginLeft: 4 }}>
+          <ThemedText
+            type="small"
+            style={{ color: theme.secondaryText, marginLeft: 4 }}
+          >
             {formatDateShort(event.startsAt)}
           </ThemedText>
         </View>
@@ -157,7 +181,11 @@ function EventCard({
         {event.location ? (
           <View style={styles.metaRow}>
             <Feather name="map-pin" size={13} color={theme.secondaryText} />
-            <ThemedText type="small" style={{ color: theme.secondaryText, marginLeft: 4 }} numberOfLines={1}>
+            <ThemedText
+              type="small"
+              style={{ color: theme.secondaryText, marginLeft: 4 }}
+              numberOfLines={1}
+            >
               {event.location}
             </ThemedText>
           </View>
@@ -165,25 +193,47 @@ function EventCard({
 
         <View style={styles.countRow}>
           {event.billCount > 0 ? (
-            <View style={[styles.countChip, { backgroundColor: theme.primary + "18" }]}>
+            <View
+              style={[
+                styles.countChip,
+                { backgroundColor: theme.primary + "18" },
+              ]}
+            >
               <Feather name="file-text" size={11} color={theme.primary} />
-              <ThemedText type="small" style={{ color: theme.primary, marginLeft: 3 }}>
+              <ThemedText
+                type="small"
+                style={{ color: theme.primary, marginLeft: 3 }}
+              >
                 {event.billCount} bill{event.billCount !== 1 ? "s" : ""}
               </ThemedText>
             </View>
           ) : null}
           {event.witnessCount != null && event.witnessCount > 0 ? (
-            <View style={[styles.countChip, { backgroundColor: theme.backgroundSecondary }]}>
+            <View
+              style={[
+                styles.countChip,
+                { backgroundColor: theme.backgroundSecondary },
+              ]}
+            >
               <Feather name="users" size={11} color={theme.secondaryText} />
-              <ThemedText type="small" style={{ color: theme.secondaryText, marginLeft: 3 }}>
-                {event.witnessCount} witness{event.witnessCount !== 1 ? "es" : ""}
+              <ThemedText
+                type="small"
+                style={{ color: theme.secondaryText, marginLeft: 3 }}
+              >
+                {event.witnessCount} witness
+                {event.witnessCount !== 1 ? "es" : ""}
               </ThemedText>
             </View>
           ) : null}
         </View>
       </View>
 
-      <Feather name="chevron-right" size={18} color={theme.secondaryText} style={{ marginRight: Spacing.sm }} />
+      <Feather
+        name="chevron-right"
+        size={18}
+        color={theme.secondaryText}
+        style={{ marginRight: Spacing.sm }}
+      />
     </Pressable>
   );
 }
@@ -192,8 +242,18 @@ function EventCard({
 function SectionHeader({ title }: { title: string }) {
   const { theme } = useTheme();
   return (
-    <View style={[styles.sectionHeader, { backgroundColor: theme.backgroundRoot }]}>
-      <ThemedText type="caption" style={{ color: theme.secondaryText, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>
+    <View
+      style={[styles.sectionHeader, { backgroundColor: theme.backgroundRoot }]}
+    >
+      <ThemedText
+        type="caption"
+        style={{
+          color: theme.secondaryText,
+          fontWeight: "700",
+          textTransform: "uppercase",
+          letterSpacing: 0.8,
+        }}
+      >
         {title}
       </ThemedText>
     </View>
@@ -215,7 +275,12 @@ function FilterChips({
     { key: "senate", label: "Senate" },
   ];
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.filterScroll}
+      contentContainerStyle={styles.filterContent}
+    >
       {chips.map((chip) => {
         const active = selected === chip.key;
         return (
@@ -225,12 +290,20 @@ function FilterChips({
             style={[
               styles.filterChip,
               {
-                backgroundColor: active ? theme.primary : theme.backgroundSecondary,
+                backgroundColor: active
+                  ? theme.primary
+                  : theme.backgroundSecondary,
                 borderColor: active ? theme.primary : "transparent",
               },
             ]}
           >
-            <ThemedText type="small" style={{ color: active ? "#FFFFFF" : theme.text, fontWeight: "600" }}>
+            <ThemedText
+              type="small"
+              style={{
+                color: active ? "#FFFFFF" : theme.text,
+                fontWeight: "600",
+              }}
+            >
               {chip.label}
             </ThemedText>
           </Pressable>
@@ -275,8 +348,10 @@ export default function LegislativeDashboardScreen() {
   const events = data?.events ?? [];
 
   const filtered = events.filter((e) => {
-    if (filter === "house") return e.chamber === "TX_HOUSE" || e.committeeChamber === "TX_HOUSE";
-    if (filter === "senate") return e.chamber === "TX_SENATE" || e.committeeChamber === "TX_SENATE";
+    if (filter === "house")
+      return e.chamber === "TX_HOUSE" || e.committeeChamber === "TX_HOUSE";
+    if (filter === "senate")
+      return e.chamber === "TX_SENATE" || e.committeeChamber === "TX_SENATE";
     return true;
   });
 
@@ -316,10 +391,24 @@ export default function LegislativeDashboardScreen() {
   const EmptyComponent = () => (
     <View style={styles.emptyContainer}>
       <Feather name="calendar" size={56} color={theme.secondaryText} />
-      <ThemedText type="h3" style={{ color: theme.secondaryText, marginTop: Spacing.md, textAlign: "center" }}>
+      <ThemedText
+        type="h3"
+        style={{
+          color: theme.secondaryText,
+          marginTop: Spacing.md,
+          textAlign: "center",
+        }}
+      >
         No upcoming hearings
       </ThemedText>
-      <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.sm, textAlign: "center" }}>
+      <ThemedText
+        type="body"
+        style={{
+          color: theme.secondaryText,
+          marginTop: Spacing.sm,
+          textAlign: "center",
+        }}
+      >
         Check back after the daily refresh (5 AM Central)
       </ThemedText>
     </View>
@@ -327,7 +416,9 @@ export default function LegislativeDashboardScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}
+      >
         <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
@@ -335,9 +426,14 @@ export default function LegislativeDashboardScreen() {
 
   if (error) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}
+      >
         <Feather name="alert-circle" size={48} color="#DC3545" />
-        <ThemedText type="body" style={{ color: "#DC3545", marginTop: Spacing.md }}>
+        <ThemedText
+          type="body"
+          style={{ color: "#DC3545", marginTop: Spacing.md }}
+        >
           Failed to load events
         </ThemedText>
       </View>
@@ -350,7 +446,9 @@ export default function LegislativeDashboardScreen() {
       <FlatList
         data={listData}
         keyExtractor={(item, index) =>
-          item.type === "header" ? `h-${item.title}` : `e-${item.event.id}-${index}`
+          item.type === "header"
+            ? `h-${item.title}`
+            : `e-${item.event.id}-${index}`
         }
         renderItem={renderItem}
         ListEmptyComponent={EmptyComponent}
@@ -359,7 +457,11 @@ export default function LegislativeDashboardScreen() {
           { paddingTop: Spacing.sm, paddingBottom: tabBarHeight + Spacing.xl },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.primary}
+          />
         }
       />
     </View>
@@ -396,7 +498,12 @@ const styles = StyleSheet.create({
   },
   chamberBar: { width: 4, alignSelf: "stretch" },
   cardContent: { flex: 1, padding: Spacing.md },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, marginBottom: 4 },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: 4,
+  },
   chamberBadge: {},
   statusBadge: {
     paddingHorizontal: Spacing.xs,

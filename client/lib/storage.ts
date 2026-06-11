@@ -50,7 +50,9 @@ export async function getSavedOfficials(): Promise<string[]> {
   }
 }
 
-export async function getSavedOfficialsWithData(): Promise<SavedOfficialData[]> {
+export async function getSavedOfficialsWithData(): Promise<
+  SavedOfficialData[]
+> {
   try {
     const data = await AsyncStorage.getItem(SAVED_OFFICIALS_DATA_KEY);
     return data ? JSON.parse(data) : [];
@@ -64,7 +66,7 @@ export async function saveOfficialWithData(
   districtNumber: number,
   fullName: string,
   party?: string,
-  photoUrl?: string
+  photoUrl?: string,
 ): Promise<void> {
   try {
     const key = `${source}:${districtNumber}`;
@@ -73,9 +75,11 @@ export async function saveOfficialWithData(
       saved.push(key);
       await AsyncStorage.setItem(SAVED_OFFICIALS_KEY, JSON.stringify(saved));
     }
-    
+
     const allData = await getSavedOfficialsWithData();
-    const existing = allData.findIndex(o => o.source === source && o.districtNumber === districtNumber);
+    const existing = allData.findIndex(
+      (o) => o.source === source && o.districtNumber === districtNumber,
+    );
     const entry: SavedOfficialData = {
       source,
       districtNumber,
@@ -89,28 +93,42 @@ export async function saveOfficialWithData(
     } else {
       allData.unshift(entry);
     }
-    await AsyncStorage.setItem(SAVED_OFFICIALS_DATA_KEY, JSON.stringify(allData));
+    await AsyncStorage.setItem(
+      SAVED_OFFICIALS_DATA_KEY,
+      JSON.stringify(allData),
+    );
   } catch {
     // Silently fail
   }
 }
 
-export async function removeOfficialByKey(source: string, districtNumber: number): Promise<void> {
+export async function removeOfficialByKey(
+  source: string,
+  districtNumber: number,
+): Promise<void> {
   try {
     const key = `${source}:${districtNumber}`;
     const saved = await getSavedOfficials();
     const updated = saved.filter((id) => id !== key);
     await AsyncStorage.setItem(SAVED_OFFICIALS_KEY, JSON.stringify(updated));
-    
+
     const allData = await getSavedOfficialsWithData();
-    const filtered = allData.filter(o => !(o.source === source && o.districtNumber === districtNumber));
-    await AsyncStorage.setItem(SAVED_OFFICIALS_DATA_KEY, JSON.stringify(filtered));
+    const filtered = allData.filter(
+      (o) => !(o.source === source && o.districtNumber === districtNumber),
+    );
+    await AsyncStorage.setItem(
+      SAVED_OFFICIALS_DATA_KEY,
+      JSON.stringify(filtered),
+    );
   } catch {
     // Silently fail
   }
 }
 
-export async function isOfficialSavedByKey(source: string, districtNumber: number): Promise<boolean> {
+export async function isOfficialSavedByKey(
+  source: string,
+  districtNumber: number,
+): Promise<boolean> {
   const saved = await getSavedOfficials();
   return saved.includes(`${source}:${districtNumber}`);
 }
@@ -142,7 +160,9 @@ export async function isOfficialSaved(officialId: string): Promise<boolean> {
   return saved.includes(officialId);
 }
 
-export async function getPrivateNotes(officialId: string): Promise<PrivateNotes | null> {
+export async function getPrivateNotes(
+  officialId: string,
+): Promise<PrivateNotes | null> {
   try {
     const allNotes = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
     const parsed = allNotes ? JSON.parse(allNotes) : {};
@@ -153,7 +173,9 @@ export async function getPrivateNotes(officialId: string): Promise<PrivateNotes 
 }
 
 // Get all private notes keyed by official ID (for search index building)
-export async function getAllPrivateNotes(): Promise<Record<string, PrivateNotes>> {
+export async function getAllPrivateNotes(): Promise<
+  Record<string, PrivateNotes>
+> {
   try {
     const allNotes = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
     if (!allNotes) return {};
@@ -163,30 +185,38 @@ export async function getAllPrivateNotes(): Promise<Record<string, PrivateNotes>
   }
 }
 
-export async function savePrivateNotes(officialId: string, notes: PrivateNotes): Promise<void> {
+export async function savePrivateNotes(
+  officialId: string,
+  notes: PrivateNotes,
+): Promise<void> {
   try {
-    console.log('[Storage] Saving private notes for:', officialId, 'address:', notes.personalAddress);
+    console.log(
+      "[Storage] Saving private notes for:",
+      officialId,
+      "address:",
+      notes.personalAddress,
+    );
     const allNotes = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
     const parsed = allNotes ? JSON.parse(allNotes) : {};
     parsed[officialId] = notes;
     await AsyncStorage.setItem(PRIVATE_NOTES_KEY, JSON.stringify(parsed));
-    console.log('[Storage] Private notes saved successfully');
+    console.log("[Storage] Private notes saved successfully");
   } catch (error) {
-    console.error('[Storage] Failed to save private notes:', error);
+    console.error("[Storage] Failed to save private notes:", error);
   }
 }
 
-const DEFAULT_OVERLAY_PREFS: OverlayPreferences = { 
-  senate: true,   // Default to showing TX Senate overlay
-  house: true,    // Default to showing TX House overlay
-  congress: false // Default to NOT showing US Congress overlay
+const DEFAULT_OVERLAY_PREFS: OverlayPreferences = {
+  senate: true, // Default to showing TX Senate overlay
+  house: true, // Default to showing TX House overlay
+  congress: false, // Default to NOT showing US Congress overlay
 };
 
 export async function getOverlayPreferences(): Promise<OverlayPreferences> {
   try {
     const prefs = await AsyncStorage.getItem(OVERLAY_PREFERENCES_KEY);
     if (!prefs) return DEFAULT_OVERLAY_PREFS;
-    
+
     const parsed = JSON.parse(prefs);
     // Ensure at least one overlay is visible
     if (!parsed.senate && !parsed.house && !parsed.congress) {
@@ -198,7 +228,9 @@ export async function getOverlayPreferences(): Promise<OverlayPreferences> {
   }
 }
 
-export async function saveOverlayPreferences(prefs: OverlayPreferences): Promise<void> {
+export async function saveOverlayPreferences(
+  prefs: OverlayPreferences,
+): Promise<void> {
   try {
     await AsyncStorage.setItem(OVERLAY_PREFERENCES_KEY, JSON.stringify(prefs));
   } catch {
@@ -226,7 +258,10 @@ function getPrivateKey(source: string, districtNumber: number): string {
   return `private:${source}:${districtNumber}`;
 }
 
-export async function getNotesPrayer(source: string, districtNumber: number): Promise<NotePrayerEntry[]> {
+export async function getNotesPrayer(
+  source: string,
+  districtNumber: number,
+): Promise<NotePrayerEntry[]> {
   try {
     const key = getPrivateKey(source, districtNumber);
     const allData = await AsyncStorage.getItem(NOTES_PRAYER_KEY);
@@ -237,7 +272,11 @@ export async function getNotesPrayer(source: string, districtNumber: number): Pr
   }
 }
 
-export async function saveNotesPrayer(source: string, districtNumber: number, entries: NotePrayerEntry[]): Promise<void> {
+export async function saveNotesPrayer(
+  source: string,
+  districtNumber: number,
+  entries: NotePrayerEntry[],
+): Promise<void> {
   try {
     const key = getPrivateKey(source, districtNumber);
     const allData = await AsyncStorage.getItem(NOTES_PRAYER_KEY);
@@ -255,7 +294,7 @@ export async function addNotePrayer(
   text: string,
   followUpNeeded: boolean,
   dueDate?: string,
-  priority?: "low" | "medium" | "high"
+  priority?: "low" | "medium" | "high",
 ): Promise<NotePrayerEntry> {
   const entries = await getNotesPrayer(source, districtNumber);
   const newEntry: NotePrayerEntry = {
@@ -271,13 +310,20 @@ export async function addNotePrayer(
   return newEntry;
 }
 
-export async function deleteNotePrayer(source: string, districtNumber: number, entryId: string): Promise<void> {
+export async function deleteNotePrayer(
+  source: string,
+  districtNumber: number,
+  entryId: string,
+): Promise<void> {
   const entries = await getNotesPrayer(source, districtNumber);
-  const updated = entries.filter(e => e.id !== entryId);
+  const updated = entries.filter((e) => e.id !== entryId);
   await saveNotesPrayer(source, districtNumber, updated);
 }
 
-export async function getEngagementLog(source: string, districtNumber: number): Promise<EngagementEntry[]> {
+export async function getEngagementLog(
+  source: string,
+  districtNumber: number,
+): Promise<EngagementEntry[]> {
   try {
     const key = getPrivateKey(source, districtNumber);
     const allData = await AsyncStorage.getItem(ENGAGEMENT_LOG_KEY);
@@ -288,7 +334,11 @@ export async function getEngagementLog(source: string, districtNumber: number): 
   }
 }
 
-export async function saveEngagementLog(source: string, districtNumber: number, entries: EngagementEntry[]): Promise<void> {
+export async function saveEngagementLog(
+  source: string,
+  districtNumber: number,
+  entries: EngagementEntry[],
+): Promise<void> {
   try {
     const key = getPrivateKey(source, districtNumber);
     const allData = await AsyncStorage.getItem(ENGAGEMENT_LOG_KEY);
@@ -300,7 +350,12 @@ export async function saveEngagementLog(source: string, districtNumber: number, 
   }
 }
 
-export async function addEngagement(source: string, districtNumber: number, engagedAt: string, summary?: string): Promise<EngagementEntry> {
+export async function addEngagement(
+  source: string,
+  districtNumber: number,
+  engagedAt: string,
+  summary?: string,
+): Promise<EngagementEntry> {
   const entries = await getEngagementLog(source, districtNumber);
   const newEntry: EngagementEntry = {
     id: `eng_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -312,9 +367,13 @@ export async function addEngagement(source: string, districtNumber: number, enga
   return newEntry;
 }
 
-export async function deleteEngagement(source: string, districtNumber: number, entryId: string): Promise<void> {
+export async function deleteEngagement(
+  source: string,
+  districtNumber: number,
+  entryId: string,
+): Promise<void> {
   const entries = await getEngagementLog(source, districtNumber);
-  const updated = entries.filter(e => e.id !== entryId);
+  const updated = entries.filter((e) => e.id !== entryId);
   await saveEngagementLog(source, districtNumber, updated);
 }
 
@@ -325,7 +384,9 @@ export interface OfficialsCacheData {
   counts: { txHouse: number; txSenate: number; usHouse: number; total: number };
 }
 
-export async function getCachedOfficials(source: string): Promise<OfficialsCacheData | null> {
+export async function getCachedOfficials(
+  source: string,
+): Promise<OfficialsCacheData | null> {
   try {
     const key = `${OFFICIALS_CACHE_KEY}:${source}`;
     const cached = await AsyncStorage.getItem(key);
@@ -336,7 +397,10 @@ export async function getCachedOfficials(source: string): Promise<OfficialsCache
   }
 }
 
-export async function setCachedOfficials(source: string, data: OfficialsCacheData): Promise<void> {
+export async function setCachedOfficials(
+  source: string,
+  data: OfficialsCacheData,
+): Promise<void> {
   try {
     const key = `${OFFICIALS_CACHE_KEY}:${source}`;
     await AsyncStorage.setItem(key, JSON.stringify(data));
@@ -347,7 +411,7 @@ export async function setCachedOfficials(source: string, data: OfficialsCacheDat
 
 export async function validateCacheData(
   newData: NormalizedOfficial[],
-  cachedData: OfficialsCacheData | null
+  cachedData: OfficialsCacheData | null,
 ): Promise<boolean> {
   if (newData.length === 0) return false;
   if (!cachedData) return true;
@@ -371,7 +435,10 @@ export async function getFavorites(): Promise<string[]> {
   }
 }
 
-export async function addFavorite(source: string, districtNumber: number): Promise<void> {
+export async function addFavorite(
+  source: string,
+  districtNumber: number,
+): Promise<void> {
   try {
     const favorites = await getFavorites();
     const key = getFavoriteKey(source, districtNumber);
@@ -384,18 +451,24 @@ export async function addFavorite(source: string, districtNumber: number): Promi
   }
 }
 
-export async function removeFavorite(source: string, districtNumber: number): Promise<void> {
+export async function removeFavorite(
+  source: string,
+  districtNumber: number,
+): Promise<void> {
   try {
     const favorites = await getFavorites();
     const key = getFavoriteKey(source, districtNumber);
-    const updated = favorites.filter(f => f !== key);
+    const updated = favorites.filter((f) => f !== key);
     await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
   } catch {
     // Silently fail
   }
 }
 
-export async function isFavorite(source: string, districtNumber: number): Promise<boolean> {
+export async function isFavorite(
+  source: string,
+  districtNumber: number,
+): Promise<boolean> {
   const favorites = await getFavorites();
   return favorites.includes(getFavoriteKey(source, districtNumber));
 }
@@ -417,11 +490,20 @@ export async function getRecentViewed(): Promise<RecentOfficialEntry[]> {
   }
 }
 
-export async function addRecentViewed(source: string, districtNumber: number): Promise<void> {
+export async function addRecentViewed(
+  source: string,
+  districtNumber: number,
+): Promise<void> {
   try {
     let recents = await getRecentViewed();
-    recents = recents.filter(r => !(r.source === source && r.districtNumber === districtNumber));
-    recents.unshift({ source, districtNumber, timestamp: new Date().toISOString() });
+    recents = recents.filter(
+      (r) => !(r.source === source && r.districtNumber === districtNumber),
+    );
+    recents.unshift({
+      source,
+      districtNumber,
+      timestamp: new Date().toISOString(),
+    });
     if (recents.length > MAX_RECENTS) recents = recents.slice(0, MAX_RECENTS);
     await AsyncStorage.setItem(RECENT_VIEWED_KEY, JSON.stringify(recents));
   } catch {
@@ -438,11 +520,20 @@ export async function getRecentEngaged(): Promise<RecentOfficialEntry[]> {
   }
 }
 
-export async function addRecentEngaged(source: string, districtNumber: number): Promise<void> {
+export async function addRecentEngaged(
+  source: string,
+  districtNumber: number,
+): Promise<void> {
   try {
     let recents = await getRecentEngaged();
-    recents = recents.filter(r => !(r.source === source && r.districtNumber === districtNumber));
-    recents.unshift({ source, districtNumber, timestamp: new Date().toISOString() });
+    recents = recents.filter(
+      (r) => !(r.source === source && r.districtNumber === districtNumber),
+    );
+    recents.unshift({
+      source,
+      districtNumber,
+      timestamp: new Date().toISOString(),
+    });
     if (recents.length > MAX_RECENTS) recents = recents.slice(0, MAX_RECENTS);
     await AsyncStorage.setItem(RECENT_ENGAGED_KEY, JSON.stringify(recents));
   } catch {
@@ -469,26 +560,39 @@ export async function getRecentPlaces(): Promise<RecentPlaceEntry[]> {
   }
 }
 
-export async function addRecentPlace(place: Omit<RecentPlaceEntry, "timestamp">): Promise<void> {
+export async function addRecentPlace(
+  place: Omit<RecentPlaceEntry, "timestamp">,
+): Promise<void> {
   try {
     let recents = await getRecentPlaces();
-    recents = recents.filter(r => !(r.lat === place.lat && r.lng === place.lng));
+    recents = recents.filter(
+      (r) => !(r.lat === place.lat && r.lng === place.lng),
+    );
     recents.unshift({ ...place, timestamp: new Date().toISOString() });
-    if (recents.length > MAX_RECENT_PLACES) recents = recents.slice(0, MAX_RECENT_PLACES);
+    if (recents.length > MAX_RECENT_PLACES)
+      recents = recents.slice(0, MAX_RECENT_PLACES);
     await AsyncStorage.setItem(RECENT_PLACES_KEY, JSON.stringify(recents));
   } catch {
     // Silently fail
   }
 }
 
-export async function getAllFollowUps(includeArchived: boolean = false): Promise<{ source: string; districtNumber: number; entries: NotePrayerEntry[] }[]> {
+export async function getAllFollowUps(
+  includeArchived: boolean = false,
+): Promise<
+  { source: string; districtNumber: number; entries: NotePrayerEntry[] }[]
+> {
   try {
     const allData = await AsyncStorage.getItem(NOTES_PRAYER_KEY);
     if (!allData) return [];
     const parsed = JSON.parse(allData) as Record<string, NotePrayerEntry[]>;
-    const results: { source: string; districtNumber: number; entries: NotePrayerEntry[] }[] = [];
+    const results: {
+      source: string;
+      districtNumber: number;
+      entries: NotePrayerEntry[];
+    }[] = [];
     for (const [key, entries] of Object.entries(parsed)) {
-      const followUps = entries.filter(e => {
+      const followUps = entries.filter((e) => {
         if (!e.followUpNeeded) return false;
         if (includeArchived) {
           return !!e.followUpArchivedAt;
@@ -512,11 +616,17 @@ export async function getAllFollowUps(includeArchived: boolean = false): Promise
   }
 }
 
-export async function archiveFollowUp(source: string, districtNumber: number, entryId: string): Promise<void> {
+export async function archiveFollowUp(
+  source: string,
+  districtNumber: number,
+  entryId: string,
+): Promise<void> {
   try {
     const entries = await getNotesPrayer(source, districtNumber);
-    const updated = entries.map(e => 
-      e.id === entryId ? { ...e, followUpArchivedAt: new Date().toISOString() } : e
+    const updated = entries.map((e) =>
+      e.id === entryId
+        ? { ...e, followUpArchivedAt: new Date().toISOString() }
+        : e,
     );
     await saveNotesPrayer(source, districtNumber, updated);
   } catch {
@@ -524,11 +634,15 @@ export async function archiveFollowUp(source: string, districtNumber: number, en
   }
 }
 
-export async function unarchiveFollowUp(source: string, districtNumber: number, entryId: string): Promise<void> {
+export async function unarchiveFollowUp(
+  source: string,
+  districtNumber: number,
+  entryId: string,
+): Promise<void> {
   try {
     const entries = await getNotesPrayer(source, districtNumber);
-    const updated = entries.map(e => 
-      e.id === entryId ? { ...e, followUpArchivedAt: undefined } : e
+    const updated = entries.map((e) =>
+      e.id === entryId ? { ...e, followUpArchivedAt: undefined } : e,
     );
     await saveNotesPrayer(source, districtNumber, updated);
   } catch {
@@ -553,7 +667,9 @@ export interface AddressDotData {
   lng: number;
 }
 
-export async function getGeocodedAddressCache(): Promise<Record<string, GeocodedAddress>> {
+export async function getGeocodedAddressCache(): Promise<
+  Record<string, GeocodedAddress>
+> {
   try {
     const data = await AsyncStorage.getItem(GEOCODE_CACHE_KEY);
     return data ? JSON.parse(data) : {};
@@ -562,35 +678,58 @@ export async function getGeocodedAddressCache(): Promise<Record<string, Geocoded
   }
 }
 
-export async function saveGeocodedAddress(officialId: string, address: string, lat: number, lng: number): Promise<void> {
+export async function saveGeocodedAddress(
+  officialId: string,
+  address: string,
+  lat: number,
+  lng: number,
+): Promise<void> {
   try {
     const cache = await getGeocodedAddressCache();
-    cache[officialId] = { address, lat, lng, timestamp: new Date().toISOString() };
+    cache[officialId] = {
+      address,
+      lat,
+      lng,
+      timestamp: new Date().toISOString(),
+    };
     await AsyncStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(cache));
   } catch {
     // Silently fail
   }
 }
 
-export async function getAllPrivateNotesWithAddresses(): Promise<Array<{
-  officialId: string;
-  personalAddress: string;
-}>> {
+export async function getAllPrivateNotesWithAddresses(): Promise<
+  Array<{
+    officialId: string;
+    personalAddress: string;
+  }>
+> {
   try {
     const allNotes = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
-    console.log('[Storage] Raw private notes:', allNotes ? allNotes.substring(0, 200) : 'null');
+    console.log(
+      "[Storage] Raw private notes:",
+      allNotes ? allNotes.substring(0, 200) : "null",
+    );
     if (!allNotes) return [];
     const parsed = JSON.parse(allNotes) as Record<string, PrivateNotes>;
     const results: Array<{ officialId: string; personalAddress: string }> = [];
     for (const [officialId, notes] of Object.entries(parsed)) {
-      console.log('[Storage] Checking official:', officialId, 'address:', notes.personalAddress);
+      console.log(
+        "[Storage] Checking official:",
+        officialId,
+        "address:",
+        notes.personalAddress,
+      );
       if (notes.personalAddress && notes.personalAddress.trim().length > 0) {
-        results.push({ officialId, personalAddress: notes.personalAddress.trim() });
+        results.push({
+          officialId,
+          personalAddress: notes.personalAddress.trim(),
+        });
       }
     }
     return results;
   } catch (error) {
-    console.error('[Storage] Error reading private notes:', error);
+    console.error("[Storage] Error reading private notes:", error);
     return [];
   }
 }

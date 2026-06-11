@@ -1,7 +1,29 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { StyleSheet, View, Pressable, ActivityIndicator, Platform, Linking, Alert, Modal, FlatList, Image } from "react-native";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
+import {
+  StyleSheet,
+  View,
+  Pressable,
+  ActivityIndicator,
+  Platform,
+  Linking,
+  Alert,
+  Modal,
+  FlatList,
+  Image,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation, useRoute, RouteProp, useFocusEffect } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  RouteProp,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { WebView } from "react-native-webview";
@@ -1881,12 +1903,13 @@ export default function MapScreen() {
   const webViewRef = useRef<WebView>(null);
 
   const [overlays, setOverlays] = useState<OverlayPreferences>({
-    senate: true,   // Default to showing TX Senate overlay
-    house: true,    // Default to showing TX House overlay  
+    senate: true, // Default to showing TX Senate overlay
+    house: true, // Default to showing TX House overlay
     congress: false, // Default to NOT showing US Congress overlay
   });
   const [showLayerPanel, setShowLayerPanel] = useState(false);
-  const [selectedDistrict, setSelectedDistrict] = useState<SelectedDistrict | null>(null);
+  const [selectedDistrict, setSelectedDistrict] =
+    useState<SelectedDistrict | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const { debugEnabled, toggleDebug } = useDebugFlags();
@@ -1895,37 +1918,51 @@ export default function MapScreen() {
     senate: { loaded: false, features: 0, error: null },
     congress: { loaded: false, features: 0, error: null },
   });
-  
+
   // Draw mode state
   const [drawModeActive, setDrawModeActive] = useState(false);
   const [drawLoading, setDrawLoading] = useState(false);
-  
+
   // Polygon persistence state - stores drawn polygon and results even when panel is hidden
-  const [storedPolygon, setStoredPolygon] = useState<StoredPolygonResults | null>(null);
+  const [storedPolygon, setStoredPolygon] =
+    useState<StoredPolygonResults | null>(null);
   const [showResultsPanel, setShowResultsPanel] = useState(false);
-  
+
   // Focus district state (for jump-to-district from official cards)
-  const [highlightedDistrict, setHighlightedDistrict] = useState<{ source: string; district: number } | null>(null);
-  
+  const [highlightedDistrict, setHighlightedDistrict] = useState<{
+    source: string;
+    district: number;
+  } | null>(null);
+
   // Overflow modal state for >10 headshot markers
   const [showOverflowModal, setShowOverflowModal] = useState(false);
-  
+
   // Single-select per overlay: max 1 district highlighted per layer
   // Keys are overlay types, values are district numbers or null if no selection
-  type HighlightsByLayer = { tx_house: number | null; tx_senate: number | null; us_congress: number | null };
-  const [highlightsByLayer, setHighlightsByLayer] = useState<HighlightsByLayer>({
-    tx_house: null,
-    tx_senate: null,
-    us_congress: null,
-  });
+  type HighlightsByLayer = {
+    tx_house: number | null;
+    tx_senate: number | null;
+    us_congress: number | null;
+  };
+  const [highlightsByLayer, setHighlightsByLayer] = useState<HighlightsByLayer>(
+    {
+      tx_house: null,
+      tx_senate: null,
+      us_congress: null,
+    },
+  );
   const DEBUG_HIGHLIGHT = false; // Set to true for debugging highlight toggle
   const DEBUG_MAP = false; // Set to true for debugging overlay/map state changes
-  
+
   // Location state
-  const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
+  const [locationPermission, setLocationPermission] =
+    useState<Location.PermissionStatus | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [hasUserLocation, setHasUserLocation] = useState(false);
-  const [lastLocationCoords, setLastLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [lastLocationCoords, setLastLocationCoords] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
   // Address dots state
@@ -1943,66 +1980,75 @@ export default function MapScreen() {
 
   useEffect(() => {
     getOverlayPreferences().then((prefs) => {
-      console.log('[MapScreen] Loaded overlay preferences:', prefs);
+      console.log("[MapScreen] Loaded overlay preferences:", prefs);
       setOverlays(prefs);
       initialOverlaysRef.current = prefs;
     });
   }, []);
 
   // Geocode address using Nominatim (OpenStreetMap) - free, no API key needed
-  const geocodeAddress = useCallback(async (address: string): Promise<{ lat: number; lng: number } | null> => {
-    const tryGeocode = async (query: string): Promise<{ lat: number; lng: number } | null> => {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-      console.log('[Geocode] Fetching:', url);
-      
-      const response = await fetch(url, {
-        headers: { 'User-Agent': 'TXDistrictNavigator/1.0' }
-      });
-      
-      if (!response.ok) return null;
-      
-      const results = await response.json();
-      if (results.length === 0) return null;
-      
-      return {
-        lat: parseFloat(results[0].lat),
-        lng: parseFloat(results[0].lon)
-      };
-    };
+  const geocodeAddress = useCallback(
+    async (address: string): Promise<{ lat: number; lng: number } | null> => {
+      const tryGeocode = async (
+        query: string,
+      ): Promise<{ lat: number; lng: number } | null> => {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+        console.log("[Geocode] Fetching:", url);
 
-    try {
-      // Add Texas to address if not present for better results
-      const fullAddress = address.toLowerCase().includes('texas') || address.toLowerCase().includes(', tx') 
-        ? address 
-        : `${address}, Texas`;
-      
-      // Try full address first
-      let result = await tryGeocode(fullAddress);
-      if (result) return result;
-      
-      // Fallback: Try to extract city/state/zip and geocode that
-      // Common patterns: "Street, City, ST ZIP" or "Street, City, State ZIP"
-      const cityZipMatch = address.match(/,\s*([^,]+),\s*(?:TX|Texas)\s*(\d{5})?/i);
-      if (cityZipMatch) {
-        const city = cityZipMatch[1].trim();
-        const zip = cityZipMatch[2];
-        const fallbackQuery = zip ? `${city}, TX ${zip}` : `${city}, Texas`;
-        console.log('[Geocode] Trying fallback:', fallbackQuery);
-        await new Promise(r => setTimeout(r, 200)); // Rate limit
-        result = await tryGeocode(fallbackQuery);
-        if (result) {
-          console.log('[Geocode] Fallback succeeded for city:', city);
-          return result;
+        const response = await fetch(url, {
+          headers: { "User-Agent": "TXDistrictNavigator/1.0" },
+        });
+
+        if (!response.ok) return null;
+
+        const results = await response.json();
+        if (results.length === 0) return null;
+
+        return {
+          lat: parseFloat(results[0].lat),
+          lng: parseFloat(results[0].lon),
+        };
+      };
+
+      try {
+        // Add Texas to address if not present for better results
+        const fullAddress =
+          address.toLowerCase().includes("texas") ||
+          address.toLowerCase().includes(", tx")
+            ? address
+            : `${address}, Texas`;
+
+        // Try full address first
+        let result = await tryGeocode(fullAddress);
+        if (result) return result;
+
+        // Fallback: Try to extract city/state/zip and geocode that
+        // Common patterns: "Street, City, ST ZIP" or "Street, City, State ZIP"
+        const cityZipMatch = address.match(
+          /,\s*([^,]+),\s*(?:TX|Texas)\s*(\d{5})?/i,
+        );
+        if (cityZipMatch) {
+          const city = cityZipMatch[1].trim();
+          const zip = cityZipMatch[2];
+          const fallbackQuery = zip ? `${city}, TX ${zip}` : `${city}, Texas`;
+          console.log("[Geocode] Trying fallback:", fallbackQuery);
+          await new Promise((r) => setTimeout(r, 200)); // Rate limit
+          result = await tryGeocode(fallbackQuery);
+          if (result) {
+            console.log("[Geocode] Fallback succeeded for city:", city);
+            return result;
+          }
         }
+
+        console.log("[Geocode] No results found for:", address);
+        return null;
+      } catch (error) {
+        console.log("[MapScreen] Geocoding failed for:", address, error);
+        return null;
       }
-      
-      console.log('[Geocode] No results found for:', address);
-      return null;
-    } catch (error) {
-      console.log('[MapScreen] Geocoding failed for:', address, error);
-      return null;
-    }
-  }, []);
+    },
+    [],
+  );
 
   // Load and geocode addresses for dots - reload when screen comes into focus
   // Fetches from BOTH server database (hometowns) AND local storage (user edits)
@@ -2010,18 +2056,29 @@ export default function MapScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      
+
       const loadAddressDots = async () => {
         try {
           // Fetch addresses from server database (includes auto-filled hometowns)
-          const addressMap = new Map<string, { officialName: string; personalAddress: string; source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX" }>();
-          
+          const addressMap = new Map<
+            string,
+            {
+              officialName: string;
+              personalAddress: string;
+              source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
+            }
+          >();
+
           try {
-            const url = new URL('/api/officials/with-addresses', getApiUrl());
+            const url = new URL("/api/officials/with-addresses", getApiUrl());
             const response = await fetch(url.toString());
             if (response.ok) {
               const data = await response.json();
-              console.log('[MapScreen] Fetched', data.addresses?.length || 0, 'addresses from server');
+              console.log(
+                "[MapScreen] Fetched",
+                data.addresses?.length || 0,
+                "addresses from server",
+              );
               for (const addr of data.addresses || []) {
                 addressMap.set(addr.officialId, {
                   officialName: addr.officialName,
@@ -2031,132 +2088,175 @@ export default function MapScreen() {
               }
             }
           } catch (e) {
-            console.log('[MapScreen] Could not fetch server addresses:', e);
+            console.log("[MapScreen] Could not fetch server addresses:", e);
           }
-          
+
           if (cancelled) return;
-          
+
           // Also check local storage for any user edits not yet synced
           const localNotes = await getAllPrivateNotesWithAddresses();
           for (const { officialId, personalAddress } of localNotes) {
             if (!addressMap.has(officialId)) {
               // Local-only address - need to fetch official info
               try {
-                const url = new URL(`/api/officials/${officialId}`, getApiUrl());
+                const url = new URL(
+                  `/api/officials/${officialId}`,
+                  getApiUrl(),
+                );
                 const response = await fetch(url.toString());
                 if (response.ok) {
                   const data = await response.json();
                   addressMap.set(officialId, {
-                    officialName: data.official?.fullName || 'Unknown Official',
+                    officialName: data.official?.fullName || "Unknown Official",
                     personalAddress,
                     source: data.official?.source || "OTHER_TX",
                   });
                 }
               } catch (e) {
-                console.log('[MapScreen] Could not fetch official:', e);
+                console.log("[MapScreen] Could not fetch official:", e);
               }
             }
           }
-          
+
           if (cancelled) return;
-          
+
           if (addressMap.size === 0) {
-            console.log('[MapScreen] No addresses found');
+            console.log("[MapScreen] No addresses found");
             setAddressDots([]);
             return;
           }
 
-          console.log('[MapScreen] Total officials with addresses:', addressMap.size);
-          
+          console.log(
+            "[MapScreen] Total officials with addresses:",
+            addressMap.size,
+          );
+
           const cache = await getGeocodedAddressCache();
           const cachedDots: AddressDot[] = [];
-          const toGeocode: Array<{ officialId: string; officialName: string; personalAddress: string; source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX" }> = [];
+          const toGeocode: Array<{
+            officialId: string;
+            officialName: string;
+            personalAddress: string;
+            source: "TX_HOUSE" | "TX_SENATE" | "US_HOUSE" | "OTHER_TX";
+          }> = [];
 
           // Phase 1: Immediately load all cached addresses
           for (const [officialId, data] of addressMap) {
-            const { officialName, personalAddress, source: officialSource } = data;
-            
+            const {
+              officialName,
+              personalAddress,
+              source: officialSource,
+            } = data;
+
             const cached = cache[officialId];
             if (cached && cached.address === personalAddress) {
-              cachedDots.push({ 
-                officialId, 
-                officialName, 
-                address: personalAddress, 
-                lat: cached.lat, 
+              cachedDots.push({
+                officialId,
+                officialName,
+                address: personalAddress,
+                lat: cached.lat,
                 lng: cached.lng,
-                source: officialSource
+                source: officialSource,
               });
             } else {
-              toGeocode.push({ officialId, officialName, personalAddress, source: officialSource });
+              toGeocode.push({
+                officialId,
+                officialName,
+                personalAddress,
+                source: officialSource,
+              });
             }
           }
 
           // Set cached dots immediately so they appear right away
-          console.log('[MapScreen] Loaded', cachedDots.length, 'cached address dots,', toGeocode.length, 'need geocoding');
+          console.log(
+            "[MapScreen] Loaded",
+            cachedDots.length,
+            "cached address dots,",
+            toGeocode.length,
+            "need geocoding",
+          );
           setAddressDots(cachedDots);
-          
+
           if (cancelled) return;
-          
+
           // Phase 2: Geocode remaining addresses in background and update incrementally
           if (toGeocode.length > 0) {
             const newDots = [...cachedDots];
             let geocodedCount = 0;
-            
-            for (const { officialId, officialName, personalAddress, source: officialSource } of toGeocode) {
+
+            for (const {
+              officialId,
+              officialName,
+              personalAddress,
+              source: officialSource,
+            } of toGeocode) {
               if (cancelled) return;
-              
-              await new Promise(r => setTimeout(r, 300)); // Slightly longer delay to avoid rate limiting
-              
+
+              await new Promise((r) => setTimeout(r, 300)); // Slightly longer delay to avoid rate limiting
+
               if (cancelled) return;
-              
+
               const coords = await geocodeAddress(personalAddress);
               if (coords) {
-                newDots.push({ 
-                  officialId, 
-                  officialName, 
-                  address: personalAddress, 
-                  lat: coords.lat, 
+                newDots.push({
+                  officialId,
+                  officialName,
+                  address: personalAddress,
+                  lat: coords.lat,
                   lng: coords.lng,
-                  source: officialSource
+                  source: officialSource,
                 });
-                await saveGeocodedAddress(officialId, personalAddress, coords.lat, coords.lng);
+                await saveGeocodedAddress(
+                  officialId,
+                  personalAddress,
+                  coords.lat,
+                  coords.lng,
+                );
                 geocodedCount++;
-                
+
                 // Update state after each geocode so dots appear immediately
                 if (!cancelled) {
                   setAddressDots([...newDots]);
                 }
               } else {
-                console.log('[MapScreen] Could not geocode:', personalAddress);
+                console.log("[MapScreen] Could not geocode:", personalAddress);
               }
             }
-            
+
             // Final update with all dots
             if (!cancelled) {
-              console.log('[MapScreen] Finished geocoding, total dots:', newDots.length);
+              console.log(
+                "[MapScreen] Finished geocoding, total dots:",
+                newDots.length,
+              );
               setAddressDots(newDots);
             }
           }
         } catch (error) {
-          console.error('[MapScreen] Error loading address dots:', error);
+          console.error("[MapScreen] Error loading address dots:", error);
         }
       };
 
       loadAddressDots();
-      
+
       return () => {
         cancelled = true;
       };
-    }, [geocodeAddress])
+    }, [geocodeAddress]),
   );
-  
+
   const sendToWebView = useCallback((message: object) => {
     if (webViewRef.current) {
       // Use proper JSON escaping for injection - encode to base64 to avoid any string escaping issues
       const jsonStr = JSON.stringify(message);
       // For small messages, use direct injection
       if (jsonStr.length < 50000) {
-        const escaped = jsonStr.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+        const escaped = jsonStr
+          .replace(/\\/g, "\\\\")
+          .replace(/'/g, "\\'")
+          .replace(/\n/g, "\\n")
+          .replace(/\r/g, "\\r");
         const script = `window.receiveMessage('${escaped}'); true;`;
         webViewRef.current.injectJavaScript(script);
       } else {
@@ -2177,159 +2277,212 @@ export default function MapScreen() {
   }, []);
 
   const fetchGeoJSON = useCallback(async (layerType: DistrictType) => {
-    const layerKey = layerType === 'tx_house' ? 'house' : 
-                     layerType === 'tx_senate' ? 'senate' : 'congress';
-    
+    const layerKey =
+      layerType === "tx_house"
+        ? "house"
+        : layerType === "tx_senate"
+          ? "senate"
+          : "congress";
+
     const cached = geoJSONCache[layerType];
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       const featureCount = cached.data?.features?.length || 0;
-      console.log(`[MapScreen] ${layerType} served from cache (${featureCount} features)`);
-      setLoadStatus(prev => ({
+      console.log(
+        `[MapScreen] ${layerType} served from cache (${featureCount} features)`,
+      );
+      setLoadStatus((prev) => ({
         ...prev,
-        [layerKey]: { loaded: true, features: featureCount, error: null }
+        [layerKey]: { loaded: true, features: featureCount, error: null },
       }));
       return cached.data;
     }
-    
+
     const fetchFromEndpoint = async (endpoint: string) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
-      
+
       const response = await fetch(endpoint, { signal: controller.signal });
       clearTimeout(timeoutId);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       return await response.json();
     };
-    
+
     const validateGeoJSON = (data: unknown): boolean => {
-      if (!data || typeof data !== 'object') return false;
+      if (!data || typeof data !== "object") return false;
       const geojson = data as { features?: unknown[] };
-      if (!Array.isArray(geojson.features) || geojson.features.length === 0) return false;
+      if (!Array.isArray(geojson.features) || geojson.features.length === 0)
+        return false;
       return true;
     };
-    
+
     try {
       const baseUrl = getApiUrl();
       const simplifiedUrl = new URL(`/api/geojson/${layerType}`, baseUrl);
-      console.log(`[MapScreen] Fetching ${layerType} (simplified) from: ${simplifiedUrl.toString()}`);
-      
+      console.log(
+        `[MapScreen] Fetching ${layerType} (simplified) from: ${simplifiedUrl.toString()}`,
+      );
+
       let data;
       let usedFallback = false;
-      
+
       try {
         data = await fetchFromEndpoint(simplifiedUrl.toString());
-        
+
         if (!validateGeoJSON(data)) {
-          console.warn(`[MapScreen] ${layerType} simplified GeoJSON failed validation, trying full version`);
-          throw new Error('Validation failed');
+          console.warn(
+            `[MapScreen] ${layerType} simplified GeoJSON failed validation, trying full version`,
+          );
+          throw new Error("Validation failed");
         }
       } catch (simplifiedError) {
-        console.log(`[MapScreen] ${layerType} simplified failed, falling back to full version`);
+        console.log(
+          `[MapScreen] ${layerType} simplified failed, falling back to full version`,
+        );
         const fullUrl = new URL(`/api/geojson/${layerType}_full`, baseUrl);
         data = await fetchFromEndpoint(fullUrl.toString());
         usedFallback = true;
-        
+
         if (!validateGeoJSON(data)) {
-          throw new Error('Both simplified and full GeoJSON failed validation');
+          throw new Error("Both simplified and full GeoJSON failed validation");
         }
       }
-      
+
       const featureCount = data?.features?.length || 0;
-      console.log(`[MapScreen] ${layerType} loaded: ${featureCount} features${usedFallback ? ' (using full version fallback)' : ''}`);
-      
+      console.log(
+        `[MapScreen] ${layerType} loaded: ${featureCount} features${usedFallback ? " (using full version fallback)" : ""}`,
+      );
+
       geoJSONCache[layerType] = { data, timestamp: Date.now() };
-      
-      setLoadStatus(prev => ({
+
+      setLoadStatus((prev) => ({
         ...prev,
-        [layerKey]: { loaded: true, features: featureCount, error: null }
+        [layerKey]: { loaded: true, features: featureCount, error: null },
       }));
-      
+
       return data;
     } catch (error) {
-      const errorMsg = error instanceof Error ? 
-        (error.name === 'AbortError' ? 'Request timeout' : error.message) : 
-        'Unknown error';
+      const errorMsg =
+        error instanceof Error
+          ? error.name === "AbortError"
+            ? "Request timeout"
+            : error.message
+          : "Unknown error";
       console.error(`[MapScreen] Error fetching ${layerType}:`, error);
-      setLoadStatus(prev => ({
+      setLoadStatus((prev) => ({
         ...prev,
-        [layerKey]: { loaded: false, features: 0, error: errorMsg }
+        [layerKey]: { loaded: false, features: 0, error: errorMsg },
       }));
       return null;
     }
   }, []);
 
-  const fetchOfficialsByDistricts = useCallback(async (hits: DistrictHit[]): Promise<Official[]> => {
-    try {
-      const url = new URL("/api/officials/by-districts", getApiUrl());
-      const response = await fetch(url.toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ districts: hits }),
-      });
-      if (!response.ok) return [];
-      const data = await response.json();
-      console.log("[MapScreen] API response keys:", data.officials?.[0] ? Object.keys(data.officials[0]) : "empty");
-      return (data.officials || []).map((raw: Record<string, unknown>) => normalizeOfficial(raw));
-    } catch (error) {
-      console.error("Error fetching officials:", error);
-      return [];
-    }
-  }, []);
+  const fetchOfficialsByDistricts = useCallback(
+    async (hits: DistrictHit[]): Promise<Official[]> => {
+      try {
+        const url = new URL("/api/officials/by-districts", getApiUrl());
+        const response = await fetch(url.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ districts: hits }),
+        });
+        if (!response.ok) return [];
+        const data = await response.json();
+        console.log(
+          "[MapScreen] API response keys:",
+          data.officials?.[0] ? Object.keys(data.officials[0]) : "empty",
+        );
+        return (data.officials || []).map((raw: Record<string, unknown>) =>
+          normalizeOfficial(raw),
+        );
+      } catch (error) {
+        console.error("Error fetching officials:", error);
+        return [];
+      }
+    },
+    [],
+  );
 
   // Send headshot markers to the map for currently selected officials
-  const sendHeadshotMarkers = useCallback((officials: Official[], hits: DistrictHit[], selectionOrigin?: { lat: number; lng: number } | null, selectionMode?: 'tap' | 'draw' | null, drawnPolygon?: { type: string; coordinates: number[][][] } | null) => {
-    if (!officials || officials.length === 0 || !hits || hits.length === 0) {
-      const clearMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
-      if (Platform.OS === 'web') {
+  const sendHeadshotMarkers = useCallback(
+    (
+      officials: Official[],
+      hits: DistrictHit[],
+      selectionOrigin?: { lat: number; lng: number } | null,
+      selectionMode?: "tap" | "draw" | null,
+      drawnPolygon?: { type: string; coordinates: number[][][] } | null,
+    ) => {
+      if (!officials || officials.length === 0 || !hits || hits.length === 0) {
+        const clearMsg = { type: "CLEAR_HEADSHOT_MARKERS" };
+        if (Platform.OS === "web") {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(clearMsg),
+              "*",
+            );
+          }
+        } else {
+          sendToWebView(clearMsg);
+        }
+        return;
+      }
+
+      // Build marker data: match officials to their district hits
+      const markers = officials
+        .map((official) => {
+          const sourceType =
+            official.source ||
+            (official.officeType === "tx_house"
+              ? "TX_HOUSE"
+              : official.officeType === "tx_senate"
+                ? "TX_SENATE"
+                : "US_HOUSE");
+          const districtHit = hits.find((h) => {
+            const hitSource = h.source;
+            return hitSource === sourceType;
+          });
+          return {
+            officialId: official.id,
+            name: official.fullName,
+            photoUrl: getProxiedPhotoUrl(official.photoUrl) || null,
+            source: sourceType,
+            districtNumber:
+              official.districtNumber || districtHit?.districtNumber || 0,
+          };
+        })
+        .filter((m) => m.districtNumber > 0);
+
+      const msg: any = { type: "SET_HEADSHOT_MARKERS", markers };
+      if (selectionOrigin) {
+        msg.selectionOrigin = selectionOrigin;
+      }
+      if (selectionMode) {
+        msg.selectionMode = selectionMode;
+      }
+      if (drawnPolygon) {
+        msg.drawnPolygon = drawnPolygon;
+      }
+      console.log(
+        "[MapScreen] Sending",
+        markers.length,
+        "headshot markers",
+        selectionOrigin
+          ? "(with origin, mode=" + (selectionMode || "none") + ")"
+          : "",
+      );
+      if (Platform.OS === "web") {
         if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), "*");
         }
       } else {
-        sendToWebView(clearMsg);
+        sendToWebView(msg);
       }
-      return;
-    }
-
-    // Build marker data: match officials to their district hits
-    const markers = officials.map(official => {
-      const sourceType = official.source || (official.officeType === 'tx_house' ? 'TX_HOUSE' : 
-                                              official.officeType === 'tx_senate' ? 'TX_SENATE' : 'US_HOUSE');
-      const districtHit = hits.find(h => {
-        const hitSource = h.source;
-        return hitSource === sourceType;
-      });
-      return {
-        officialId: official.id,
-        name: official.fullName,
-        photoUrl: getProxiedPhotoUrl(official.photoUrl) || null,
-        source: sourceType,
-        districtNumber: official.districtNumber || districtHit?.districtNumber || 0,
-      };
-    }).filter(m => m.districtNumber > 0);
-
-    const msg: any = { type: 'SET_HEADSHOT_MARKERS', markers };
-    if (selectionOrigin) {
-      msg.selectionOrigin = selectionOrigin;
-    }
-    if (selectionMode) {
-      msg.selectionMode = selectionMode;
-    }
-    if (drawnPolygon) {
-      msg.drawnPolygon = drawnPolygon;
-    }
-    console.log('[MapScreen] Sending', markers.length, 'headshot markers', selectionOrigin ? '(with origin, mode=' + (selectionMode || 'none') + ')' : '');
-    if (Platform.OS === 'web') {
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
-      }
-    } else {
-      sendToWebView(msg);
-    }
-  }, [sendToWebView]);
+    },
+    [sendToWebView],
+  );
 
   const geoJSONLoadedRef = useRef(false);
   const initialOverlaysRef = useRef(overlays);
@@ -2341,14 +2494,14 @@ export default function MapScreen() {
     // Set the flag immediately to prevent a second concurrent load if mapReady
     // flips while the async work is in progress. It will be reset on failure.
     geoJSONLoadedRef.current = true;
-    console.log('[MapScreen] Map is ready, starting GeoJSON load');
+    console.log("[MapScreen] Map is ready, starting GeoJSON load");
 
     const currentOverlays = initialOverlaysRef.current;
 
     const loadGeoJSON = async () => {
       const platform = Platform.OS;
 
-      if (platform === 'web') {
+      if (platform === "web") {
         // On web the iframe (/api/map.html) fetches GeoJSON itself and reports
         // progress back via geoJSONLoaded / allGeoJSONLoaded events, which are
         // already wired up in handleWindowMessage.  We only need to push the
@@ -2357,22 +2510,40 @@ export default function MapScreen() {
         // No delay needed: mapReady is set only after the iframe sends its own
         // mapReady postMessage, which means the iframe message listener is
         // already registered by the time this code runs.
-        console.log('[MapScreen] web: applying overlay prefs:', currentOverlays);
+        console.log(
+          "[MapScreen] web: applying overlay prefs:",
+          currentOverlays,
+        );
         const sendIframe = (msg: object) => {
           if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(msg),
+              "*",
+            );
           }
         };
-        sendIframe({ type: 'toggleLayer', layer: 'senate',   visible: currentOverlays.senate });
-        sendIframe({ type: 'toggleLayer', layer: 'house',    visible: currentOverlays.house });
-        sendIframe({ type: 'toggleLayer', layer: 'congress', visible: currentOverlays.congress });
+        sendIframe({
+          type: "toggleLayer",
+          layer: "senate",
+          visible: currentOverlays.senate,
+        });
+        sendIframe({
+          type: "toggleLayer",
+          layer: "house",
+          visible: currentOverlays.house,
+        });
+        sendIframe({
+          type: "toggleLayer",
+          layer: "congress",
+          visible: currentOverlays.congress,
+        });
         // dataLoaded is set to true when allGeoJSONLoaded arrives from the iframe.
         return;
       }
 
       // ── Native path ──────────────────────────────────────────────────────────
       // React fetches GeoJSON and pushes it into the WebView via injectJavaScript.
-      console.log('[MapScreen] native: fetching GeoJSON in React...');
+      console.log("[MapScreen] native: fetching GeoJSON in React...");
 
       setLoadStatus({
         house: { loaded: false, features: 0, error: null },
@@ -2386,110 +2557,174 @@ export default function MapScreen() {
         fetchGeoJSON("us_congress"),
       ]);
 
-      console.log('[MapScreen] native: GeoJSON fetch complete, sending to WebView');
+      console.log(
+        "[MapScreen] native: GeoJSON fetch complete, sending to WebView",
+      );
 
       if (senate) {
-        console.log(`[MapScreen] native: sending tx_senate (${senate.features?.length} features)`);
-        sendToWebView({ type: 'setGeoJSON', layerType: 'tx_senate', geojson: senate });
+        console.log(
+          `[MapScreen] native: sending tx_senate (${senate.features?.length} features)`,
+        );
+        sendToWebView({
+          type: "setGeoJSON",
+          layerType: "tx_senate",
+          geojson: senate,
+        });
       }
       if (house) {
-        console.log(`[MapScreen] native: sending tx_house (${house.features?.length} features)`);
-        sendToWebView({ type: 'setGeoJSON', layerType: 'tx_house', geojson: house });
+        console.log(
+          `[MapScreen] native: sending tx_house (${house.features?.length} features)`,
+        );
+        sendToWebView({
+          type: "setGeoJSON",
+          layerType: "tx_house",
+          geojson: house,
+        });
       }
       if (congress) {
-        console.log(`[MapScreen] native: sending us_congress (${congress.features?.length} features)`);
-        sendToWebView({ type: 'setGeoJSON', layerType: 'us_congress', geojson: congress });
+        console.log(
+          `[MapScreen] native: sending us_congress (${congress.features?.length} features)`,
+        );
+        sendToWebView({
+          type: "setGeoJSON",
+          layerType: "us_congress",
+          geojson: congress,
+        });
       }
 
       setDataLoaded(true);
-      console.log('[MapScreen] native: DataLoaded set to true');
+      console.log("[MapScreen] native: DataLoaded set to true");
 
       // Small delay to ensure data is processed before toggling layers.
       setTimeout(() => {
-        console.log('[MapScreen] native: applying initial overlays:', currentOverlays);
-        if (currentOverlays.senate)  sendToWebView({ type: 'toggleLayer', layer: 'senate',   visible: true });
-        if (currentOverlays.house)   sendToWebView({ type: 'toggleLayer', layer: 'house',    visible: true });
-        if (currentOverlays.congress) sendToWebView({ type: 'toggleLayer', layer: 'congress', visible: true });
+        console.log(
+          "[MapScreen] native: applying initial overlays:",
+          currentOverlays,
+        );
+        if (currentOverlays.senate)
+          sendToWebView({
+            type: "toggleLayer",
+            layer: "senate",
+            visible: true,
+          });
+        if (currentOverlays.house)
+          sendToWebView({ type: "toggleLayer", layer: "house", visible: true });
+        if (currentOverlays.congress)
+          sendToWebView({
+            type: "toggleLayer",
+            layer: "congress",
+            visible: true,
+          });
       }, 100);
     };
 
     loadGeoJSON().catch((err) => {
-      console.error('[MapScreen] loadGeoJSON failed, will allow retry:', err);
+      console.error("[MapScreen] loadGeoJSON failed, will allow retry:", err);
       geoJSONLoadedRef.current = false;
     });
   }, [mapReady, fetchGeoJSON, sendToWebView]);
-  
+
   // Handle focus district from navigation params (jump-to-district feature)
   useEffect(() => {
     const focusDistrict = route.params?.focusDistrict;
     if (focusDistrict && mapReady && dataLoaded) {
-      console.log('[MapScreen] Focusing on district:', focusDistrict);
-      
+      console.log("[MapScreen] Focusing on district:", focusDistrict);
+
       // Clear any existing polygon/results
       setStoredPolygon(null);
       setSelectedDistrict(null);
       setShowResultsPanel(false);
-      
+
       // Clear drawing and highlights in WebView
-      const clearMsg = { type: 'CLEAR_DRAWING' };
-      const clearHighlightsMsg = { type: 'CLEAR_HIGHLIGHTS' };
-      if (Platform.OS === 'web') {
+      const clearMsg = { type: "CLEAR_DRAWING" };
+      const clearHighlightsMsg = { type: "CLEAR_HIGHLIGHTS" };
+      if (Platform.OS === "web") {
         if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHighlightsMsg), '*');
+          iframeRef.current.contentWindow.postMessage(
+            JSON.stringify(clearMsg),
+            "*",
+          );
+          iframeRef.current.contentWindow.postMessage(
+            JSON.stringify(clearHighlightsMsg),
+            "*",
+          );
         }
       } else {
         sendToWebView(clearMsg);
         sendToWebView(clearHighlightsMsg);
       }
-      
+
       // Enable the appropriate overlay if not already enabled
-      const layerType = focusDistrict.source === 'TX_HOUSE' ? 'house' : 
-                        focusDistrict.source === 'TX_SENATE' ? 'senate' : 'congress';
+      const layerType =
+        focusDistrict.source === "TX_HOUSE"
+          ? "house"
+          : focusDistrict.source === "TX_SENATE"
+            ? "senate"
+            : "congress";
       if (!overlays[layerType]) {
         const newOverlays = { ...overlays, [layerType]: true };
         setOverlays(newOverlays);
         saveOverlayPreferences(newOverlays);
-        
-        const toggleMsg = { type: 'toggleLayer', layer: layerType, visible: true };
-        if (Platform.OS === 'web') {
+
+        const toggleMsg = {
+          type: "toggleLayer",
+          layer: layerType,
+          visible: true,
+        };
+        if (Platform.OS === "web") {
           if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(toggleMsg), '*');
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(toggleMsg),
+              "*",
+            );
           }
         } else {
           sendToWebView(toggleMsg);
         }
       }
-      
+
       // Send focus district message to WebView
-      const focusMsg = { 
-        type: 'FOCUS_DISTRICT', 
-        source: focusDistrict.source, 
-        districtNumber: focusDistrict.districtNumber 
+      const focusMsg = {
+        type: "FOCUS_DISTRICT",
+        source: focusDistrict.source,
+        districtNumber: focusDistrict.districtNumber,
       };
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(focusMsg), '*');
+          iframeRef.current.contentWindow.postMessage(
+            JSON.stringify(focusMsg),
+            "*",
+          );
         }
       } else {
         sendToWebView(focusMsg);
       }
-      
-      setHighlightedDistrict({ source: focusDistrict.source, district: focusDistrict.districtNumber });
-      
+
+      setHighlightedDistrict({
+        source: focusDistrict.source,
+        district: focusDistrict.districtNumber,
+      });
+
       // Clear highlight after 3 seconds
       setTimeout(() => {
         setHighlightedDistrict(null);
       }, 3000);
-      
+
       // Clear the navigation params to avoid re-triggering
       navigation.setParams({ focusDistrict: undefined });
     }
-  }, [route.params?.focusDistrict, mapReady, dataLoaded, overlays, sendToWebView, navigation]);
+  }, [
+    route.params?.focusDistrict,
+    mapReady,
+    dataLoaded,
+    overlays,
+    sendToWebView,
+    navigation,
+  ]);
 
   // Filter address dots based on overlay settings
   const filteredAddressDots = useMemo(() => {
-    return addressDots.filter(dot => {
+    return addressDots.filter((dot) => {
       if (dot.source === "OTHER_TX") {
         return true;
       }
@@ -2509,26 +2744,38 @@ export default function MapScreen() {
   // Send filtered address dots to WebView when ready or overlays change
   useEffect(() => {
     if (!mapReady) return;
-    
-    const dotsMsg = { type: 'SET_ADDRESS_DOTS', dots: filteredAddressDots };
-    if (Platform.OS === 'web') {
+
+    const dotsMsg = { type: "SET_ADDRESS_DOTS", dots: filteredAddressDots };
+    if (Platform.OS === "web") {
       if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(dotsMsg), '*');
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify(dotsMsg),
+          "*",
+        );
       }
     } else {
       sendToWebView(dotsMsg);
     }
-    console.log('[MapScreen] Sent', filteredAddressDots.length, 'filtered address dots to WebView (of', addressDots.length, 'total)');
+    console.log(
+      "[MapScreen] Sent",
+      filteredAddressDots.length,
+      "filtered address dots to WebView (of",
+      addressDots.length,
+      "total)",
+    );
   }, [mapReady, filteredAddressDots, addressDots.length, sendToWebView]);
 
   // Update active officials when selectedDistrict changes
   useEffect(() => {
-    const activeIds = selectedDistrict?.officials?.map(o => o.id) || [];
-    
-    const activeMsg = { type: 'SET_ACTIVE_OFFICIALS', officialIds: activeIds };
-    if (Platform.OS === 'web') {
+    const activeIds = selectedDistrict?.officials?.map((o) => o.id) || [];
+
+    const activeMsg = { type: "SET_ACTIVE_OFFICIALS", officialIds: activeIds };
+    if (Platform.OS === "web") {
       if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(activeMsg), '*');
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify(activeMsg),
+          "*",
+        );
       }
     } else {
       sendToWebView(activeMsg);
@@ -2540,127 +2787,198 @@ export default function MapScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const newValue = !overlays[type];
       const newOverlays = { ...overlays, [type]: newValue };
-      
+
       if (DEBUG_MAP) {
-        console.log(`[MapScreen] Overlay change: ${type} ${overlays[type]} -> ${newValue}`);
-        console.log(`[MapScreen] Overlays before:`, overlays, `after:`, newOverlays);
+        console.log(
+          `[MapScreen] Overlay change: ${type} ${overlays[type]} -> ${newValue}`,
+        );
+        console.log(
+          `[MapScreen] Overlays before:`,
+          overlays,
+          `after:`,
+          newOverlays,
+        );
       }
-      
+
       // Check if any highlights exist
-      const hasHighlights = highlightsByLayer.tx_house !== null || 
-                           highlightsByLayer.tx_senate !== null || 
-                           highlightsByLayer.us_congress !== null;
-      
+      const hasHighlights =
+        highlightsByLayer.tx_house !== null ||
+        highlightsByLayer.tx_senate !== null ||
+        highlightsByLayer.us_congress !== null;
+
       // Clear all highlights when overlay changes to avoid stale selections
       if (hasHighlights) {
         if (DEBUG_MAP) {
-          console.log(`[MapScreen] Cleared highlights due to overlay change:`, highlightsByLayer);
+          console.log(
+            `[MapScreen] Cleared highlights due to overlay change:`,
+            highlightsByLayer,
+          );
         }
-        setHighlightsByLayer({ tx_house: null, tx_senate: null, us_congress: null });
+        setHighlightsByLayer({
+          tx_house: null,
+          tx_senate: null,
+          us_congress: null,
+        });
         setSelectedDistrict(null);
         setShowResultsPanel(false);
-        
+
         // Send CLEAR_HIGHLIGHTS and CLEAR_HEADSHOT_MARKERS to WebView
-        const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
-        const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
-        if (Platform.OS === 'web') {
+        const clearMsg = { type: "CLEAR_HIGHLIGHTS" };
+        const clearHeadshotsMsg = { type: "CLEAR_HEADSHOT_MARKERS" };
+        if (Platform.OS === "web") {
           if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(clearMsg),
+              "*",
+            );
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(clearHeadshotsMsg),
+              "*",
+            );
           }
         } else {
           sendToWebView(clearMsg);
           sendToWebView(clearHeadshotsMsg);
         }
       }
-      
+
       setOverlays(newOverlays);
       await saveOverlayPreferences(newOverlays);
-      
-      const msg = { type: 'toggleLayer', layer: type, visible: newValue };
-      if (Platform.OS === 'web') {
+
+      const msg = { type: "toggleLayer", layer: type, visible: newValue };
+      if (Platform.OS === "web") {
         if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+          iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), "*");
         }
       } else {
         sendToWebView(msg);
       }
     },
-    [overlays, sendToWebView, highlightsByLayer, DEBUG_MAP]
+    [overlays, sendToWebView, highlightsByLayer, DEBUG_MAP],
   );
 
   // Helper to normalize a hit to canonical format
   // Accepts either native schema (source/districtNumber) or web schema (type/district)
-  const normalizeHit = useCallback((hit: DistrictHit | { type?: string; district?: number }): { layerType: string; districtNumber: number } => {
-    // Handle source (native schema) or type (web schema)
-    let layerType: string;
-    const rawHit = hit as { source?: string; districtNumber?: number; type?: string; district?: number };
-    
-    if (rawHit.source) {
-      layerType = rawHit.source === 'TX_HOUSE' ? 'tx_house' : 
-                  rawHit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress';
-    } else if (rawHit.type) {
-      layerType = rawHit.type;
-    } else {
-      layerType = 'unknown';
-    }
-    
-    // Handle districtNumber (native) or district (web)
-    const districtNumber = rawHit.districtNumber ?? rawHit.district ?? 0;
-    
-    return { layerType, districtNumber };
-  }, []);
-  
+  const normalizeHit = useCallback(
+    (
+      hit: DistrictHit | { type?: string; district?: number },
+    ): { layerType: string; districtNumber: number } => {
+      // Handle source (native schema) or type (web schema)
+      let layerType: string;
+      const rawHit = hit as {
+        source?: string;
+        districtNumber?: number;
+        type?: string;
+        district?: number;
+      };
+
+      if (rawHit.source) {
+        layerType =
+          rawHit.source === "TX_HOUSE"
+            ? "tx_house"
+            : rawHit.source === "TX_SENATE"
+              ? "tx_senate"
+              : "us_congress";
+      } else if (rawHit.type) {
+        layerType = rawHit.type;
+      } else {
+        layerType = "unknown";
+      }
+
+      // Handle districtNumber (native) or district (web)
+      const districtNumber = rawHit.districtNumber ?? rawHit.district ?? 0;
+
+      return { layerType, districtNumber };
+    },
+    [],
+  );
 
   // Helper to convert highlightsByLayer to array of hits for API/WebView
-  const highlightsToHits = useCallback((highlights: HighlightsByLayer): DistrictHit[] => {
-    const hits: DistrictHit[] = [];
-    if (highlights.tx_house !== null) {
-      hits.push({ source: 'TX_HOUSE' as SourceType, districtNumber: highlights.tx_house });
-    }
-    if (highlights.tx_senate !== null) {
-      hits.push({ source: 'TX_SENATE' as SourceType, districtNumber: highlights.tx_senate });
-    }
-    if (highlights.us_congress !== null) {
-      hits.push({ source: 'US_HOUSE' as SourceType, districtNumber: highlights.us_congress });
-    }
-    return hits;
-  }, []);
-  
+  const highlightsToHits = useCallback(
+    (highlights: HighlightsByLayer): DistrictHit[] => {
+      const hits: DistrictHit[] = [];
+      if (highlights.tx_house !== null) {
+        hits.push({
+          source: "TX_HOUSE" as SourceType,
+          districtNumber: highlights.tx_house,
+        });
+      }
+      if (highlights.tx_senate !== null) {
+        hits.push({
+          source: "TX_SENATE" as SourceType,
+          districtNumber: highlights.tx_senate,
+        });
+      }
+      if (highlights.us_congress !== null) {
+        hits.push({
+          source: "US_HOUSE" as SourceType,
+          districtNumber: highlights.us_congress,
+        });
+      }
+      return hits;
+    },
+    [],
+  );
+
   // Helper to convert highlightsByLayer to web schema for WebView messaging
-  const highlightsToWebHits = useCallback((highlights: HighlightsByLayer): { type: string; district: number }[] => {
-    const hits: { type: string; district: number }[] = [];
-    if (highlights.tx_house !== null) {
-      hits.push({ type: 'tx_house', district: highlights.tx_house });
-    }
-    if (highlights.tx_senate !== null) {
-      hits.push({ type: 'tx_senate', district: highlights.tx_senate });
-    }
-    if (highlights.us_congress !== null) {
-      hits.push({ type: 'us_congress', district: highlights.us_congress });
-    }
-    return hits;
-  }, []);
+  const highlightsToWebHits = useCallback(
+    (highlights: HighlightsByLayer): { type: string; district: number }[] => {
+      const hits: { type: string; district: number }[] = [];
+      if (highlights.tx_house !== null) {
+        hits.push({ type: "tx_house", district: highlights.tx_house });
+      }
+      if (highlights.tx_senate !== null) {
+        hits.push({ type: "tx_senate", district: highlights.tx_senate });
+      }
+      if (highlights.us_congress !== null) {
+        hits.push({ type: "us_congress", district: highlights.us_congress });
+      }
+      return hits;
+    },
+    [],
+  );
 
   const handleMapTap = useCallback(
-    async (hits: DistrictHit[], tapLatLng?: { lat: number; lng: number } | null) => {
+    async (
+      hits: DistrictHit[],
+      tapLatLng?: { lat: number; lng: number } | null,
+    ) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      
-      if (DEBUG_MAP) console.log('[MAP_TAP] handleMapTap with', hits.length, 'hits', tapLatLng ? `at (${tapLatLng.lat.toFixed(4)}, ${tapLatLng.lng.toFixed(4)})` : '');
-      
+
+      if (DEBUG_MAP)
+        console.log(
+          "[MAP_TAP] handleMapTap with",
+          hits.length,
+          "hits",
+          tapLatLng
+            ? `at (${tapLatLng.lat.toFixed(4)}, ${tapLatLng.lng.toFixed(4)})`
+            : "",
+        );
+
       // Tap on empty space - clear all highlights
       if (hits.length === 0) {
-        if (DEBUG_MAP) console.log('[MAP_TAP] Empty tap, clearing all highlights');
-        setHighlightsByLayer({ tx_house: null, tx_senate: null, us_congress: null });
+        if (DEBUG_MAP)
+          console.log("[MAP_TAP] Empty tap, clearing all highlights");
+        setHighlightsByLayer({
+          tx_house: null,
+          tx_senate: null,
+          us_congress: null,
+        });
         setSelectedDistrict(null);
         setShowResultsPanel(false);
-        
-        const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
-        const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
-        if (Platform.OS === 'web') {
+
+        const clearMsg = { type: "CLEAR_HIGHLIGHTS" };
+        const clearHeadshotsMsg = { type: "CLEAR_HEADSHOT_MARKERS" };
+        if (Platform.OS === "web") {
           if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(clearMsg),
+              "*",
+            );
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(clearHeadshotsMsg),
+              "*",
+            );
           }
         } else {
           sendToWebView(clearMsg);
@@ -2669,48 +2987,65 @@ export default function MapScreen() {
         setStoredPolygon(null);
         return;
       }
-      
+
       // Single-select per overlay: process each hit
       const newHighlights = { ...highlightsByLayer };
-      
+
       for (const hit of hits) {
         const { layerType, districtNumber } = normalizeHit(hit);
         const overlayKey = layerType as keyof HighlightsByLayer;
-        
+
         if (DEBUG_MAP) {
-          console.log('[MAP_TAP] Normalized hit:', { layerType, districtNumber });
-          console.log('[MAP_TAP] Previous selection for', overlayKey, ':', highlightsByLayer[overlayKey]);
+          console.log("[MAP_TAP] Normalized hit:", {
+            layerType,
+            districtNumber,
+          });
+          console.log(
+            "[MAP_TAP] Previous selection for",
+            overlayKey,
+            ":",
+            highlightsByLayer[overlayKey],
+          );
         }
-        
+
         if (highlightsByLayer[overlayKey] === districtNumber) {
           // Same district tapped again - deselect
           newHighlights[overlayKey] = null;
-          if (DEBUG_MAP) console.log('[MAP_TAP] Deselecting', overlayKey, districtNumber);
+          if (DEBUG_MAP)
+            console.log("[MAP_TAP] Deselecting", overlayKey, districtNumber);
         } else {
           // Different district or first selection - select (replaces any previous)
           newHighlights[overlayKey] = districtNumber;
-          if (DEBUG_MAP) console.log('[MAP_TAP] Selecting', overlayKey, districtNumber);
+          if (DEBUG_MAP)
+            console.log("[MAP_TAP] Selecting", overlayKey, districtNumber);
         }
       }
-      
-      if (DEBUG_MAP) console.log('[MAP_TAP] New selection map:', newHighlights);
-      
+
+      if (DEBUG_MAP) console.log("[MAP_TAP] New selection map:", newHighlights);
+
       // Update state
       setHighlightsByLayer(newHighlights);
-      
+
       // Check if any highlights remain
-      const hasHighlights = newHighlights.tx_house !== null || 
-                           newHighlights.tx_senate !== null || 
-                           newHighlights.us_congress !== null;
-      
+      const hasHighlights =
+        newHighlights.tx_house !== null ||
+        newHighlights.tx_senate !== null ||
+        newHighlights.us_congress !== null;
+
       if (!hasHighlights) {
         // No highlights - send clear message
-        const clearMsg = { type: 'CLEAR_HIGHLIGHTS' };
-        const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
-        if (Platform.OS === 'web') {
+        const clearMsg = { type: "CLEAR_HIGHLIGHTS" };
+        const clearHeadshotsMsg = { type: "CLEAR_HEADSHOT_MARKERS" };
+        if (Platform.OS === "web") {
           if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearMsg), '*');
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(clearMsg),
+              "*",
+            );
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(clearHeadshotsMsg),
+              "*",
+            );
           }
         } else {
           sendToWebView(clearMsg);
@@ -2721,44 +3056,65 @@ export default function MapScreen() {
       } else {
         // Convert to web schema hits for WebView messaging
         const webHits = highlightsToWebHits(newHighlights);
-        
-        const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
-        if (DEBUG_MAP) console.log('[MAP_TAP] Sending HIGHLIGHT_DISTRICTS:', webHits);
-        
-        if (Platform.OS === 'web') {
+
+        const highlightMsg = { type: "HIGHLIGHT_DISTRICTS", hits: webHits };
+        if (DEBUG_MAP)
+          console.log("[MAP_TAP] Sending HIGHLIGHT_DISTRICTS:", webHits);
+
+        if (Platform.OS === "web") {
           if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(highlightMsg),
+              "*",
+            );
           }
         } else {
           sendToWebView(highlightMsg);
         }
-        
+
         // Convert to DistrictHit format for API calls
         const districtHits = highlightsToHits(newHighlights);
-        
+
         // Fetch officials for all highlighted districts
         const officials = await fetchOfficialsByDistricts(districtHits);
-        if (DEBUG_MAP) console.log('[MAP_TAP] Fetched', officials.length, 'officials');
-        
+        if (DEBUG_MAP)
+          console.log("[MAP_TAP] Fetched", officials.length, "officials");
+
         setSelectedDistrict({
           hits: districtHits,
           officials,
         });
         setShowResultsPanel(true);
-        
-        sendHeadshotMarkers(officials, districtHits, tapLatLng, 'tap');
+
+        sendHeadshotMarkers(officials, districtHits, tapLatLng, "tap");
       }
-      
+
       // Note: Don't clear storedPolygon on tap - let it persist so user can restore polygon results
     },
-    [fetchOfficialsByDistricts, sendToWebView, highlightsByLayer, normalizeHit, highlightsToHits, highlightsToWebHits, sendHeadshotMarkers, DEBUG_MAP]
+    [
+      fetchOfficialsByDistricts,
+      sendToWebView,
+      highlightsByLayer,
+      normalizeHit,
+      highlightsToHits,
+      highlightsToWebHits,
+      sendHeadshotMarkers,
+      DEBUG_MAP,
+    ],
   );
 
-  const handleOfficialCardPress = useCallback((official: Official) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    console.log('[MapScreen] Official card pressed:', official.id, official.fullName);
-    navigation.navigate("OfficialProfile", { officialId: official.id });
-  }, [navigation]);
+  const handleOfficialCardPress = useCallback(
+    (official: Official) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      console.log(
+        "[MapScreen] Official card pressed:",
+        official.id,
+        official.fullName,
+      );
+      navigation.navigate("OfficialProfile", { officialId: official.id });
+    },
+    [navigation],
+  );
 
   // Draw mode handlers
   const handleToggleDrawMode = useCallback(() => {
@@ -2766,16 +3122,16 @@ export default function MapScreen() {
     const newState = !drawModeActive;
     setDrawModeActive(newState);
     setSelectedDistrict(null);
-    
-    const msg = { type: 'SET_DRAW_MODE', enabled: newState };
-    if (Platform.OS === 'web') {
+
+    const msg = { type: "SET_DRAW_MODE", enabled: newState };
+    if (Platform.OS === "web") {
       if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), "*");
       }
     } else {
       sendToWebView(msg);
     }
-    console.log('[MapScreen] Draw mode:', newState ? 'ON' : 'OFF');
+    console.log("[MapScreen] Draw mode:", newState ? "ON" : "OFF");
   }, [drawModeActive, sendToWebView]);
 
   const handleClearDrawing = useCallback(() => {
@@ -2784,245 +3140,316 @@ export default function MapScreen() {
     setDrawModeActive(false);
     setStoredPolygon(null);
     setShowResultsPanel(false);
-    
-    const msg = { type: 'CLEAR_DRAWING' };
-    const clearHighlightsMsg = { type: 'CLEAR_HIGHLIGHTS' };
-    const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
-    if (Platform.OS === 'web') {
+
+    const msg = { type: "CLEAR_DRAWING" };
+    const clearHighlightsMsg = { type: "CLEAR_HIGHLIGHTS" };
+    const clearHeadshotsMsg = { type: "CLEAR_HEADSHOT_MARKERS" };
+    if (Platform.OS === "web") {
       if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHighlightsMsg), '*');
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
+        iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), "*");
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify(clearHighlightsMsg),
+          "*",
+        );
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify(clearHeadshotsMsg),
+          "*",
+        );
       }
     } else {
       sendToWebView(msg);
       sendToWebView(clearHighlightsMsg);
       sendToWebView(clearHeadshotsMsg);
     }
-    console.log('[MapScreen] Drawing cleared');
+    console.log("[MapScreen] Drawing cleared");
   }, [sendToWebView]);
 
-  const handleDrawComplete = useCallback(async (geometry: { type: string; coordinates: number[][][] }) => {
-    console.log('[MapScreen] Draw complete, geometry points:', geometry.coordinates[0]?.length);
-    
-    // Haptic feedback on draw complete
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    setDrawLoading(true);
-    setDrawModeActive(false);
-    
-    // Compute center of the drawn polygon for selectionOrigin
-    let drawCenter: { lat: number; lng: number } | null = null;
-    if (geometry.coordinates[0] && geometry.coordinates[0].length > 0) {
-      const ring = geometry.coordinates[0];
-      let sumLng = 0, sumLat = 0;
-      for (let i = 0; i < ring.length; i++) {
-        sumLng += ring[i][0];
-        sumLat += ring[i][1];
-      }
-      drawCenter = { lat: sumLat / ring.length, lng: sumLng / ring.length };
-    }
-    
-    try {
-      // Call /api/map/area-hits to get intersecting districts
-      const areaHitsUrl = new URL("/api/map/area-hits", getApiUrl());
-      const areaResponse = await fetch(areaHitsUrl.toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          geometry,
-          overlays: {
-            house: overlays.house,
-            senate: overlays.senate,
-            congress: overlays.congress,
-          },
-        }),
-      });
-      
-      if (!areaResponse.ok) {
-        console.error('[MapScreen] Area hits request failed:', areaResponse.status);
-        setDrawLoading(false);
-        return;
-      }
-      
-      const { hits } = await areaResponse.json();
-      console.log('[MapScreen] Area hits:', hits.length);
-      
-      if (hits.length === 0) {
-        setSelectedDistrict({ hits: [], officials: [] });
-        setStoredPolygon({ geometry, hits: [], officials: [] });
-        setShowResultsPanel(true);
-        setDrawLoading(false);
-        return;
-      }
-      
-      // Fetch officials using existing pipeline
-      const officials = await fetchOfficialsByDistricts(hits);
-      console.log('[MapScreen] Draw search officials:', officials.length);
-      
-      // Store polygon and results for persistence
-      setStoredPolygon({ geometry, hits, officials });
-      setSelectedDistrict({ hits, officials });
-      setShowResultsPanel(true);
-      
-      sendHeadshotMarkers(officials, hits, drawCenter, 'draw', geometry);
-      
-      // Highlight ALL districts in the polygon (multi-select for draw mode)
-      const webHits = hits.map((hit: { source: string; districtNumber: number }) => ({
-        type: hit.source === 'TX_HOUSE' ? 'tx_house' : 
-              hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress',
-        district: hit.districtNumber,
-      }));
-      const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
-      console.log('[MapScreen] Highlighting', webHits.length, 'districts from polygon');
-      
-      if (Platform.OS === 'web') {
-        if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+  const handleDrawComplete = useCallback(
+    async (geometry: { type: string; coordinates: number[][][] }) => {
+      console.log(
+        "[MapScreen] Draw complete, geometry points:",
+        geometry.coordinates[0]?.length,
+      );
+
+      // Haptic feedback on draw complete
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      setDrawLoading(true);
+      setDrawModeActive(false);
+
+      // Compute center of the drawn polygon for selectionOrigin
+      let drawCenter: { lat: number; lng: number } | null = null;
+      if (geometry.coordinates[0] && geometry.coordinates[0].length > 0) {
+        const ring = geometry.coordinates[0];
+        let sumLng = 0,
+          sumLat = 0;
+        for (let i = 0; i < ring.length; i++) {
+          sumLng += ring[i][0];
+          sumLat += ring[i][1];
         }
-      } else {
-        sendToWebView(highlightMsg);
+        drawCenter = { lat: sumLat / ring.length, lng: sumLng / ring.length };
       }
-    } catch (error) {
-      console.error('[MapScreen] Draw search error:', error);
-    } finally {
-      setDrawLoading(false);
-    }
-  }, [overlays, fetchOfficialsByDistricts, sendToWebView]);
+
+      try {
+        // Call /api/map/area-hits to get intersecting districts
+        const areaHitsUrl = new URL("/api/map/area-hits", getApiUrl());
+        const areaResponse = await fetch(areaHitsUrl.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            geometry,
+            overlays: {
+              house: overlays.house,
+              senate: overlays.senate,
+              congress: overlays.congress,
+            },
+          }),
+        });
+
+        if (!areaResponse.ok) {
+          console.error(
+            "[MapScreen] Area hits request failed:",
+            areaResponse.status,
+          );
+          setDrawLoading(false);
+          return;
+        }
+
+        const { hits } = await areaResponse.json();
+        console.log("[MapScreen] Area hits:", hits.length);
+
+        if (hits.length === 0) {
+          setSelectedDistrict({ hits: [], officials: [] });
+          setStoredPolygon({ geometry, hits: [], officials: [] });
+          setShowResultsPanel(true);
+          setDrawLoading(false);
+          return;
+        }
+
+        // Fetch officials using existing pipeline
+        const officials = await fetchOfficialsByDistricts(hits);
+        console.log("[MapScreen] Draw search officials:", officials.length);
+
+        // Store polygon and results for persistence
+        setStoredPolygon({ geometry, hits, officials });
+        setSelectedDistrict({ hits, officials });
+        setShowResultsPanel(true);
+
+        sendHeadshotMarkers(officials, hits, drawCenter, "draw", geometry);
+
+        // Highlight ALL districts in the polygon (multi-select for draw mode)
+        const webHits = hits.map(
+          (hit: { source: string; districtNumber: number }) => ({
+            type:
+              hit.source === "TX_HOUSE"
+                ? "tx_house"
+                : hit.source === "TX_SENATE"
+                  ? "tx_senate"
+                  : "us_congress",
+            district: hit.districtNumber,
+          }),
+        );
+        const highlightMsg = { type: "HIGHLIGHT_DISTRICTS", hits: webHits };
+        console.log(
+          "[MapScreen] Highlighting",
+          webHits.length,
+          "districts from polygon",
+        );
+
+        if (Platform.OS === "web") {
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              JSON.stringify(highlightMsg),
+              "*",
+            );
+          }
+        } else {
+          sendToWebView(highlightMsg);
+        }
+      } catch (error) {
+        console.error("[MapScreen] Draw search error:", error);
+      } finally {
+        setDrawLoading(false);
+      }
+    },
+    [overlays, fetchOfficialsByDistricts, sendToWebView],
+  );
 
   // Location handlers
   const handleLocateMe = useCallback(async () => {
-    console.log('[MapScreen] Locate Me button pressed, platform:', Platform.OS);
+    console.log("[MapScreen] Locate Me button pressed, platform:", Platform.OS);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLocationLoading(true);
     setLocationError(null);
-    
+
     try {
       // For web platform, try to use browser's native geolocation API
-      if (Platform.OS === 'web') {
-        console.log('[MapScreen] Using browser geolocation API');
-        
+      if (Platform.OS === "web") {
+        console.log("[MapScreen] Using browser geolocation API");
+
         if (!navigator.geolocation) {
-          console.log('[MapScreen] Geolocation not supported');
-          setLocationError('Not supported');
-          setLocationPermission('denied' as Location.PermissionStatus);
+          console.log("[MapScreen] Geolocation not supported");
+          setLocationError("Not supported");
+          setLocationPermission("denied" as Location.PermissionStatus);
           Alert.alert(
-            'Location Not Available',
-            'Your browser does not support location services.',
-            [{ text: 'OK' }]
+            "Location Not Available",
+            "Your browser does not support location services.",
+            [{ text: "OK" }],
           );
           setLocationLoading(false);
           return;
         }
-        
+
         navigator.geolocation.getCurrentPosition(
           (position) => {
             const { latitude, longitude, accuracy } = position.coords;
-            console.log('[MapScreen] Web location obtained:', latitude.toFixed(4), longitude.toFixed(4), 'accuracy:', accuracy);
-            
-            setLocationPermission('granted' as Location.PermissionStatus);
+            console.log(
+              "[MapScreen] Web location obtained:",
+              latitude.toFixed(4),
+              longitude.toFixed(4),
+              "accuracy:",
+              accuracy,
+            );
+
+            setLocationPermission("granted" as Location.PermissionStatus);
             setLastLocationCoords({ lat: latitude, lng: longitude });
-            
-            const locationMsg = { type: 'SET_USER_LOCATION', lat: latitude, lng: longitude, accuracy: accuracy || 100 };
-            const centerMsg = { type: 'CENTER_MAP', lat: latitude, lng: longitude, zoom: 10 };
-            
+
+            const locationMsg = {
+              type: "SET_USER_LOCATION",
+              lat: latitude,
+              lng: longitude,
+              accuracy: accuracy || 100,
+            };
+            const centerMsg = {
+              type: "CENTER_MAP",
+              lat: latitude,
+              lng: longitude,
+              zoom: 10,
+            };
+
             if (iframeRef.current?.contentWindow) {
-              iframeRef.current.contentWindow.postMessage(JSON.stringify(locationMsg), '*');
-              iframeRef.current.contentWindow.postMessage(JSON.stringify(centerMsg), '*');
-              console.log('[MapScreen] Web: Messages sent to iframe');
+              iframeRef.current.contentWindow.postMessage(
+                JSON.stringify(locationMsg),
+                "*",
+              );
+              iframeRef.current.contentWindow.postMessage(
+                JSON.stringify(centerMsg),
+                "*",
+              );
+              console.log("[MapScreen] Web: Messages sent to iframe");
             }
-            
+
             setHasUserLocation(true);
             setLocationLoading(false);
           },
           (error) => {
-            console.log('[MapScreen] Web geolocation error:', error.code, error.message);
+            console.log(
+              "[MapScreen] Web geolocation error:",
+              error.code,
+              error.message,
+            );
             setLocationError(error.message);
-            setLocationPermission('denied' as Location.PermissionStatus);
+            setLocationPermission("denied" as Location.PermissionStatus);
             setLocationLoading(false);
-            
+
             Alert.alert(
-              'Location Access Required',
-              'To show your location on the map, please allow location access when prompted by your browser.',
-              [{ text: 'OK' }]
+              "Location Access Required",
+              "To show your location on the map, please allow location access when prompted by your browser.",
+              [{ text: "OK" }],
             );
           },
-          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
         );
         return;
       }
-      
+
       // Native (iOS/Android) - use expo-location
-      console.log('[MapScreen] Checking location permission...');
+      console.log("[MapScreen] Checking location permission...");
       let { status } = await Location.getForegroundPermissionsAsync();
-      console.log('[MapScreen] Current permission status:', status);
+      console.log("[MapScreen] Current permission status:", status);
       setLocationPermission(status);
-      
-      if (status !== 'granted') {
-        console.log('[MapScreen] Requesting location permission...');
+
+      if (status !== "granted") {
+        console.log("[MapScreen] Requesting location permission...");
         const result = await Location.requestForegroundPermissionsAsync();
         status = result.status;
         setLocationPermission(status);
-        console.log('[MapScreen] Permission result:', status);
+        console.log("[MapScreen] Permission result:", status);
       }
-      
-      if (status !== 'granted') {
-        console.log('[MapScreen] Location permission denied');
-        setLocationError('Permission denied');
+
+      if (status !== "granted") {
+        console.log("[MapScreen] Location permission denied");
+        setLocationError("Permission denied");
         setLocationLoading(false);
-        
+
         // Show alert to user
         Alert.alert(
-          'Location Access Required',
-          'To show your location on the map, please enable location access in your device settings.',
+          "Location Access Required",
+          "To show your location on the map, please enable location access in your device settings.",
           [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Open Settings', 
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Open Settings",
               onPress: () => {
                 Linking.openSettings().catch(() => {});
-              }
-            }
-          ]
+              },
+            },
+          ],
         );
         return;
       }
-      
+
       // Get current position (once, not continuous tracking)
-      console.log('[MapScreen] Getting current position...');
+      console.log("[MapScreen] Getting current position...");
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      
+
       const { latitude, longitude } = location.coords;
       const accuracy = location.coords.accuracy || 100;
-      
-      console.log('[MapScreen] Location obtained:', latitude.toFixed(4), longitude.toFixed(4), 'accuracy:', accuracy);
-      
+
+      console.log(
+        "[MapScreen] Location obtained:",
+        latitude.toFixed(4),
+        longitude.toFixed(4),
+        "accuracy:",
+        accuracy,
+      );
+
       // Store last location for debug display
       setLastLocationCoords({ lat: latitude, lng: longitude });
-      
+
       // Send location to WebView
-      const locationMsg = { type: 'SET_USER_LOCATION', lat: latitude, lng: longitude, accuracy };
-      const centerMsg = { type: 'CENTER_MAP', lat: latitude, lng: longitude, zoom: 10 };
-      
-      console.log('[MapScreen] Sending SET_USER_LOCATION message');
-      console.log('[MapScreen] Sending CENTER_MAP message');
-      
+      const locationMsg = {
+        type: "SET_USER_LOCATION",
+        lat: latitude,
+        lng: longitude,
+        accuracy,
+      };
+      const centerMsg = {
+        type: "CENTER_MAP",
+        lat: latitude,
+        lng: longitude,
+        zoom: 10,
+      };
+
+      console.log("[MapScreen] Sending SET_USER_LOCATION message");
+      console.log("[MapScreen] Sending CENTER_MAP message");
+
       sendToWebView(locationMsg);
       sendToWebView(centerMsg);
-      console.log('[MapScreen] Messages sent to WebView');
-      
+      console.log("[MapScreen] Messages sent to WebView");
+
       setHasUserLocation(true);
     } catch (error: any) {
-      console.error('[MapScreen] Location error:', error);
-      const errorMsg = error?.message || 'Unknown error';
+      console.error("[MapScreen] Location error:", error);
+      const errorMsg = error?.message || "Unknown error";
       setLocationError(errorMsg);
-      
+
       Alert.alert(
-        'Location Error',
+        "Location Error",
         `Could not get your location: ${errorMsg}`,
-        [{ text: 'OK' }]
+        [{ text: "OK" }],
       );
     } finally {
       setLocationLoading(false);
@@ -3033,24 +3460,34 @@ export default function MapScreen() {
     // Hide the results panel and clear all state
     setShowResultsPanel(false);
     setSelectedDistrict(null);
-    
+
     // Clear all highlights (single-select per overlay)
-    setHighlightsByLayer({ tx_house: null, tx_senate: null, us_congress: null });
-    
+    setHighlightsByLayer({
+      tx_house: null,
+      tx_senate: null,
+      us_congress: null,
+    });
+
     // Clear district highlights and headshot markers on the map
-    const clearHighlightsMsg = { type: 'CLEAR_HIGHLIGHTS' };
-    const clearHeadshotsMsg = { type: 'CLEAR_HEADSHOT_MARKERS' };
-    if (Platform.OS === 'web') {
+    const clearHighlightsMsg = { type: "CLEAR_HIGHLIGHTS" };
+    const clearHeadshotsMsg = { type: "CLEAR_HEADSHOT_MARKERS" };
+    if (Platform.OS === "web") {
       if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHighlightsMsg), '*');
-        iframeRef.current.contentWindow.postMessage(JSON.stringify(clearHeadshotsMsg), '*');
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify(clearHighlightsMsg),
+          "*",
+        );
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify(clearHeadshotsMsg),
+          "*",
+        );
       }
     } else {
       sendToWebView(clearHighlightsMsg);
       sendToWebView(clearHeadshotsMsg);
     }
   }, [sendToWebView]);
-  
+
   // Restore stored polygon results when tapping the chip
   const handleRestorePolygonResults = useCallback(() => {
     if (storedPolygon) {
@@ -3060,23 +3497,32 @@ export default function MapScreen() {
         officials: storedPolygon.officials,
       });
       setShowResultsPanel(true);
-      
+
       // Re-highlight all districts from the stored polygon
-      const webHits = storedPolygon.hits.map((hit: { source: string; districtNumber: number }) => ({
-        type: hit.source === 'TX_HOUSE' ? 'tx_house' : 
-              hit.source === 'TX_SENATE' ? 'tx_senate' : 'us_congress',
-        district: hit.districtNumber,
-      }));
-      const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
-      
-      if (Platform.OS === 'web') {
+      const webHits = storedPolygon.hits.map(
+        (hit: { source: string; districtNumber: number }) => ({
+          type:
+            hit.source === "TX_HOUSE"
+              ? "tx_house"
+              : hit.source === "TX_SENATE"
+                ? "tx_senate"
+                : "us_congress",
+          district: hit.districtNumber,
+        }),
+      );
+      const highlightMsg = { type: "HIGHLIGHT_DISTRICTS", hits: webHits };
+
+      if (Platform.OS === "web") {
         if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+          iframeRef.current.contentWindow.postMessage(
+            JSON.stringify(highlightMsg),
+            "*",
+          );
         }
       } else {
         sendToWebView(highlightMsg);
       }
-      
+
       // Restore headshot markers
       sendHeadshotMarkers(storedPolygon.officials, storedPolygon.hits);
     }
@@ -3103,92 +3549,123 @@ export default function MapScreen() {
 
   const getDistrictLabel = (type: DistrictType): string => {
     switch (type) {
-      case "tx_senate": return "TX Senate";
-      case "tx_house": return "TX House";
-      case "us_congress": return "US Congress";
+      case "tx_senate":
+        return "TX Senate";
+      case "tx_house":
+        return "TX House";
+      case "us_congress":
+        return "US Congress";
     }
   };
 
-  const handleWebViewMessage = useCallback(async (event: any) => {
-    try {
-      const rawData = event.nativeEvent?.data || event.data;
-      if (!rawData || typeof rawData !== 'string') return;
-      
-      const data = JSON.parse(rawData);
-      console.log('[MapScreen] WebView message received:', data.type);
-      if (data.type === "MAP_TAP" && Array.isArray(data.hits)) {
-        console.log('[MapScreen] MAP_TAP hits:', data.hits.length, JSON.stringify(data.hits));
-        const tapCoord = (data.lat != null && data.lng != null) ? { lat: data.lat, lng: data.lng } : null;
-        await handleMapTap(data.hits, tapCoord);
-      } else if (data.type === "mapReady") {
-        console.log('[MapScreen] Map is ready!');
-        setMapReady(true);
-      } else if (data.type === "DRAW_COMPLETE" && data.geometry) {
-        console.log('[MapScreen] DRAW_COMPLETE received');
-        await handleDrawComplete(data.geometry);
-        // Auto-disable draw mode after completing a drawing
-        setDrawModeActive(false);
-        sendToWebView({ type: 'SET_DRAW_MODE', enabled: false });
-      } else if (data.type === "DRAW_CLEARED") {
-        console.log('[MapScreen] DRAW_CLEARED received');
-        setSelectedDistrict(null);
-      } else if (data.type === "addressDotClicked" && data.officialId) {
-        console.log('[MapScreen] Address dot clicked:', data.officialId);
-        navigation.navigate("OfficialProfile", { 
-          officialId: data.officialId,
-          initialTab: "private"
-        });
-      } else if (data.type === "headshotMarkerClicked" && data.officialId) {
-        console.log('[MapScreen] Headshot marker clicked:', data.officialId);
-        navigation.navigate("OfficialProfile", { officialId: data.officialId });
-      } else if (data.type === "headshotOverflowClicked") {
-        console.log('[MapScreen] Headshot overflow clicked');
-        setShowOverflowModal(true);
+  const handleWebViewMessage = useCallback(
+    async (event: any) => {
+      try {
+        const rawData = event.nativeEvent?.data || event.data;
+        if (!rawData || typeof rawData !== "string") return;
+
+        const data = JSON.parse(rawData);
+        console.log("[MapScreen] WebView message received:", data.type);
+        if (data.type === "MAP_TAP" && Array.isArray(data.hits)) {
+          console.log(
+            "[MapScreen] MAP_TAP hits:",
+            data.hits.length,
+            JSON.stringify(data.hits),
+          );
+          const tapCoord =
+            data.lat != null && data.lng != null
+              ? { lat: data.lat, lng: data.lng }
+              : null;
+          await handleMapTap(data.hits, tapCoord);
+        } else if (data.type === "mapReady") {
+          console.log("[MapScreen] Map is ready!");
+          setMapReady(true);
+        } else if (data.type === "DRAW_COMPLETE" && data.geometry) {
+          console.log("[MapScreen] DRAW_COMPLETE received");
+          await handleDrawComplete(data.geometry);
+          // Auto-disable draw mode after completing a drawing
+          setDrawModeActive(false);
+          sendToWebView({ type: "SET_DRAW_MODE", enabled: false });
+        } else if (data.type === "DRAW_CLEARED") {
+          console.log("[MapScreen] DRAW_CLEARED received");
+          setSelectedDistrict(null);
+        } else if (data.type === "addressDotClicked" && data.officialId) {
+          console.log("[MapScreen] Address dot clicked:", data.officialId);
+          navigation.navigate("OfficialProfile", {
+            officialId: data.officialId,
+            initialTab: "private",
+          });
+        } else if (data.type === "headshotMarkerClicked" && data.officialId) {
+          console.log("[MapScreen] Headshot marker clicked:", data.officialId);
+          navigation.navigate("OfficialProfile", {
+            officialId: data.officialId,
+          });
+        } else if (data.type === "headshotOverflowClicked") {
+          console.log("[MapScreen] Headshot overflow clicked");
+          setShowOverflowModal(true);
+        }
+      } catch (error) {
+        console.error("[MapScreen] Error parsing WebView message:", error);
       }
-    } catch (error) {
-      console.error("[MapScreen] Error parsing WebView message:", error);
-    }
-  }, [handleMapTap, handleDrawComplete, navigation]);
-  
+    },
+    [handleMapTap, handleDrawComplete, navigation],
+  );
+
   // Listen for postMessage on web platform (iframe communication)
   useEffect(() => {
     // Only add window event listener on web platform
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== "web") {
       // On native, use a fallback timer since WebView handles messages via onMessage prop
       const fallbackTimer = setTimeout(() => {
         setMapReady((prev) => {
           if (!prev) {
-            console.log('[MapScreen] Native fallback: forcing mapReady after timeout');
+            console.log(
+              "[MapScreen] Native fallback: forcing mapReady after timeout",
+            );
             return true;
           }
           return prev;
         });
       }, 2000);
-      
+
       return () => {
         clearTimeout(fallbackTimer);
       };
     }
-    
+
     const handleWindowMessage = (event: MessageEvent) => {
-      if (typeof event.data === 'string') {
+      if (typeof event.data === "string") {
         try {
           const data = JSON.parse(event.data);
-          console.log('[MapScreen] Window message received:', data.type);
-          if ((data.type === "MAP_TAP" || data.type === "mapTap") && Array.isArray(data.hits)) {
-            console.log('[MapScreen] Window MAP_TAP hits:', data.hits.length, 'raw hits:', JSON.stringify(data.hits));
-            const tapCoord = (data.lat != null && data.lng != null) ? { lat: data.lat, lng: data.lng } : null;
+          console.log("[MapScreen] Window message received:", data.type);
+          if (
+            (data.type === "MAP_TAP" || data.type === "mapTap") &&
+            Array.isArray(data.hits)
+          ) {
+            console.log(
+              "[MapScreen] Window MAP_TAP hits:",
+              data.hits.length,
+              "raw hits:",
+              JSON.stringify(data.hits),
+            );
+            const tapCoord =
+              data.lat != null && data.lng != null
+                ? { lat: data.lat, lng: data.lng }
+                : null;
             handleMapTap(data.hits, tapCoord);
           } else if (data.type === "mapReady") {
-            console.log('[MapScreen] Map is ready (from window)!');
+            console.log("[MapScreen] Map is ready (from window)!");
             setMapReady(true);
           } else if (data.type === "geoJSONLoaded") {
             // Server HTML loaded a GeoJSON layer itself — mirror the status into
             // React state so the debug panel and loading overlay stay accurate.
-            const layerKey = data.layerType === 'tx_house'   ? 'house'
-                           : data.layerType === 'tx_senate'  ? 'senate'
-                           : 'congress';
-            setLoadStatus(prev => ({
+            const layerKey =
+              data.layerType === "tx_house"
+                ? "house"
+                : data.layerType === "tx_senate"
+                  ? "senate"
+                  : "congress";
+            setLoadStatus((prev) => ({
               ...prev,
               [layerKey]: {
                 loaded: data.success === true,
@@ -3200,30 +3677,41 @@ export default function MapScreen() {
             // All three layers finished loading inside the iframe — the map is
             // fully ready; dismiss the loading overlay without waiting for the
             // redundant React-side GeoJSON fetch to complete.
-            console.log('[MapScreen] allGeoJSONLoaded received from iframe');
+            console.log("[MapScreen] allGeoJSONLoaded received from iframe");
             setDataLoaded(true);
           } else if (data.type === "DRAW_COMPLETE" && data.geometry) {
-            console.log('[MapScreen] Window DRAW_COMPLETE received');
+            console.log("[MapScreen] Window DRAW_COMPLETE received");
             handleDrawComplete(data.geometry);
             // Auto-disable draw mode after completing a drawing
             setDrawModeActive(false);
             if (iframeRef.current?.contentWindow) {
-              iframeRef.current.contentWindow.postMessage(JSON.stringify({ type: 'SET_DRAW_MODE', enabled: false }), '*');
+              iframeRef.current.contentWindow.postMessage(
+                JSON.stringify({ type: "SET_DRAW_MODE", enabled: false }),
+                "*",
+              );
             }
           } else if (data.type === "DRAW_CLEARED") {
-            console.log('[MapScreen] Window DRAW_CLEARED received');
+            console.log("[MapScreen] Window DRAW_CLEARED received");
             setSelectedDistrict(null);
           } else if (data.type === "addressDotClicked" && data.officialId) {
-            console.log('[MapScreen] Window Address dot clicked:', data.officialId);
-            navigation.navigate("OfficialProfile", { 
+            console.log(
+              "[MapScreen] Window Address dot clicked:",
+              data.officialId,
+            );
+            navigation.navigate("OfficialProfile", {
               officialId: data.officialId,
-              initialTab: "private"
+              initialTab: "private",
             });
           } else if (data.type === "headshotMarkerClicked" && data.officialId) {
-            console.log('[MapScreen] Window Headshot marker clicked:', data.officialId);
-            navigation.navigate("OfficialProfile", { officialId: data.officialId });
+            console.log(
+              "[MapScreen] Window Headshot marker clicked:",
+              data.officialId,
+            );
+            navigation.navigate("OfficialProfile", {
+              officialId: data.officialId,
+            });
           } else if (data.type === "headshotOverflowClicked") {
-            console.log('[MapScreen] Window Headshot overflow clicked');
+            console.log("[MapScreen] Window Headshot overflow clicked");
             setShowOverflowModal(true);
           }
         } catch (e) {
@@ -3231,55 +3719,59 @@ export default function MapScreen() {
         }
       }
     };
-    
-    window.addEventListener('message', handleWindowMessage);
-    
+
+    window.addEventListener("message", handleWindowMessage);
+
     // Fallback: Force mapReady after 2 seconds if not already set
     // This handles cases where WebView postMessage doesn't work on web
     const fallbackTimer = setTimeout(() => {
       setMapReady((prev) => {
         if (!prev) {
-          console.log('[MapScreen] Fallback: forcing mapReady after timeout');
+          console.log("[MapScreen] Fallback: forcing mapReady after timeout");
           return true;
         }
         return prev;
       });
     }, 2000);
-    
+
     return () => {
-      window.removeEventListener('message', handleWindowMessage);
+      window.removeEventListener("message", handleWindowMessage);
       clearTimeout(fallbackTimer);
     };
   }, [handleMapTap, handleDrawComplete]);
 
-
   // Send message to iframe on web (iframeRef declared earlier)
   const sendToIframe = useCallback((message: object) => {
-    if (Platform.OS === 'web' && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(JSON.stringify(message), '*');
+    if (Platform.OS === "web" && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(JSON.stringify(message), "*");
     }
   }, []);
 
   // Override sendToWebView to also handle web iframe
-  const sendToMap = useCallback((message: object) => {
-    if (Platform.OS === 'web') {
-      sendToIframe(message);
-    } else {
-      sendToWebView(message);
-    }
-  }, [sendToWebView, sendToIframe]);
+  const sendToMap = useCallback(
+    (message: object) => {
+      if (Platform.OS === "web") {
+        sendToIframe(message);
+      } else {
+        sendToWebView(message);
+      }
+    },
+    [sendToWebView, sendToIframe],
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
-      {Platform.OS === 'web' ? (
+      {Platform.OS === "web" ? (
         <iframe
-          ref={(ref) => { iframeRef.current = ref; }}
+          ref={(ref) => {
+            iframeRef.current = ref;
+          }}
           src={`${getApiUrl()}/api/map.html`}
-          style={{ 
-            flex: 1, 
-            width: '100%', 
-            height: '100%', 
-            border: 'none',
+          style={{
+            flex: 1,
+            width: "100%",
+            height: "100%",
+            border: "none",
           }}
           title="Texas Districts Map"
           allow="geolocation"
@@ -3287,18 +3779,26 @@ export default function MapScreen() {
       ) : (
         <WebView
           ref={webViewRef}
-          source={{ html: MAP_HTML, baseUrl: '' }}
+          source={{ html: MAP_HTML, baseUrl: "" }}
           style={styles.map}
           onMessage={handleWebViewMessage}
           onError={(syntheticEvent) => {
             const { nativeEvent } = syntheticEvent;
-            console.error('[WebView] Error:', nativeEvent.description, nativeEvent.url);
+            console.error(
+              "[WebView] Error:",
+              nativeEvent.description,
+              nativeEvent.url,
+            );
           }}
           onHttpError={(syntheticEvent) => {
             const { nativeEvent } = syntheticEvent;
-            console.error('[WebView] HTTP Error:', nativeEvent.statusCode, nativeEvent.url);
+            console.error(
+              "[WebView] HTTP Error:",
+              nativeEvent.statusCode,
+              nativeEvent.url,
+            );
           }}
-          originWhitelist={['*']}
+          originWhitelist={["*"]}
           javaScriptEnabled
           domStorageEnabled
           scrollEnabled={false}
@@ -3311,40 +3811,108 @@ export default function MapScreen() {
       )}
 
       {!dataLoaded ? (
-        <View style={[styles.loadingOverlay, { backgroundColor: theme.backgroundRoot }]}>
+        <View
+          style={[
+            styles.loadingOverlay,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
+        >
           <ActivityIndicator size="large" color={theme.primary} />
-          <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.sm }}>
+          <ThemedText
+            type="small"
+            style={{ color: theme.secondaryText, marginTop: Spacing.sm }}
+          >
             Loading map data...
           </ThemedText>
         </View>
       ) : null}
 
       {debugEnabled ? (
-        <View style={[styles.debugPanel, { top: headerHeight + Spacing.sm, backgroundColor: 'rgba(0,0,0,0.85)' }]}>
+        <View
+          style={[
+            styles.debugPanel,
+            {
+              top: headerHeight + Spacing.sm,
+              backgroundColor: "rgba(0,0,0,0.85)",
+            },
+          ]}
+        >
           <Pressable onPress={toggleDebug} style={styles.debugClose}>
-            <ThemedText type="small" style={{ color: '#fff' }}>X</ThemedText>
+            <ThemedText type="small" style={{ color: "#fff" }}>
+              X
+            </ThemedText>
           </Pressable>
-          <ThemedText type="small" style={{ color: '#0f0', fontFamily: 'monospace' }}>
+          <ThemedText
+            type="small"
+            style={{ color: "#0f0", fontFamily: "monospace" }}
+          >
             BUILD: {BUILD_MARKER}
           </ThemedText>
-          <ThemedText type="small" style={{ color: '#ff0', fontFamily: 'monospace', fontSize: 9 }} numberOfLines={1}>
-            API: {(() => { try { return getApiUrl(); } catch { return 'ERROR'; } })()}
+          <ThemedText
+            type="small"
+            style={{ color: "#ff0", fontFamily: "monospace", fontSize: 9 }}
+            numberOfLines={1}
+          >
+            API:{" "}
+            {(() => {
+              try {
+                return getApiUrl();
+              } catch {
+                return "ERROR";
+              }
+            })()}
           </ThemedText>
-          <ThemedText type="small" style={{ color: '#fff', fontFamily: 'monospace' }}>
-            Overlays: H={overlays.house ? 'ON' : 'off'} S={overlays.senate ? 'ON' : 'off'} C={overlays.congress ? 'ON' : 'off'}
+          <ThemedText
+            type="small"
+            style={{ color: "#fff", fontFamily: "monospace" }}
+          >
+            Overlays: H={overlays.house ? "ON" : "off"} S=
+            {overlays.senate ? "ON" : "off"} C=
+            {overlays.congress ? "ON" : "off"}
           </ThemedText>
-          <ThemedText type="small" style={{ color: '#fff', fontFamily: 'monospace' }}>
-            MapReady: {mapReady ? 'YES' : 'NO'} | DataLoaded: {dataLoaded ? 'YES' : 'NO'}
+          <ThemedText
+            type="small"
+            style={{ color: "#fff", fontFamily: "monospace" }}
+          >
+            MapReady: {mapReady ? "YES" : "NO"} | DataLoaded:{" "}
+            {dataLoaded ? "YES" : "NO"}
           </ThemedText>
           <View style={{ marginTop: 4 }}>
-            <ThemedText type="small" style={{ color: loadStatus.house.loaded ? '#0f0' : '#f00', fontFamily: 'monospace' }}>
-              House: {loadStatus.house.loaded ? `${loadStatus.house.features} features` : loadStatus.house.error || 'pending'}
+            <ThemedText
+              type="small"
+              style={{
+                color: loadStatus.house.loaded ? "#0f0" : "#f00",
+                fontFamily: "monospace",
+              }}
+            >
+              House:{" "}
+              {loadStatus.house.loaded
+                ? `${loadStatus.house.features} features`
+                : loadStatus.house.error || "pending"}
             </ThemedText>
-            <ThemedText type="small" style={{ color: loadStatus.senate.loaded ? '#0f0' : '#f00', fontFamily: 'monospace' }}>
-              Senate: {loadStatus.senate.loaded ? `${loadStatus.senate.features} features` : loadStatus.senate.error || 'pending'}
+            <ThemedText
+              type="small"
+              style={{
+                color: loadStatus.senate.loaded ? "#0f0" : "#f00",
+                fontFamily: "monospace",
+              }}
+            >
+              Senate:{" "}
+              {loadStatus.senate.loaded
+                ? `${loadStatus.senate.features} features`
+                : loadStatus.senate.error || "pending"}
             </ThemedText>
-            <ThemedText type="small" style={{ color: loadStatus.congress.loaded ? '#0f0' : '#f00', fontFamily: 'monospace' }}>
-              Congress: {loadStatus.congress.loaded ? `${loadStatus.congress.features} features` : loadStatus.congress.error || 'pending'}
+            <ThemedText
+              type="small"
+              style={{
+                color: loadStatus.congress.loaded ? "#0f0" : "#f00",
+                fontFamily: "monospace",
+              }}
+            >
+              Congress:{" "}
+              {loadStatus.congress.loaded
+                ? `${loadStatus.congress.features} features`
+                : loadStatus.congress.error || "pending"}
             </ThemedText>
           </View>
         </View>
@@ -3388,7 +3956,7 @@ export default function MapScreen() {
           styles.drawButton,
           {
             top: headerHeight + Spacing.sm + 52,
-            backgroundColor: drawModeActive ? '#9B59B6' : theme.cardBackground,
+            backgroundColor: drawModeActive ? "#9B59B6" : theme.cardBackground,
           },
           Shadows.md,
         ]}
@@ -3404,7 +3972,7 @@ export default function MapScreen() {
             <Feather
               name="edit-3"
               size={20}
-              color={drawModeActive ? '#FFFFFF' : theme.text}
+              color={drawModeActive ? "#FFFFFF" : theme.text}
             />
           )}
         </Pressable>
@@ -3430,9 +3998,11 @@ export default function MapScreen() {
           </Pressable>
         </View>
       ) : null}
-      
+
       {/* Restore results chip - show when there's a stored polygon AND panel is hidden */}
-      {storedPolygon && storedPolygon.officials.length > 0 && !showResultsPanel ? (
+      {storedPolygon &&
+      storedPolygon.officials.length > 0 &&
+      !showResultsPanel ? (
         <Pressable
           onPress={handleRestorePolygonResults}
           style={[
@@ -3457,7 +4027,9 @@ export default function MapScreen() {
           styles.locateButton,
           {
             top: headerHeight + Spacing.sm,
-            backgroundColor: hasUserLocation ? theme.primary : theme.cardBackground,
+            backgroundColor: hasUserLocation
+              ? theme.primary
+              : theme.cardBackground,
           },
           Shadows.md,
         ]}
@@ -3473,7 +4045,7 @@ export default function MapScreen() {
             <Feather
               name="navigation"
               size={20}
-              color={hasUserLocation ? '#FFFFFF' : theme.text}
+              color={hasUserLocation ? "#FFFFFF" : theme.text}
             />
           )}
         </Pressable>
@@ -3486,12 +4058,19 @@ export default function MapScreen() {
             styles.locationDebug,
             {
               top: headerHeight + Spacing.sm + 52,
-              backgroundColor: 'rgba(0,0,0,0.7)',
+              backgroundColor: "rgba(0,0,0,0.7)",
             },
           ]}
         >
-          <ThemedText type="small" style={{ color: '#fff', fontFamily: 'monospace', fontSize: 10 }}>
-            Loc: {locationPermission || 'unknown'} | {lastLocationCoords ? `${lastLocationCoords.lat.toFixed(4)},${lastLocationCoords.lng.toFixed(4)}` : 'no coords'} | {locationError || 'ok'}
+          <ThemedText
+            type="small"
+            style={{ color: "#fff", fontFamily: "monospace", fontSize: 10 }}
+          >
+            Loc: {locationPermission || "unknown"} |{" "}
+            {lastLocationCoords
+              ? `${lastLocationCoords.lat.toFixed(4)},${lastLocationCoords.lng.toFixed(4)}`
+              : "no coords"}{" "}
+            | {locationError || "ok"}
           </ThemedText>
         </View>
       ) : null}
@@ -3505,11 +4084,14 @@ export default function MapScreen() {
             styles.drawIndicator,
             {
               top: headerHeight + Spacing.sm,
-              backgroundColor: 'rgba(155, 89, 182, 0.9)',
+              backgroundColor: "rgba(155, 89, 182, 0.9)",
             },
           ]}
         >
-          <ThemedText type="small" style={{ color: '#FFFFFF', fontWeight: '600' }}>
+          <ThemedText
+            type="small"
+            style={{ color: "#FFFFFF", fontWeight: "600" }}
+          >
             Tap points to draw a polygon, then tap first point to complete
           </ThemedText>
         </Animated.View>
@@ -3560,7 +4142,9 @@ export default function MapScreen() {
           hits={selectedDistrict.hits}
           onClose={handleCloseDistrictCard}
           onOfficialPress={handleOfficialCardPress}
-          onClearDrawing={selectedDistrict.hits.length > 1 ? handleClearDrawing : undefined}
+          onClearDrawing={
+            selectedDistrict.hits.length > 1 ? handleClearDrawing : undefined
+          }
         />
       ) : null}
 
@@ -3575,10 +4159,18 @@ export default function MapScreen() {
           style={styles.overflowBackdrop}
           onPress={() => setShowOverflowModal(false)}
         >
-          <View style={[styles.overflowSheet, { backgroundColor: theme.cardBackground }]}>
+          <View
+            style={[
+              styles.overflowSheet,
+              { backgroundColor: theme.cardBackground },
+            ]}
+          >
             <View style={styles.overflowHeader}>
               <ThemedText type="h3">Selected Officials</ThemedText>
-              <Pressable onPress={() => setShowOverflowModal(false)} style={styles.overflowClose}>
+              <Pressable
+                onPress={() => setShowOverflowModal(false)}
+                style={styles.overflowClose}
+              >
                 <Feather name="x" size={22} color={theme.text} />
               </Pressable>
             </View>
@@ -3590,41 +4182,75 @@ export default function MapScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.overflowItem,
-                    { opacity: pressed ? 0.7 : 1, borderBottomColor: theme.border },
+                    {
+                      opacity: pressed ? 0.7 : 1,
+                      borderBottomColor: theme.border,
+                    },
                   ]}
                   onPress={() => {
                     setShowOverflowModal(false);
                     // Zoom to the official's district and set single selection
-                    const sourceType = official.source || (official.officeType === 'tx_house' ? 'TX_HOUSE' : 
-                                                            official.officeType === 'tx_senate' ? 'TX_SENATE' : 'US_HOUSE');
+                    const sourceType =
+                      official.source ||
+                      (official.officeType === "tx_house"
+                        ? "TX_HOUSE"
+                        : official.officeType === "tx_senate"
+                          ? "TX_SENATE"
+                          : "US_HOUSE");
                     const districtHit: DistrictHit = {
                       source: sourceType as SourceType,
                       districtNumber: official.districtNumber || 0,
                     };
-                    
+
                     // Focus on the district
-                    const focusMsg = { type: 'FOCUS_DISTRICT', source: sourceType, districtNumber: official.districtNumber };
-                    if (Platform.OS === 'web') {
+                    const focusMsg = {
+                      type: "FOCUS_DISTRICT",
+                      source: sourceType,
+                      districtNumber: official.districtNumber,
+                    };
+                    if (Platform.OS === "web") {
                       if (iframeRef.current?.contentWindow) {
-                        iframeRef.current.contentWindow.postMessage(JSON.stringify(focusMsg), '*');
+                        iframeRef.current.contentWindow.postMessage(
+                          JSON.stringify(focusMsg),
+                          "*",
+                        );
                       }
                     } else {
                       sendToWebView(focusMsg);
                     }
-                    
+
                     // Set single selection
                     const singleHits = [districtHit];
                     const singleOfficials = [official];
-                    setSelectedDistrict({ hits: singleHits, officials: singleOfficials });
+                    setSelectedDistrict({
+                      hits: singleHits,
+                      officials: singleOfficials,
+                    });
                     setShowResultsPanel(true);
                     sendHeadshotMarkers(singleOfficials, singleHits);
-                    
+
                     // Update highlight
-                    const webHits = [{ type: sourceType === 'TX_HOUSE' ? 'tx_house' : sourceType === 'TX_SENATE' ? 'tx_senate' : 'us_congress', district: official.districtNumber || 0 }];
-                    const highlightMsg = { type: 'HIGHLIGHT_DISTRICTS', hits: webHits };
-                    if (Platform.OS === 'web') {
+                    const webHits = [
+                      {
+                        type:
+                          sourceType === "TX_HOUSE"
+                            ? "tx_house"
+                            : sourceType === "TX_SENATE"
+                              ? "tx_senate"
+                              : "us_congress",
+                        district: official.districtNumber || 0,
+                      },
+                    ];
+                    const highlightMsg = {
+                      type: "HIGHLIGHT_DISTRICTS",
+                      hits: webHits,
+                    };
+                    if (Platform.OS === "web") {
                       if (iframeRef.current?.contentWindow) {
-                        iframeRef.current.contentWindow.postMessage(JSON.stringify(highlightMsg), '*');
+                        iframeRef.current.contentWindow.postMessage(
+                          JSON.stringify(highlightMsg),
+                          "*",
+                        );
                       }
                     } else {
                       sendToWebView(highlightMsg);
@@ -3633,22 +4259,49 @@ export default function MapScreen() {
                 >
                   <View style={styles.overflowItemPhoto}>
                     {getProxiedPhotoUrl(official.photoUrl) ? (
-                      <Image source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }} style={styles.overflowItemImage} />
+                      <Image
+                        source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }}
+                        style={styles.overflowItemImage}
+                      />
                     ) : (
-                      <View style={[styles.overflowItemImage, styles.overflowItemPlaceholder]}>
-                        <ThemedText style={{ fontWeight: '700', color: theme.secondaryText }}>
-                          {official.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                      <View
+                        style={[
+                          styles.overflowItemImage,
+                          styles.overflowItemPlaceholder,
+                        ]}
+                      >
+                        <ThemedText
+                          style={{
+                            fontWeight: "700",
+                            color: theme.secondaryText,
+                          }}
+                        >
+                          {official.fullName
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .slice(0, 2)}
                         </ThemedText>
                       </View>
                     )}
                   </View>
                   <View style={{ flex: 1 }}>
-                    <ThemedText type="body" style={{ fontWeight: '600' }}>{official.fullName}</ThemedText>
-                    <ThemedText type="small" style={{ color: theme.secondaryText }}>
-                      {getOfficeTypeLabel(official.officeType, undefined)} District {official.districtNumber}
+                    <ThemedText type="body" style={{ fontWeight: "600" }}>
+                      {official.fullName}
+                    </ThemedText>
+                    <ThemedText
+                      type="small"
+                      style={{ color: theme.secondaryText }}
+                    >
+                      {getOfficeTypeLabel(official.officeType, undefined)}{" "}
+                      District {official.districtNumber}
                     </ThemedText>
                   </View>
-                  <Feather name="chevron-right" size={18} color={theme.secondaryText} />
+                  <Feather
+                    name="chevron-right"
+                    size={18}
+                    color={theme.secondaryText}
+                  />
                 </Pressable>
               )}
             />
@@ -3736,7 +4389,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xs,
   },
   debugPanel: {
-    position: 'absolute',
+    position: "absolute",
     left: Spacing.sm,
     padding: Spacing.sm,
     borderRadius: BorderRadius.sm,
@@ -3745,7 +4398,7 @@ const styles = StyleSheet.create({
     maxWidth: 220,
   },
   debugClose: {
-    position: 'absolute',
+    position: "absolute",
     top: 4,
     right: 4,
     padding: 4,

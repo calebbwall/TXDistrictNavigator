@@ -1,5 +1,11 @@
 import React, { useMemo } from "react";
-import { StyleSheet, View, SectionList, Pressable, ActivityIndicator } from "react-native";
+import {
+  StyleSheet,
+  View,
+  SectionList,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
@@ -12,11 +18,11 @@ import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 import type { MergedOfficial } from "@shared/schema";
-import { 
-  normalizeAndGroupOfficials, 
-  NormalizedOfficial, 
+import {
+  normalizeAndGroupOfficials,
+  NormalizedOfficial,
   OfficialSection,
-  getSubgroupLabel 
+  getSubgroupLabel,
 } from "@/utils/otherTxOfficialsNormalizer";
 
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
@@ -29,7 +35,13 @@ interface OfficialRowProps {
   subgroupLabel: string | null;
 }
 
-function OfficialRow({ official, isFirst, isLast, showSubgroupHeader, subgroupLabel }: OfficialRowProps) {
+function OfficialRow({
+  official,
+  isFirst,
+  isLast,
+  showSubgroupHeader,
+  subgroupLabel,
+}: OfficialRowProps) {
   const { theme } = useTheme();
   const navigation = useNavigation<NavigationProp>();
 
@@ -38,14 +50,22 @@ function OfficialRow({ official, isFirst, isLast, showSubgroupHeader, subgroupLa
     navigation.navigate("OfficialProfile", { officialId: official.id });
   };
 
-  const partyColor = official.party === "R" ? "#E94B3C" : official.party === "D" ? "#4A90E2" : theme.secondaryText;
+  const partyColor =
+    official.party === "R"
+      ? "#E94B3C"
+      : official.party === "D"
+        ? "#4A90E2"
+        : theme.secondaryText;
 
   const displayTitle = useMemo(() => {
     const role = official.roleTitle || "Official";
     if (official.roleModifier) {
       return role;
     }
-    if (official.placeNumber !== null && official.subgroup !== "Executive Officers") {
+    if (
+      official.placeNumber !== null &&
+      official.subgroup !== "Executive Officers"
+    ) {
       if (official.subgroup === "Texas Supreme Court") {
         return `Justice, Place ${official.placeNumber}`;
       }
@@ -62,8 +82,16 @@ function OfficialRow({ official, isFirst, isLast, showSubgroupHeader, subgroupLa
   return (
     <View>
       {showSubgroupHeader && subgroupLabel ? (
-        <View style={[styles.subgroupHeader, { backgroundColor: theme.backgroundRoot }]}>
-          <ThemedText type="caption" style={[styles.subgroupTitle, { color: theme.secondaryText }]}>
+        <View
+          style={[
+            styles.subgroupHeader,
+            { backgroundColor: theme.backgroundRoot },
+          ]}
+        >
+          <ThemedText
+            type="caption"
+            style={[styles.subgroupTitle, { color: theme.secondaryText }]}
+          >
             {subgroupLabel}
           </ThemedText>
         </View>
@@ -72,17 +100,21 @@ function OfficialRow({ official, isFirst, isLast, showSubgroupHeader, subgroupLa
         onPress={handlePress}
         style={({ pressed }) => [
           styles.officialRow,
-          { 
-            backgroundColor: theme.cardBackground, 
+          {
+            backgroundColor: theme.cardBackground,
             opacity: pressed ? 0.8 : 1,
           },
           isFirst && !showSubgroupHeader && styles.firstRow,
           isLast && styles.lastRow,
         ]}
       >
-        <View style={[styles.partyIndicator, { backgroundColor: partyColor }]} />
+        <View
+          style={[styles.partyIndicator, { backgroundColor: partyColor }]}
+        />
         <View style={styles.officialContent}>
-          <ThemedText type="body" style={{ fontWeight: "600" }}>{official.fullName}</ThemedText>
+          <ThemedText type="body" style={{ fontWeight: "600" }}>
+            {official.fullName}
+          </ThemedText>
           <ThemedText type="caption" style={{ color: theme.secondaryText }}>
             {displayTitle}
           </ThemedText>
@@ -100,13 +132,24 @@ interface SectionHeaderProps {
 
 function SectionHeader({ title, description }: SectionHeaderProps) {
   const { theme } = useTheme();
-  
+
   return (
-    <View style={[styles.sectionHeaderContainer, { backgroundColor: theme.backgroundRoot }]}>
-      <ThemedText type="h3" style={[styles.sectionTitle, { color: theme.text }]}>
+    <View
+      style={[
+        styles.sectionHeaderContainer,
+        { backgroundColor: theme.backgroundRoot },
+      ]}
+    >
+      <ThemedText
+        type="h3"
+        style={[styles.sectionTitle, { color: theme.text }]}
+      >
         {title}
       </ThemedText>
-      <ThemedText type="caption" style={[styles.sectionDescription, { color: theme.secondaryText }]}>
+      <ThemedText
+        type="caption"
+        style={[styles.sectionDescription, { color: theme.secondaryText }]}
+      >
         {description}
       </ThemedText>
     </View>
@@ -118,7 +161,11 @@ export default function OtherTexasOfficialsScreen() {
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
 
-  const { data: officials, isLoading, error } = useQuery<MergedOfficial[]>({
+  const {
+    data: officials,
+    isLoading,
+    error,
+  } = useQuery<MergedOfficial[]>({
     queryKey: ["/api/other-tx-officials"],
   });
 
@@ -127,13 +174,21 @@ export default function OtherTexasOfficialsScreen() {
     return normalizeAndGroupOfficials(officials);
   }, [officials]);
 
-  const renderItem = ({ item, index, section }: { item: NormalizedOfficial; index: number; section: OfficialSection }) => {
+  const renderItem = ({
+    item,
+    index,
+    section,
+  }: {
+    item: NormalizedOfficial;
+    index: number;
+    section: OfficialSection;
+  }) => {
     const isFirst = index === 0;
     const isLast = index === section.data.length - 1;
-    
+
     let showSubgroupHeader = false;
     let subgroupLabel: string | null = null;
-    
+
     if (section.key === "judiciary") {
       const currentSubgroup = item.subgroup;
       if (index === 0) {
@@ -147,10 +202,10 @@ export default function OtherTexasOfficialsScreen() {
         }
       }
     }
-    
+
     return (
-      <OfficialRow 
-        official={item} 
+      <OfficialRow
+        official={item}
         isFirst={isFirst && !showSubgroupHeader}
         isLast={isLast}
         showSubgroupHeader={showSubgroupHeader}
@@ -165,12 +220,20 @@ export default function OtherTexasOfficialsScreen() {
 
   const ItemSeparator = () => {
     const { theme } = useTheme();
-    return <View style={[styles.separator, { backgroundColor: theme.border }]} />;
+    return (
+      <View style={[styles.separator, { backgroundColor: theme.border }]} />
+    );
   };
 
   if (isLoading) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          { backgroundColor: theme.backgroundRoot },
+        ]}
+      >
         <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
@@ -178,7 +241,13 @@ export default function OtherTexasOfficialsScreen() {
 
   if (error) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          { backgroundColor: theme.backgroundRoot },
+        ]}
+      >
         <Feather name="alert-circle" size={48} color="#E94B3C" />
         <ThemedText type="body" style={{ marginTop: Spacing.md }}>
           Failed to load officials
@@ -189,9 +258,18 @@ export default function OtherTexasOfficialsScreen() {
 
   if (!officials || officials.length === 0) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          { backgroundColor: theme.backgroundRoot },
+        ]}
+      >
         <Feather name="users" size={48} color={theme.secondaryText} />
-        <ThemedText type="body" style={{ marginTop: Spacing.md, color: theme.secondaryText }}>
+        <ThemedText
+          type="body"
+          style={{ marginTop: Spacing.md, color: theme.secondaryText }}
+        >
           No statewide officials found
         </ThemedText>
       </View>
@@ -216,11 +294,17 @@ export default function OtherTexasOfficialsScreen() {
         ]}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
         ListHeaderComponent={
-          <ThemedText type="body" style={[styles.description, { color: theme.secondaryText }]}>
-            Statewide Texas officials and federal representatives organized by branch of government.
+          <ThemedText
+            type="body"
+            style={[styles.description, { color: theme.secondaryText }]}
+          >
+            Statewide Texas officials and federal representatives organized by
+            branch of government.
           </ThemedText>
         }
-        SectionSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
+        SectionSeparatorComponent={() => (
+          <View style={{ height: Spacing.md }} />
+        )}
       />
     </View>
   );

@@ -19,7 +19,10 @@ import {
   type RssFeed,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { refreshCommitteeHearings, refreshChamberUpcomingHearings } from "./targetedRefresh";
+import {
+  refreshCommitteeHearings,
+  refreshChamberUpcomingHearings,
+} from "./targetedRefresh";
 
 const MAX_CONCURRENT = 5;
 let isPolling = false;
@@ -103,10 +106,12 @@ function parseRssXml(xml: string): RssEntry[] {
       $(el).find("link[rel='alternate']").attr("href") ||
       $(el).find("link").attr("href") ||
       "";
-    const summary = $(el).find("summary, content").first().text().trim() || null;
+    const summary =
+      $(el).find("summary, content").first().text().trim() || null;
     const pubText = $(el).find("published, updated").first().text().trim();
     const publishedAt = pubText ? new Date(pubText) : null;
-    if (guid && title) entries.push({ guid, title, link, summary, publishedAt });
+    if (guid && title)
+      entries.push({ guid, title, link, summary, publishedAt });
   });
 
   if (entries.length > 0) return entries;
@@ -114,17 +119,18 @@ function parseRssXml(xml: string): RssEntry[] {
   // RSS 2.0
   $("channel > item").each((_, el) => {
     const guid =
-      $(el).find("guid").text().trim() ||
-      $(el).find("link").text().trim();
+      $(el).find("guid").text().trim() || $(el).find("link").text().trim();
     const title = $(el).find("title").first().text().trim();
-    const link = $(el).find("link").text().trim() || $(el).find("link").next().text().trim();
-    const summary =
-      $(el).find("description").first().text().trim() || null;
+    const link =
+      $(el).find("link").text().trim() ||
+      $(el).find("link").next().text().trim();
+    const summary = $(el).find("description").first().text().trim() || null;
     const pubText =
       $(el).find("pubDate").text().trim() ||
       $(el).find("dc\\:date").text().trim();
     const publishedAt = pubText ? new Date(pubText) : null;
-    if (guid && title) entries.push({ guid, title, link, summary, publishedAt });
+    if (guid && title)
+      entries.push({ guid, title, link, summary, publishedAt });
   });
 
   return entries;
@@ -145,7 +151,11 @@ function parseHtmlPageAsItem(html: string, feedUrl: string): RssEntry | null {
   $("input[type=hidden][name^='__']").remove();
   $("script, noscript, style").remove();
   const normalized = $("body").text().replace(/\s+/g, " ").trim();
-  const fp = crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 8);
+  const fp = crypto
+    .createHash("sha256")
+    .update(normalized)
+    .digest("hex")
+    .slice(0, 8);
   const dateKey = new Date().toISOString().slice(0, 10);
   // Stable per-day guid + publishedAt → itemFingerprint() is deterministic
   // for unchanged pages, so the upsert path treats them as no-ops.
@@ -177,7 +187,9 @@ async function processFeed(
   const headerUpdate = {
     lastPolledAt: new Date(),
     ...(result.etag !== null ? { etag: result.etag } : {}),
-    ...(result.lastModified !== null ? { lastModified: result.lastModified } : {}),
+    ...(result.lastModified !== null
+      ? { lastModified: result.lastModified }
+      : {}),
     updatedAt: new Date(),
   };
 
@@ -216,7 +228,12 @@ async function processFeed(
 
   // Upsert items, track new ones
   for (const entry of entries) {
-    const fp = itemFingerprint([entry.title, entry.link, entry.summary, entry.publishedAt?.toISOString()]);
+    const fp = itemFingerprint([
+      entry.title,
+      entry.link,
+      entry.summary,
+      entry.publishedAt?.toISOString(),
+    ]);
 
     // Check if already exists
     const existing = await db
@@ -255,7 +272,10 @@ async function processFeed(
     // meaningful alerts (HEARING_POSTED, COMMITTEE_MEMBER_CHANGE, etc.) are
     // created by the targeted refresh jobs instead.
     if (!isFirstPoll) {
-      const scope = feed.scopeJson as { committeeId?: string; chamber?: string } | null;
+      const scope = feed.scopeJson as {
+        committeeId?: string;
+        chamber?: string;
+      } | null;
       // Defer the actual targeted-refresh fetch until pollAllFeeds() finishes,
       // collapsed by chamber. The new TLO endpoint
       // (MeetingsUpcoming.aspx?chamber=H|S) returns the WHOLE chamber roster
@@ -272,7 +292,10 @@ async function processFeed(
         try {
           await refreshCommitteeHearings(scope.committeeId, 14);
         } catch (err) {
-          console.error(`${tag} Targeted refresh failed for committee ${scope.committeeId}:`, err);
+          console.error(
+            `${tag} Targeted refresh failed for committee ${scope.committeeId}:`,
+            err,
+          );
         }
       }
 
@@ -288,12 +311,15 @@ async function limitedMap<T>(
   fn: (item: T) => Promise<void>,
 ): Promise<void> {
   const queue = [...items];
-  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-    while (queue.length > 0) {
-      const item = queue.shift()!;
-      await fn(item);
-    }
-  });
+  const workers = Array.from(
+    { length: Math.min(concurrency, queue.length) },
+    async () => {
+      while (queue.length > 0) {
+        const item = queue.shift()!;
+        await fn(item);
+      }
+    },
+  );
   await Promise.all(workers);
 }
 

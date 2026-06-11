@@ -18,7 +18,9 @@ export default function AboutScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.backgroundDefault }]}>
+    <View
+      style={[styles.container, { backgroundColor: theme.backgroundDefault }]}
+    >
       <View
         style={[
           styles.content,
@@ -29,7 +31,9 @@ export default function AboutScreen() {
         ]}
       >
         <View style={styles.header}>
-          <View style={[styles.iconContainer, { backgroundColor: theme.primary }]}>
+          <View
+            style={[styles.iconContainer, { backgroundColor: theme.primary }]}
+          >
             <Feather name="map" size={40} color="#FFFFFF" />
           </View>
           <ThemedText type="h1" style={styles.title}>
@@ -39,7 +43,8 @@ export default function AboutScreen() {
 
         <View style={[styles.card, { backgroundColor: theme.cardBackground }]}>
           <ThemedText type="body" style={styles.description}>
-            This app helps identify Texas legislative and congressional districts and supports private, device-only notes for outreach.
+            This app helps identify Texas legislative and congressional
+            districts and supports private, device-only notes for outreach.
           </ThemedText>
         </View>
 
@@ -55,8 +60,12 @@ export default function AboutScreen() {
         </View>
 
         <View style={styles.footer}>
-          <ThemedText type="small" style={{ color: theme.secondaryText, textAlign: "center" }}>
-            All private notes and engagement data remain on your device and are never uploaded.
+          <ThemedText
+            type="small"
+            style={{ color: theme.secondaryText, textAlign: "center" }}
+          >
+            All private notes and engagement data remain on your device and are
+            never uploaded.
           </ThemedText>
         </View>
       </View>

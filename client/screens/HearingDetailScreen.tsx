@@ -82,7 +82,10 @@ function chamberLabel(chamber: string | null | undefined): string {
   return chamber ?? "Legislature";
 }
 
-function positionColor(position: string | null, theme: { success: string; secondary: string; secondaryText: string }): string {
+function positionColor(
+  position: string | null,
+  theme: { success: string; secondary: string; secondaryText: string },
+): string {
   if (!position) return theme.secondaryText;
   const p = position.toUpperCase();
   if (p.includes("FOR")) return theme.success;
@@ -91,11 +94,20 @@ function positionColor(position: string | null, theme: { success: string; second
 }
 
 // ── Section ──
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   const { theme } = useTheme();
   return (
     <View style={styles.section}>
-      <ThemedText type="caption" style={[styles.sectionTitle, { color: theme.secondaryText }]}>
+      <ThemedText
+        type="caption"
+        style={[styles.sectionTitle, { color: theme.secondaryText }]}
+      >
         {title.toUpperCase()}
       </ThemedText>
       {children}
@@ -111,12 +123,26 @@ function CollapsibleNotice({ text }: { text: string }) {
   const hasMore = text.length > 300;
 
   return (
-    <View style={[styles.noticeBox, { backgroundColor: theme.backgroundSecondary, borderRadius: BorderRadius.md }]}>
-      <ThemedText type="small" style={{ color: theme.secondaryText, lineHeight: 18 }}>
+    <View
+      style={[
+        styles.noticeBox,
+        {
+          backgroundColor: theme.backgroundSecondary,
+          borderRadius: BorderRadius.md,
+        },
+      ]}
+    >
+      <ThemedText
+        type="small"
+        style={{ color: theme.secondaryText, lineHeight: 18 }}
+      >
         {expanded ? text : preview + (hasMore && !expanded ? "…" : "")}
       </ThemedText>
       {hasMore && (
-        <Pressable onPress={() => setExpanded((v) => !v)} style={{ marginTop: Spacing.xs }}>
+        <Pressable
+          onPress={() => setExpanded((v) => !v)}
+          style={{ marginTop: Spacing.xs }}
+        >
           <ThemedText type="small" style={{ color: theme.primary }}>
             {expanded ? "Show less" : "Show more"}
           </ThemedText>
@@ -143,24 +169,52 @@ function AgendaRow({
 }) {
   const { theme } = useTheme();
   return (
-    <View style={[styles.agendaRow, { backgroundColor: theme.cardBackground, borderRadius: BorderRadius.sm }]}>
+    <View
+      style={[
+        styles.agendaRow,
+        {
+          backgroundColor: theme.cardBackground,
+          borderRadius: BorderRadius.sm,
+        },
+      ]}
+    >
       <View style={styles.agendaRowInner}>
         {item.billNumber ? (
           <Pressable
             onPress={() => Linking.openURL(TLO_BILL_URL(item.billNumber!))}
-            style={[styles.billBadge, { backgroundColor: theme.primary + "18" }]}
+            style={[
+              styles.billBadge,
+              { backgroundColor: theme.primary + "18" },
+            ]}
           >
-            <ThemedText type="small" style={{ color: theme.primary, fontWeight: "700" }}>
+            <ThemedText
+              type="small"
+              style={{ color: theme.primary, fontWeight: "700" }}
+            >
               {item.billNumber}
             </ThemedText>
-            <Feather name="external-link" size={10} color={theme.primary} style={{ marginTop: 1 }} />
+            <Feather
+              name="external-link"
+              size={10}
+              color={theme.primary}
+              style={{ marginTop: 1 }}
+            />
           </Pressable>
         ) : (
-          <View style={[styles.billBadge, { backgroundColor: theme.backgroundSecondary }]}>
+          <View
+            style={[
+              styles.billBadge,
+              { backgroundColor: theme.backgroundSecondary },
+            ]}
+          >
             <Feather name="file" size={12} color={theme.secondaryText} />
           </View>
         )}
-        <ThemedText type="small" style={{ flex: 1, color: theme.secondaryText, lineHeight: 18 }} numberOfLines={3}>
+        <ThemedText
+          type="small"
+          style={{ flex: 1, color: theme.secondaryText, lineHeight: 18 }}
+          numberOfLines={3}
+        >
           {item.itemText}
         </ThemedText>
         {item.billNumber && onExplain ? (
@@ -168,7 +222,11 @@ function AgendaRow({
             onPress={summaryLoading || summary ? undefined : onExplain}
             style={[
               styles.explainButton,
-              { backgroundColor: summary ? theme.backgroundSecondary : theme.primary + "18" },
+              {
+                backgroundColor: summary
+                  ? theme.backgroundSecondary
+                  : theme.primary + "18",
+              },
             ]}
           >
             {summaryLoading ? (
@@ -187,11 +245,17 @@ function AgendaRow({
         <View style={[styles.summaryBox, { borderTopColor: theme.border }]}>
           <View style={styles.summaryHeader}>
             <Ionicons name="sparkles" size={12} color={theme.primary} />
-            <ThemedText type="caption" style={{ color: theme.primary, fontWeight: "700", marginLeft: 4 }}>
+            <ThemedText
+              type="caption"
+              style={{ color: theme.primary, fontWeight: "700", marginLeft: 4 }}
+            >
               AI Summary
             </ThemedText>
           </View>
-          <ThemedText type="small" style={{ color: theme.text, lineHeight: 18 }}>
+          <ThemedText
+            type="small"
+            style={{ color: theme.text, lineHeight: 18 }}
+          >
             {summary}
           </ThemedText>
         </View>
@@ -201,22 +265,52 @@ function AgendaRow({
 }
 
 // ── Witness Row ──
-function WitnessRow({ witness }: { witness: WitnessesResponse["witnesses"][0] }) {
+function WitnessRow({
+  witness,
+}: {
+  witness: WitnessesResponse["witnesses"][0];
+}) {
   const { theme } = useTheme();
-  const pColor = positionColor(witness.position, { success: theme.success, secondary: theme.secondary, secondaryText: theme.secondaryText });
+  const pColor = positionColor(witness.position, {
+    success: theme.success,
+    secondary: theme.secondary,
+    secondaryText: theme.secondaryText,
+  });
 
   return (
-    <View style={[styles.witnessRow, { backgroundColor: theme.cardBackground, borderRadius: BorderRadius.sm }]}>
-      <Feather name="user" size={14} color={theme.secondaryText} style={{ marginTop: 2 }} />
+    <View
+      style={[
+        styles.witnessRow,
+        {
+          backgroundColor: theme.cardBackground,
+          borderRadius: BorderRadius.sm,
+        },
+      ]}
+    >
+      <Feather
+        name="user"
+        size={14}
+        color={theme.secondaryText}
+        style={{ marginTop: 2 }}
+      />
       <View style={{ flex: 1, marginLeft: Spacing.sm }}>
-        <ThemedText type="body" style={{ fontWeight: "600" }}>{witness.fullName}</ThemedText>
+        <ThemedText type="body" style={{ fontWeight: "600" }}>
+          {witness.fullName}
+        </ThemedText>
         {witness.organization ? (
-          <ThemedText type="small" style={{ color: theme.secondaryText }}>{witness.organization}</ThemedText>
+          <ThemedText type="small" style={{ color: theme.secondaryText }}>
+            {witness.organization}
+          </ThemedText>
         ) : null}
       </View>
       {witness.position ? (
-        <View style={[styles.positionBadge, { backgroundColor: pColor + "20" }]}>
-          <ThemedText type="small" style={{ color: pColor, fontWeight: "700", fontSize: 10 }}>
+        <View
+          style={[styles.positionBadge, { backgroundColor: pColor + "20" }]}
+        >
+          <ThemedText
+            type="small"
+            style={{ color: pColor, fontWeight: "700", fontSize: 10 }}
+          >
             {witness.position.toUpperCase().slice(0, 7)}
           </ThemedText>
         </View>
@@ -232,12 +326,20 @@ export default function HearingDetailScreen() {
   const navigation = useNavigation<NavigationProp>();
   const headerHeight = useHeaderHeight();
   let tabBarHeight = 0;
-  try { tabBarHeight = useBottomTabBarHeight(); } catch { tabBarHeight = 80; }
+  try {
+    tabBarHeight = useBottomTabBarHeight();
+  } catch {
+    tabBarHeight = 80;
+  }
 
   const { eventId } = route.params;
   const [showWitnesses, setShowWitnesses] = useState(false);
-  const [billSummaries, setBillSummaries] = useState<Record<string, string>>({});
-  const [loadingSummaries, setLoadingSummaries] = useState<Set<string>>(new Set());
+  const [billSummaries, setBillSummaries] = useState<Record<string, string>>(
+    {},
+  );
+  const [loadingSummaries, setLoadingSummaries] = useState<Set<string>>(
+    new Set(),
+  );
 
   const handleExplainBill = async (item: HearingResponse["agenda"][0]) => {
     if (!item.billNumber) return;
@@ -275,20 +377,23 @@ export default function HearingDetailScreen() {
     },
   });
 
-  const { data: witnessData, isLoading: witnessLoading } = useQuery<WitnessesResponse>({
-    queryKey: ["/api/hearings", eventId, "witnesses"],
-    queryFn: async () => {
-      const url = new URL(`/api/hearings/${eventId}/witnesses`, getApiUrl());
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error("Failed to fetch witnesses");
-      return res.json();
-    },
-    enabled: showWitnesses,
-  });
+  const { data: witnessData, isLoading: witnessLoading } =
+    useQuery<WitnessesResponse>({
+      queryKey: ["/api/hearings", eventId, "witnesses"],
+      queryFn: async () => {
+        const url = new URL(`/api/hearings/${eventId}/witnesses`, getApiUrl());
+        const res = await fetch(url.toString());
+        if (!res.ok) throw new Error("Failed to fetch witnesses");
+        return res.json();
+      },
+      enabled: showWitnesses,
+    });
 
   if (isLoading) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}
+      >
         <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
@@ -296,9 +401,14 @@ export default function HearingDetailScreen() {
 
   if (error || !data) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}
+      >
         <Feather name="alert-circle" size={48} color="#DC3545" />
-        <ThemedText type="body" style={{ color: "#DC3545", marginTop: Spacing.md }}>
+        <ThemedText
+          type="body"
+          style={{ color: "#DC3545", marginTop: Spacing.md }}
+        >
           Failed to load hearing
         </ThemedText>
       </View>
@@ -312,25 +422,63 @@ export default function HearingDetailScreen() {
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
-      contentContainerStyle={{ paddingTop: headerHeight + Spacing.md, paddingBottom: tabBarHeight + Spacing.xl }}
+      contentContainerStyle={{
+        paddingTop: headerHeight + Spacing.md,
+        paddingBottom: tabBarHeight + Spacing.xl,
+      }}
     >
       {/* Header card */}
-      <View style={[styles.headerCard, { backgroundColor: theme.cardBackground }]}>
+      <View
+        style={[styles.headerCard, { backgroundColor: theme.cardBackground }]}
+      >
         <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
         <View style={styles.headerContent}>
           <View style={styles.headerMeta}>
-            <View style={[styles.chamberBadge, { backgroundColor: accentColor + "20" }]}>
-              <ThemedText type="small" style={{ color: accentColor, fontWeight: "700" }}>
+            <View
+              style={[
+                styles.chamberBadge,
+                { backgroundColor: accentColor + "20" },
+              ]}
+            >
+              <ThemedText
+                type="small"
+                style={{ color: accentColor, fontWeight: "700" }}
+              >
                 {chamberLabel(hearing.chamber)}
               </ThemedText>
             </View>
             {hearing.meetingType ? (
-              <View style={[styles.typeBadge, { backgroundColor: theme.backgroundSecondary }]}>
-                <ThemedText type="small" style={{ color: theme.secondaryText }}>{hearing.meetingType}</ThemedText>
+              <View
+                style={[
+                  styles.typeBadge,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
+              >
+                <ThemedText type="small" style={{ color: theme.secondaryText }}>
+                  {hearing.meetingType}
+                </ThemedText>
               </View>
             ) : null}
-            <View style={[styles.statusBadge, { backgroundColor: hearing.status === "POSTED" ? "#28A74520" : theme.backgroundSecondary }]}>
-              <ThemedText type="small" style={{ color: hearing.status === "POSTED" ? theme.success : theme.secondaryText }}>
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor:
+                    hearing.status === "POSTED"
+                      ? "#28A74520"
+                      : theme.backgroundSecondary,
+                },
+              ]}
+            >
+              <ThemedText
+                type="small"
+                style={{
+                  color:
+                    hearing.status === "POSTED"
+                      ? theme.success
+                      : theme.secondaryText,
+                }}
+              >
                 {hearing.status}
               </ThemedText>
             </View>
@@ -342,7 +490,10 @@ export default function HearingDetailScreen() {
 
           <View style={styles.detailRow}>
             <Feather name="clock" size={15} color={theme.secondaryText} />
-            <ThemedText type="body" style={{ color: theme.text, marginLeft: Spacing.sm }}>
+            <ThemedText
+              type="body"
+              style={{ color: theme.text, marginLeft: Spacing.sm }}
+            >
               {formatDateTime(hearing.startsAt, hearing.timezone)}
             </ThemedText>
           </View>
@@ -350,7 +501,10 @@ export default function HearingDetailScreen() {
           {hearing.location ? (
             <View style={styles.detailRow}>
               <Feather name="map-pin" size={15} color={theme.secondaryText} />
-              <ThemedText type="body" style={{ color: theme.text, marginLeft: Spacing.sm }}>
+              <ThemedText
+                type="body"
+                style={{ color: theme.text, marginLeft: Spacing.sm }}
+              >
                 {hearing.location}
               </ThemedText>
             </View>
@@ -363,17 +517,26 @@ export default function HearingDetailScreen() {
               style={[styles.actionButton, { backgroundColor: theme.primary }]}
             >
               <Feather name="external-link" size={14} color="#FFF" />
-              <ThemedText type="small" style={{ color: "#FFF", marginLeft: 6, fontWeight: "600" }}>
+              <ThemedText
+                type="small"
+                style={{ color: "#FFF", marginLeft: 6, fontWeight: "600" }}
+              >
                 Open on TLO
               </ThemedText>
             </Pressable>
             {hearing.videoUrl ? (
               <Pressable
                 onPress={() => Linking.openURL(hearing.videoUrl!)}
-                style={[styles.actionButton, { backgroundColor: theme.backgroundSecondary }]}
+                style={[
+                  styles.actionButton,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
               >
                 <Feather name="video" size={14} color={theme.text} />
-                <ThemedText type="small" style={{ color: theme.text, marginLeft: 6 }}>
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.text, marginLeft: 6 }}
+                >
                   Watch
                 </ThemedText>
               </Pressable>
@@ -381,10 +544,16 @@ export default function HearingDetailScreen() {
             {hearing.startsAt ? (
               <Pressable
                 onPress={() => addHearingToCalendar(hearing)}
-                style={[styles.actionButton, { backgroundColor: theme.backgroundSecondary }]}
+                style={[
+                  styles.actionButton,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
               >
                 <Feather name="calendar" size={14} color={theme.text} />
-                <ThemedText type="small" style={{ color: theme.text, marginLeft: 6 }}>
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.text, marginLeft: 6 }}
+                >
                   Add to Calendar
                 </ThemedText>
               </Pressable>
@@ -395,14 +564,22 @@ export default function HearingDetailScreen() {
 
       {/* Agenda section (first) */}
       {agenda.length > 0 ? (
-        <Section title={`Agenda (${agenda.length} item${agenda.length !== 1 ? "s" : ""})`}>
+        <Section
+          title={`Agenda (${agenda.length} item${agenda.length !== 1 ? "s" : ""})`}
+        >
           <View style={styles.agendaList}>
             {agenda.map((item) => (
               <AgendaRow
                 key={item.id}
                 item={item}
-                summary={item.billNumber ? billSummaries[item.billNumber] : undefined}
-                summaryLoading={item.billNumber ? loadingSummaries.has(item.billNumber) : false}
+                summary={
+                  item.billNumber ? billSummaries[item.billNumber] : undefined
+                }
+                summaryLoading={
+                  item.billNumber
+                    ? loadingSummaries.has(item.billNumber)
+                    : false
+                }
                 onExplain={() => handleExplainBill(item)}
               />
             ))}
@@ -411,14 +588,22 @@ export default function HearingDetailScreen() {
       ) : null}
 
       {/* Witnesses section */}
-      <Section title={`Witnesses${hearing.witnessCount ? ` (${hearing.witnessCount})` : ""}`}>
+      <Section
+        title={`Witnesses${hearing.witnessCount ? ` (${hearing.witnessCount})` : ""}`}
+      >
         {!showWitnesses ? (
           <Pressable
             onPress={() => setShowWitnesses(true)}
-            style={[styles.loadWitnessesBtn, { backgroundColor: theme.backgroundSecondary }]}
+            style={[
+              styles.loadWitnessesBtn,
+              { backgroundColor: theme.backgroundSecondary },
+            ]}
           >
             <Feather name="users" size={16} color={theme.primary} />
-            <ThemedText type="body" style={{ color: theme.primary, marginLeft: Spacing.sm }}>
+            <ThemedText
+              type="body"
+              style={{ color: theme.primary, marginLeft: Spacing.sm }}
+            >
               Load witnesses
             </ThemedText>
           </Pressable>
@@ -465,13 +650,39 @@ const styles = StyleSheet.create({
   },
   accentBar: { width: 5 },
   headerContent: { flex: 1, padding: Spacing.md },
-  headerMeta: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.xs, marginBottom: Spacing.sm },
-  chamberBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 3, borderRadius: BorderRadius.xs },
-  typeBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 3, borderRadius: BorderRadius.xs },
-  statusBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 3, borderRadius: BorderRadius.xs },
+  headerMeta: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  chamberBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.xs,
+  },
+  typeBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.xs,
+  },
+  statusBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.xs,
+  },
   hearingTitle: { fontWeight: "700", marginBottom: Spacing.sm },
-  detailRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: Spacing.sm },
-  buttonRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm, marginTop: Spacing.sm },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: Spacing.sm,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -480,7 +691,11 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
   },
   section: { marginHorizontal: Spacing.md, marginBottom: Spacing.lg },
-  sectionTitle: { fontWeight: "700", letterSpacing: 0.8, marginBottom: Spacing.sm },
+  sectionTitle: {
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    marginBottom: Spacing.sm,
+  },
   agendaList: { gap: Spacing.xs },
   agendaRow: {
     overflow: "hidden",
@@ -525,7 +740,11 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     padding: Spacing.sm,
   },
-  positionBadge: { paddingHorizontal: Spacing.xs, paddingVertical: 2, borderRadius: BorderRadius.xs },
+  positionBadge: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+  },
   loadWitnessesBtn: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,5 +1,11 @@
 import React, { useState, useCallback } from "react";
-import { StyleSheet, View, FlatList, Image, RefreshControl } from "react-native";
+import {
+  StyleSheet,
+  View,
+  FlatList,
+  Image,
+  RefreshControl,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
@@ -10,7 +16,10 @@ import { ThemedView } from "@/components/ThemedView";
 import { OfficialCard } from "@/components/OfficialCard";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing } from "@/constants/theme";
-import { getSavedOfficialsWithData, type SavedOfficialData } from "@/lib/storage";
+import {
+  getSavedOfficialsWithData,
+  type SavedOfficialData,
+} from "@/lib/storage";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
@@ -34,7 +43,7 @@ export default function SavedOfficialsScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
   );
 
   const handleRefresh = useCallback(async () => {
@@ -45,9 +54,11 @@ export default function SavedOfficialsScreen() {
 
   const handleOfficialPress = useCallback(
     (official: SavedOfficialData) => {
-      navigation.navigate("OfficialProfile", { officialId: `${official.source}:${official.districtNumber}` });
+      navigation.navigate("OfficialProfile", {
+        officialId: `${official.source}:${official.districtNumber}`,
+      });
     },
-    [navigation]
+    [navigation],
   );
 
   const renderOfficial = useCallback(
@@ -56,7 +67,12 @@ export default function SavedOfficialsScreen() {
         id: `${item.source}:${item.districtNumber}`,
         fullName: item.fullName,
         party: item.party,
-        chamber: item.source === "TX_HOUSE" ? "TX House" : item.source === "TX_SENATE" ? "TX Senate" : "US House",
+        chamber:
+          item.source === "TX_HOUSE"
+            ? "TX House"
+            : item.source === "TX_SENATE"
+              ? "TX Senate"
+              : "US House",
         district: String(item.districtNumber),
         source: item.source,
         districtNumber: item.districtNumber,
@@ -72,7 +88,7 @@ export default function SavedOfficialsScreen() {
         </View>
       );
     },
-    [handleOfficialPress]
+    [handleOfficialPress],
   );
 
   if (loading) {
@@ -96,7 +112,10 @@ export default function SavedOfficialsScreen() {
           renderItem={renderOfficial}
           contentContainerStyle={[
             styles.listContent,
-            { paddingTop: headerHeight + Spacing.md, paddingBottom: insets.bottom + Spacing.xl },
+            {
+              paddingTop: headerHeight + Spacing.md,
+              paddingBottom: insets.bottom + Spacing.xl,
+            },
           ]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
@@ -120,7 +139,11 @@ export default function SavedOfficialsScreen() {
           </ThemedText>
           <ThemedText
             type="caption"
-            style={{ color: theme.secondaryText, textAlign: "center", marginTop: Spacing.xs }}
+            style={{
+              color: theme.secondaryText,
+              textAlign: "center",
+              marginTop: Spacing.xs,
+            }}
           >
             Tap the bookmark icon on an official's profile to save them
           </ThemedText>

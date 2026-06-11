@@ -35,16 +35,20 @@ export async function processEventDateActions(userId: string): Promise<void> {
     const openWithEvents = await db
       .select()
       .from(prayers)
-      .where(and(
-        eq(prayers.userId, userId),
-        eq(prayers.status, "OPEN"),
-        not(eq(prayers.autoAfterEventAction, "none")),
-      ));
+      .where(
+        and(
+          eq(prayers.userId, userId),
+          eq(prayers.status, "OPEN"),
+          not(eq(prayers.autoAfterEventAction, "none")),
+        ),
+      );
 
     for (const prayer of openWithEvents) {
       if (!prayer.eventDate) continue;
       const triggerDate = new Date(prayer.eventDate);
-      triggerDate.setDate(triggerDate.getDate() + (prayer.autoAfterEventDaysOffset || 0));
+      triggerDate.setDate(
+        triggerDate.getDate() + (prayer.autoAfterEventDaysOffset || 0),
+      );
       if (now >= triggerDate) {
         if (prayer.autoAfterEventAction === "markAnswered") {
           await db

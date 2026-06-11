@@ -79,7 +79,8 @@ export function DistrictCard({
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <ThemedText type="h3">
-            {getDistrictTypeLabel(district.districtType)} {district.districtNumber}
+            {getDistrictTypeLabel(district.districtType)}{" "}
+            {district.districtNumber}
           </ThemedText>
           <Pressable
             onPress={onClose}
@@ -113,11 +114,9 @@ export function DistrictCard({
             <ThemedText type="body" style={{ fontWeight: "600" }}>
               {official.fullName}
             </ThemedText>
-            <ThemedText
-              type="caption"
-              style={{ color: theme.secondaryText }}
-            >
-              {getOfficeTypeLabel(official.officeType, official.roleTitle)} - {official.city}
+            <ThemedText type="caption" style={{ color: theme.secondaryText }}>
+              {getOfficeTypeLabel(official.officeType, official.roleTitle)} -{" "}
+              {official.city}
             </ThemedText>
           </View>
           <Feather name="chevron-right" size={20} color={theme.secondaryText} />

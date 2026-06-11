@@ -47,16 +47,12 @@ export function generateHearingIcs(hearing: HearingCalendarData): string {
     ? new Date(hearing.endsAt)
     : new Date(start.getTime() + 2 * 60 * 60 * 1000); // default 2 hours
 
-  const summary = escapeIcsText(
-    hearing.committeeName ?? hearing.title
-  );
+  const summary = escapeIcsText(hearing.committeeName ?? hearing.title);
   const chamber = chamberLabel(hearing.chamber);
   const description = escapeIcsText(
-    `${chamber} committee hearing\\nSource: ${hearing.sourceUrl}`
+    `${chamber} committee hearing\\nSource: ${hearing.sourceUrl}`,
   );
-  const location = hearing.location
-    ? escapeIcsText(hearing.location)
-    : "";
+  const location = hearing.location ? escapeIcsText(hearing.location) : "";
   const uid = `${hearing.id}@txdistrictnavigator`;
   const now = toIcsDateTime(new Date());
   const tz = hearing.timezone || "America/Chicago";
@@ -90,7 +86,7 @@ export function generateHearingIcs(hearing: HearingCalendarData): string {
 
 /** Generate an ICS file for a hearing and open the share sheet */
 export async function addHearingToCalendar(
-  hearing: HearingCalendarData
+  hearing: HearingCalendarData,
 ): Promise<void> {
   if (!hearing.startsAt) {
     Alert.alert("No Date", "This hearing does not have a scheduled date.");
@@ -120,7 +116,7 @@ export async function addHearingToCalendar(
     console.error("[calendar] export failed:", e);
     Alert.alert(
       "Export Failed",
-      "Could not create calendar event. Please try again."
+      "Could not create calendar event. Please try again.",
     );
   }
 }

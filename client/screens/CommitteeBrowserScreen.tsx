@@ -52,7 +52,10 @@ interface LegislativeEvent {
   committeeId: string | null;
   startsAt: string | null;
 }
-interface EventsResponse { events: LegislativeEvent[]; total: number }
+interface EventsResponse {
+  events: LegislativeEvent[];
+  total: number;
+}
 
 // ── Filter chip bar ──
 function FilterBar<T extends string>({
@@ -79,7 +82,11 @@ function FilterBar<T extends string>({
             onPress={() => onSelect(opt.value)}
             style={[
               styles.chip,
-              { backgroundColor: active ? theme.primary : theme.backgroundSecondary },
+              {
+                backgroundColor: active
+                  ? theme.primary
+                  : theme.backgroundSecondary,
+              },
             ]}
           >
             <ThemedText
@@ -140,8 +147,16 @@ function CommitteeRow({
           {committee.name}
         </ThemedText>
         <View style={styles.rowMeta}>
-          <View style={[styles.chamberBadge, { backgroundColor: chamberColor + "15" }]}>
-            <ThemedText type="small" style={{ color: chamberColor, fontWeight: "700" }}>
+          <View
+            style={[
+              styles.chamberBadge,
+              { backgroundColor: chamberColor + "15" },
+            ]}
+          >
+            <ThemedText
+              type="small"
+              style={{ color: chamberColor, fontWeight: "700" }}
+            >
               {chamberLabel}
             </ThemedText>
           </View>
@@ -154,15 +169,28 @@ function CommitteeRow({
       </View>
 
       {upcomingCount > 0 ? (
-        <View style={[styles.hearingBadge, { backgroundColor: theme.success + "20" }]}>
+        <View
+          style={[
+            styles.hearingBadge,
+            { backgroundColor: theme.success + "20" },
+          ]}
+        >
           <Feather name="calendar" size={11} color={theme.success} />
-          <ThemedText type="small" style={{ color: theme.success, fontWeight: "700", marginLeft: 3 }}>
+          <ThemedText
+            type="small"
+            style={{ color: theme.success, fontWeight: "700", marginLeft: 3 }}
+          >
             {upcomingCount}
           </ThemedText>
         </View>
       ) : null}
 
-      <Feather name="chevron-right" size={18} color={theme.secondaryText} style={{ marginLeft: Spacing.xs }} />
+      <Feather
+        name="chevron-right"
+        size={18}
+        color={theme.secondaryText}
+        style={{ marginLeft: Spacing.xs }}
+      />
     </Pressable>
   );
 }
@@ -185,12 +213,20 @@ export default function CommitteeBrowserScreen() {
   const navigation = useNavigation<NavigationProp>();
   const headerHeight = useHeaderHeight();
   let tabBarHeight = 0;
-  try { tabBarHeight = useBottomTabBarHeight(); } catch { tabBarHeight = 80; }
+  try {
+    tabBarHeight = useBottomTabBarHeight();
+  } catch {
+    tabBarHeight = 80;
+  }
 
   const [chamberFilter, setChamberFilter] = useState<ChamberFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: committeesData, isLoading: committeesLoading, refetch: refetchCommittees } = useQuery<Committee[]>({
+  const {
+    data: committeesData,
+    isLoading: committeesLoading,
+    refetch: refetchCommittees,
+  } = useQuery<Committee[]>({
     queryKey: ["/api/committees"],
     queryFn: async () => {
       const url = new URL("/api/committees", getApiUrl());
@@ -203,16 +239,18 @@ export default function CommitteeBrowserScreen() {
     staleTime: Infinity,
   });
 
-  const { data: eventsData, refetch: refetchEvents } = useQuery<EventsResponse>({
-    queryKey: ["/api/events/upcoming", "committee-browser"],
-    queryFn: async () => {
-      const url = new URL("/api/events/upcoming?days=30", getApiUrl());
-      const res = await fetch(url.toString());
-      if (!res.ok) return { events: [], total: 0 };
-      return res.json();
+  const { data: eventsData, refetch: refetchEvents } = useQuery<EventsResponse>(
+    {
+      queryKey: ["/api/events/upcoming", "committee-browser"],
+      queryFn: async () => {
+        const url = new URL("/api/events/upcoming?days=30", getApiUrl());
+        const res = await fetch(url.toString());
+        if (!res.ok) return { events: [], total: 0 };
+        return res.json();
+      },
+      staleTime: 10 * 60_000,
     },
-    staleTime: 10 * 60_000,
-  });
+  );
 
   // Build committeeId → upcoming hearing count map
   const hearingCounts = useMemo<Record<string, number>>(() => {
@@ -243,11 +281,14 @@ export default function CommitteeBrowserScreen() {
   );
 
   // Flatten committees (parent + subcommittees) respecting chamber filter, sorted A-Z
-  const flatList = useMemo<{ committee: Committee; isSubcommittee: boolean }[]>(() => {
+  const flatList = useMemo<
+    { committee: Committee; isSubcommittee: boolean }[]
+  >(() => {
     const all = committeesData ?? [];
-    const filtered = chamberFilter === "all"
-      ? all
-      : all.filter((c) => c.chamber === chamberFilter);
+    const filtered =
+      chamberFilter === "all"
+        ? all
+        : all.filter((c) => c.chamber === chamberFilter);
 
     const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -257,7 +298,9 @@ export default function CommitteeBrowserScreen() {
       const subs = (parent.subcommittees ?? []).filter(
         (s) => chamberFilter === "all" || s.chamber === chamberFilter,
       );
-      for (const sub of [...subs].sort((a, b) => a.name.localeCompare(b.name))) {
+      for (const sub of [...subs].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      )) {
         rows.push({ committee: sub, isSubcommittee: true });
       }
     }
@@ -266,7 +309,9 @@ export default function CommitteeBrowserScreen() {
 
   if (committeesLoading) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}>
+      <View
+        style={[styles.centered, { backgroundColor: theme.backgroundRoot }]}
+      >
         <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
@@ -281,7 +326,9 @@ export default function CommitteeBrowserScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
       {/* Filter chips */}
-      <View style={[styles.filterBar, { paddingTop: headerHeight + Spacing.xs }]}>
+      <View
+        style={[styles.filterBar, { paddingTop: headerHeight + Spacing.xs }]}
+      >
         <FilterBar
           options={chamberOptions}
           selected={chamberFilter}
@@ -305,22 +352,50 @@ export default function CommitteeBrowserScreen() {
           />
         )}
         ItemSeparatorComponent={() => (
-          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border, marginLeft: Spacing.md }} />
+          <View
+            style={{
+              height: StyleSheet.hairlineWidth,
+              backgroundColor: theme.border,
+              marginLeft: Spacing.md,
+            }}
+          />
         )}
         ListEmptyComponent={() => (
           <View style={styles.emptyState}>
             <Feather name="briefcase" size={48} color={theme.secondaryText} />
-            <ThemedText type="body" style={{ color: theme.secondaryText, marginTop: Spacing.md, textAlign: "center" }}>
+            <ThemedText
+              type="body"
+              style={{
+                color: theme.secondaryText,
+                marginTop: Spacing.md,
+                textAlign: "center",
+              }}
+            >
               No committees found
             </ThemedText>
-            <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}>
-              Run a committee refresh from the admin panel to populate this list.
+            <ThemedText
+              type="small"
+              style={{
+                color: theme.secondaryText,
+                marginTop: Spacing.xs,
+                textAlign: "center",
+              }}
+            >
+              Run a committee refresh from the admin panel to populate this
+              list.
             </ThemedText>
           </View>
         )}
-        contentContainerStyle={{ paddingBottom: tabBarHeight + Spacing.xl, flexGrow: 1 }}
+        contentContainerStyle={{
+          paddingBottom: tabBarHeight + Spacing.xl,
+          flexGrow: 1,
+        }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.primary}
+          />
         }
       />
     </View>
@@ -368,8 +443,17 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   rowContent: { flex: 1 },
-  rowMeta: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, marginTop: 2 },
-  chamberBadge: { paddingHorizontal: Spacing.xs, paddingVertical: 2, borderRadius: BorderRadius.xs },
+  rowMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginTop: 2,
+  },
+  chamberBadge: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+  },
   hearingBadge: {
     flexDirection: "row",
     alignItems: "center",

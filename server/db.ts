@@ -5,7 +5,9 @@ import * as schema from "@shared/schema";
 const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
-  console.error("[DB] DATABASE_URL is not set — database queries will fail. Add it to your Replit Secrets.");
+  console.error(
+    "[DB] DATABASE_URL is not set — database queries will fail. Add it to your Replit Secrets.",
+  );
 }
 
 const pool = new Pool({
@@ -23,7 +25,10 @@ const pool = new Pool({
 
 // Prevent unhandled 'error' events on idle clients (pool-level handler).
 pool.on("error", (err) => {
-  console.error("[DB Pool] Idle client error (connection will be replaced):", err.message);
+  console.error(
+    "[DB Pool] Idle client error (connection will be replaced):",
+    err.message,
+  );
 });
 
 // Prevent unhandled 'error' events on active (checked-out) clients.
@@ -34,7 +39,10 @@ pool.on("error", (err) => {
 // Registering a listener on every new client via 'connect' prevents this crash.
 pool.on("connect", (client) => {
   client.on("error", (err) => {
-    console.error("[DB Pool] Active client error (connection will be replaced):", err.message);
+    console.error(
+      "[DB Pool] Active client error (connection will be replaced):",
+      err.message,
+    );
   });
 });
 
@@ -53,7 +61,7 @@ const TRANSIENT_DB_ERROR_PATTERNS = [
   /timeout exceeded when trying to connect/i,
   /Connection terminated/i,
   /Connection terminated unexpectedly/i,
-  /timeout expired/i,            // 08P01 / handshake timeouts
+  /timeout expired/i, // 08P01 / handshake timeouts
   /SASL.*timeout/i,
   /server closed the connection/i,
   /ECONNRESET/i,
@@ -85,7 +93,9 @@ export async function withDbRetry<T>(
       }
       const delay = baseDelayMs * 2 ** (attempt - 1);
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[${label}] Transient DB error (attempt ${attempt}/${retries}): ${msg} — retrying in ${delay}ms`);
+      console.warn(
+        `[${label}] Transient DB error (attempt ${attempt}/${retries}): ${msg} — retrying in ${delay}ms`,
+      );
       await new Promise((r) => setTimeout(r, delay));
     }
   }

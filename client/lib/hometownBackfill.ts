@@ -5,7 +5,16 @@ const BACKFILL_LAST_RUN_KEY = "@backfill_last_run";
 const BACKFILL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const EMPTY_PLACEHOLDERS = [
-  "n/a", "na", "unknown", "tbd", "not available", "none", "\u2014", "-", ".", "pending"
+  "n/a",
+  "na",
+  "unknown",
+  "tbd",
+  "not available",
+  "none",
+  "\u2014",
+  "-",
+  ".",
+  "pending",
 ];
 
 function isEffectivelyEmpty(value: string | null | undefined): boolean {
@@ -36,7 +45,9 @@ export async function runStartupBackfill(): Promise<BackfillResult> {
     if (lastRun) {
       const elapsed = Date.now() - parseInt(lastRun, 10);
       if (elapsed < BACKFILL_INTERVAL_MS) {
-        console.log(`[Backfill] Skipping - last run ${Math.round(elapsed / 3600000)}h ago`);
+        console.log(
+          `[Backfill] Skipping - last run ${Math.round(elapsed / 3600000)}h ago`,
+        );
         return result;
       }
     }
@@ -44,7 +55,9 @@ export async function runStartupBackfill(): Promise<BackfillResult> {
     console.log("[Backfill] Starting hometown backfill check...");
 
     const baseUrl = getApiUrl();
-    const officialsRes = await fetch(new URL("/api/officials", baseUrl).toString());
+    const officialsRes = await fetch(
+      new URL("/api/officials", baseUrl).toString(),
+    );
     if (!officialsRes.ok) {
       console.error("[Backfill] Failed to fetch officials");
       return result;
@@ -58,7 +71,9 @@ export async function runStartupBackfill(): Promise<BackfillResult> {
 
     const PRIVATE_NOTES_KEY = "@texas_districts:private_notes";
     const allNotesRaw = await AsyncStorage.getItem(PRIVATE_NOTES_KEY);
-    const allNotes: Record<string, any> = allNotesRaw ? JSON.parse(allNotesRaw) : {};
+    const allNotes: Record<string, any> = allNotesRaw
+      ? JSON.parse(allNotesRaw)
+      : {};
 
     for (const official of officials) {
       result.checked++;
@@ -72,7 +87,9 @@ export async function runStartupBackfill(): Promise<BackfillResult> {
 
       const serverAddress = official.private?.personalAddress;
       if (!isEffectivelyEmpty(serverAddress)) {
-        console.log(`[Backfill] Filling hometown for ${official.fullName}: "${serverAddress}"`);
+        console.log(
+          `[Backfill] Filling hometown for ${official.fullName}: "${serverAddress}"`,
+        );
         if (!allNotes[official.id]) {
           allNotes[official.id] = {};
         }
@@ -85,12 +102,16 @@ export async function runStartupBackfill(): Promise<BackfillResult> {
 
     if (result.hometownFilled > 0) {
       await AsyncStorage.setItem(PRIVATE_NOTES_KEY, JSON.stringify(allNotes));
-      console.log(`[Backfill] Saved ${result.hometownFilled} hometowns to local storage`);
+      console.log(
+        `[Backfill] Saved ${result.hometownFilled} hometowns to local storage`,
+      );
     }
 
     await AsyncStorage.setItem(BACKFILL_LAST_RUN_KEY, Date.now().toString());
 
-    console.log(`[Backfill] Complete! Checked: ${result.checked}, Filled: ${result.hometownFilled}, Skipped (user-edited): ${result.skippedExisting}, No data: ${result.noDataAvailable}`);
+    console.log(
+      `[Backfill] Complete! Checked: ${result.checked}, Filled: ${result.hometownFilled}, Skipped (user-edited): ${result.skippedExisting}, No data: ${result.noDataAvailable}`,
+    );
 
     return result;
   } catch (error) {

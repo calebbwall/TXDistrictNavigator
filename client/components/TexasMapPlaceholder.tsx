@@ -156,10 +156,20 @@ export function TexasMapPlaceholder({
     >
       <View style={styles.texasOutline}>
         <Feather name="map-pin" size={24} color={theme.secondaryText} />
-        <ThemedText type="caption" style={{ color: theme.secondaryText, marginTop: Spacing.xs }}>
+        <ThemedText
+          type="caption"
+          style={{ color: theme.secondaryText, marginTop: Spacing.xs }}
+        >
           Texas Map View
         </ThemedText>
-        <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.xs, textAlign: "center" }}>
+        <ThemedText
+          type="small"
+          style={{
+            color: theme.secondaryText,
+            marginTop: Spacing.xs,
+            textAlign: "center",
+          }}
+        >
           Tap a district marker to view details
         </ThemedText>
       </View>

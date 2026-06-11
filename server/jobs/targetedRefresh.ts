@@ -36,8 +36,18 @@ import { zonedWallTimeToUtc } from "../lib/timezone";
 
 const TX_TIMEZONE = "America/Chicago";
 const MONTH_NAMES: Record<string, number> = {
-  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
-  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
 };
 
 export const TLO_BASE = "https://capitol.texas.gov";
@@ -102,7 +112,10 @@ export interface ParsedMeetingWithCode extends ParsedMeeting {
  * Parse the new TLO MeetingsUpcoming.aspx page.
  * Structure: date row (sectionTitle) → time row (Gainsboro) → one or more committee rows.
  */
-export function parseMeetingsUpcomingPage(html: string, chamberCode: "H" | "S"): ParsedMeetingWithCode[] {
+export function parseMeetingsUpcomingPage(
+  html: string,
+  chamberCode: "H" | "S",
+): ParsedMeetingWithCode[] {
   const $ = cheerio.load(html);
   const meetings: ParsedMeetingWithCode[] = [];
   let currentDateStr: string | null = null;
@@ -142,7 +155,14 @@ export function parseMeetingsUpcomingPage(html: string, chamberCode: "H" | "S"):
     if (!committeeName) return;
 
     // Extract type and location from after the <br>
-    const afterBr = brIdx >= 0 ? firstTd.text().slice(committeeName.length).replace(/\u00a0/g, " ").trim() : "";
+    const afterBr =
+      brIdx >= 0
+        ? firstTd
+            .text()
+            .slice(committeeName.length)
+            .replace(/\u00a0/g, " ")
+            .trim()
+        : "";
     const typeMatch = afterBr.match(/Type:\s*([^L]+?)(?:\s+Location:|$)/i);
     const locationMatch = afterBr.match(/Location:\s*(.+)/i);
     const meetingType = typeMatch ? typeMatch[1].trim() : null;
@@ -152,20 +172,22 @@ export function parseMeetingsUpcomingPage(html: string, chamberCode: "H" | "S"):
     let noticeDocUrl: string | null = null;
     let cmteCode: string | null = null;
     tds.each((_, td) => {
-      $(td).find("a[href]").each((__, a) => {
-        const href = $(a).attr("href") ?? "";
-        if (!href.includes("tlodocs") && !href.includes("schedules")) return;
-        const fullHref = href.startsWith("http")
-          ? href
-          : `${TLO_BASE}${href.startsWith("/") ? "" : "/"}${href}`;
-        if (!noticeDocUrl) noticeDocUrl = fullHref;
-        // Extract committee code from filename: C5102026040110001.HTM → C510
-        if (!cmteCode) {
-          const filename = href.split("/").pop() ?? "";
-          const m = filename.match(/^([A-Z][A-Z0-9]{1,5}?)(?=20\d{2})/i);
-          cmteCode = m ? m[1].toUpperCase() : null;
-        }
-      });
+      $(td)
+        .find("a[href]")
+        .each((__, a) => {
+          const href = $(a).attr("href") ?? "";
+          if (!href.includes("tlodocs") && !href.includes("schedules")) return;
+          const fullHref = href.startsWith("http")
+            ? href
+            : `${TLO_BASE}${href.startsWith("/") ? "" : "/"}${href}`;
+          if (!noticeDocUrl) noticeDocUrl = fullHref;
+          // Extract committee code from filename: C5102026040110001.HTM → C510
+          if (!cmteCode) {
+            const filename = href.split("/").pop() ?? "";
+            const m = filename.match(/^([A-Z][A-Z0-9]{1,5}?)(?=20\d{2})/i);
+            cmteCode = m ? m[1].toUpperCase() : null;
+          }
+        });
     });
 
     // Build stable externalId
@@ -173,10 +195,17 @@ export function parseMeetingsUpcomingPage(html: string, chamberCode: "H" | "S"):
       ? `${startsAt.getFullYear()}${String(startsAt.getMonth() + 1).padStart(2, "0")}${String(startsAt.getDate()).padStart(2, "0")}`
       : currentDateStr.replace(/[^0-9]/g, "").slice(0, 8);
     const timeKey = currentTimeStr.replace(/[^0-9APM]/g, "");
-    const codeKey = cmteCode ?? committeeName.replace(/[^A-Z0-9]/gi, "").slice(0, 8).toUpperCase();
+    const codeKey =
+      cmteCode ??
+      committeeName
+        .replace(/[^A-Z0-9]/gi, "")
+        .slice(0, 8)
+        .toUpperCase();
     const externalId = `${chamberCode}${codeKey}-${dateKey}-${timeKey}`;
 
-    const sourceUrl = noticeDocUrl ?? `${TLO_BASE}/Committees/MeetingsUpcoming.aspx?chamber=${chamberCode}`;
+    const sourceUrl =
+      noticeDocUrl ??
+      `${TLO_BASE}/Committees/MeetingsUpcoming.aspx?chamber=${chamberCode}`;
 
     meetings.push({
       externalId,
@@ -235,7 +264,11 @@ interface ParsedHearingDetail {
   dateStr: string | null;
   location: string | null;
   noticeText: string;
-  agendaItems: { billNumber: string | null; itemText: string; sortOrder: number }[];
+  agendaItems: {
+    billNumber: string | null;
+    itemText: string;
+    sortOrder: number;
+  }[];
   meetingType: string | null;
   witnesses: ParsedWitness[];
 }
@@ -253,7 +286,9 @@ const WITNESS_BILL_RE = /\b([HS][BJR]{1,2}\s*\d+)\b/i;
  * Column order varies across chambers and sessions; the function detects
  * layout from header text and falls back to positional heuristics.
  */
-function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitness[] {
+function parseWitnessesFromHtml(
+  $: ReturnType<typeof cheerio.load>,
+): ParsedWitness[] {
   const results: ParsedWitness[] = [];
 
   // Strategy 1: find tables that contain position keyword cells
@@ -265,14 +300,20 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
     let hasPositionCell = false;
     rows.each((_, row) => {
       if (hasPositionCell) return;
-      $(row).find("td").each((_, td) => {
-        if (WITNESS_POSITION_RE.test($(td).text().trim())) hasPositionCell = true;
-      });
+      $(row)
+        .find("td")
+        .each((_, td) => {
+          if (WITNESS_POSITION_RE.test($(td).text().trim()))
+            hasPositionCell = true;
+        });
     });
     if (!hasPositionCell) return;
 
     // Detect column indices from header row (th or first tr with th)
-    let posCol = -1, nameCol = -1, orgCol = -1, billCol = -1;
+    let posCol = -1,
+      nameCol = -1,
+      orgCol = -1,
+      billCol = -1;
     const headerCells = $(rows[0]).find("th");
     if (headerCells.length > 0) {
       headerCells.each((idx, th) => {
@@ -290,11 +331,16 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
       const texts = cells.map((_, td) => $(td).text().trim()).get();
 
       // Find the position cell in this row
-      const posIdx = posCol >= 0 ? posCol : texts.findIndex(t => WITNESS_POSITION_RE.test(t));
+      const posIdx =
+        posCol >= 0
+          ? posCol
+          : texts.findIndex((t) => WITNESS_POSITION_RE.test(t));
       if (posIdx < 0 || posIdx >= texts.length) return;
 
       const rawPosition = texts[posIdx].toUpperCase();
-      const position = ["FOR", "AGAINST", "ON"].includes(rawPosition) ? rawPosition : null;
+      const position = ["FOR", "AGAINST", "ON"].includes(rawPosition)
+        ? rawPosition
+        : null;
 
       // Remaining cells (excluding position) carry name, org, bill
       const rest = texts.filter((_, i) => i !== posIdx);
@@ -317,8 +363,13 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
             billNumber = bm[1].replace(/\s+/g, "").toUpperCase();
             continue;
           }
-          if (!fullName && t.length >= 2) { fullName = t; continue; }
-          if (!organization && t.length >= 2) { organization = t; }
+          if (!fullName && t.length >= 2) {
+            fullName = t;
+            continue;
+          }
+          if (!organization && t.length >= 2) {
+            organization = t;
+          }
         }
       }
 
@@ -326,7 +377,12 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
 
       if (billNumber) billNumber = billNumber.replace(/\s+/g, "").toUpperCase();
 
-      results.push({ fullName, organization: organization || null, position, billNumber: billNumber || null });
+      results.push({
+        fullName,
+        organization: organization || null,
+        position,
+        billNumber: billNumber || null,
+      });
     });
   });
 
@@ -334,10 +390,15 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
 
   // Strategy 2: plain-text fallback — find a WITNESSES section and parse lines
   const fullText = $("body").text();
-  const sectionMatch = fullText.match(/WITNESS(?:ES)?(?:\s+LIST)?\s*[:\n]([\s\S]{1,4000})/i);
+  const sectionMatch = fullText.match(
+    /WITNESS(?:ES)?(?:\s+LIST)?\s*[:\n]([\s\S]{1,4000})/i,
+  );
   if (!sectionMatch) return results;
 
-  const lines = sectionMatch[1].split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+  const lines = sectionMatch[1]
+    .split(/[\n\r]+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   let currentPosition: string | null = null;
 
   for (const line of lines) {
@@ -359,7 +420,9 @@ function parseWitnessesFromHtml($: ReturnType<typeof cheerio.load>): ParsedWitne
       fullName,
       organization: organization || null,
       position: currentPosition,
-      billNumber: billMatch ? billMatch[1].replace(/\s+/g, "").toUpperCase() : null,
+      billNumber: billMatch
+        ? billMatch[1].replace(/\s+/g, "").toUpperCase()
+        : null,
     });
   }
 
@@ -385,13 +448,20 @@ function parseHearingNoticePage(html: string): ParsedHearingDetail {
   );
   if (dateMatch) dateStr = `${dateMatch[1]} ${dateMatch[2]}`;
 
-  const roomMatch = fullText.match(/(?:Room|Rm\.?|E\d\.\d{3}|Capitol\s+Extension)/i);
+  const roomMatch = fullText.match(
+    /(?:Room|Rm\.?|E\d\.\d{3}|Capitol\s+Extension)/i,
+  );
   if (roomMatch) {
     const idx = fullText.indexOf(roomMatch[0]);
-    location = fullText.slice(idx, idx + 60).split(/[,\n]/)[0].trim();
+    location = fullText
+      .slice(idx, idx + 60)
+      .split(/[,\n]/)[0]
+      .trim();
   }
 
-  const typeMatch = fullText.match(/(?:Public Hearing|Work Session|Formal Meeting|Mark-up)/i);
+  const typeMatch = fullText.match(
+    /(?:Public Hearing|Work Session|Formal Meeting|Mark-up)/i,
+  );
   if (typeMatch) meetingType = typeMatch[0];
 
   // Extract agenda items — look for bill numbers HB/SB/HJR/SJR etc.
@@ -451,7 +521,11 @@ export async function refreshChamberUpcomingHearings(
   const allCommittees = await withDbRetry(
     () =>
       db
-        .select({ id: committees.id, chamber: committees.chamber, sourceUrl: committees.sourceUrl })
+        .select({
+          id: committees.id,
+          chamber: committees.chamber,
+          sourceUrl: committees.sourceUrl,
+        })
         .from(committees),
     { label: `targetedRefresh.chamber.${chamber}.committees` },
   );
@@ -485,17 +559,29 @@ export async function refreshChamberUpcomingHearings(
   const cutoff = new Date(Date.now() + windowDays * 24 * 60 * 60 * 1000);
   const windowed = parsed.filter((m) => !m.startsAt || m.startsAt <= cutoff);
 
-  console.log(`${tag} Parsed ${parsed.length} meetings, ${windowed.length} within ${windowDays}d window`);
+  console.log(
+    `${tag} Parsed ${parsed.length} meetings, ${windowed.length} within ${windowDays}d window`,
+  );
 
   let newEvents = 0;
   let updatedEvents = 0;
 
   for (const meeting of windowed) {
-    const committeeId = meeting.cmteCode ? codeToId.get(meeting.cmteCode) : undefined;
-    const fp = fingerprint(JSON.stringify({ externalId: meeting.externalId, sourceUrl: meeting.sourceUrl }));
+    const committeeId = meeting.cmteCode
+      ? codeToId.get(meeting.cmteCode)
+      : undefined;
+    const fp = fingerprint(
+      JSON.stringify({
+        externalId: meeting.externalId,
+        sourceUrl: meeting.sourceUrl,
+      }),
+    );
 
     const existing = await db
-      .select({ id: legislativeEvents.id, fingerprint: legislativeEvents.fingerprint })
+      .select({
+        id: legislativeEvents.id,
+        fingerprint: legislativeEvents.fingerprint,
+      })
       .from(legislativeEvents)
       .where(eq(legislativeEvents.externalId, meeting.externalId))
       .limit(1);
@@ -520,12 +606,18 @@ export async function refreshChamberUpcomingHearings(
       if (inserted) {
         await db
           .insert(hearingDetails)
-          .values({ eventId: inserted.id, witnessCount: 0 } satisfies InsertHearingDetail)
+          .values({
+            eventId: inserted.id,
+            witnessCount: 0,
+          } satisfies InsertHearingDetail)
           .onConflictDoNothing();
         // Fire-and-forget: pull the TLO notice text + agenda items right away
         // so newly-discovered hearings don't sit empty until the next 5 AM run.
         refreshHearingDetail(inserted.id).catch((err) =>
-          console.warn(`${tag} background detail fetch failed for ${inserted.id}:`, err),
+          console.warn(
+            `${tag} background detail fetch failed for ${inserted.id}:`,
+            err,
+          ),
         );
       }
       newEvents++;
@@ -543,7 +635,10 @@ export async function refreshChamberUpcomingHearings(
           .where(eq(legislativeEvents.id, existing[0].id));
 
         const [ev] = await db
-          .select({ title: legislativeEvents.title, startsAt: legislativeEvents.startsAt })
+          .select({
+            title: legislativeEvents.title,
+            startsAt: legislativeEvents.startsAt,
+          })
           .from(legislativeEvents)
           .where(eq(legislativeEvents.id, existing[0].id))
           .limit(1);
@@ -567,9 +662,10 @@ export async function refreshChamberUpcomingHearings(
             title: alertTitle,
             body: alertBody,
           } satisfies InsertAlert);
-          sendPushToAll(alertTitle, alertBody, { alertType: "HEARING_UPDATED", entityId: existing[0].id }).catch(
-            (err) => console.error(`${tag} Push failed:`, err),
-          );
+          sendPushToAll(alertTitle, alertBody, {
+            alertType: "HEARING_UPDATED",
+            entityId: existing[0].id,
+          }).catch((err) => console.error(`${tag} Push failed:`, err));
         }
         updatedEvents++;
       } else {
@@ -602,7 +698,9 @@ export async function refreshCommitteeHearings(
     .limit(1);
 
   if (!committee) {
-    console.warn(`[targetedRefresh.hearings] Committee ${committeeId} not found`);
+    console.warn(
+      `[targetedRefresh.hearings] Committee ${committeeId} not found`,
+    );
     return { newEvents: 0, updatedEvents: 0 };
   }
 
@@ -632,7 +730,9 @@ export async function refreshHearingDetail(eventId: string): Promise<boolean> {
   // Determine the notice URL — prefer sourceUrl if it points to a notice page
   let noticeUrl = event.sourceUrl;
   if (!noticeUrl.includes("tlodocs") && !noticeUrl.includes("MtgNotice")) {
-    console.log(`${tag} No direct notice URL for event ${eventId}, skipping detail fetch`);
+    console.log(
+      `${tag} No direct notice URL for event ${eventId}, skipping detail fetch`,
+    );
     return false;
   }
 
@@ -699,7 +799,9 @@ export async function refreshHearingDetail(eventId: string): Promise<boolean> {
     .where(eq(legislativeEvents.id, eventId));
 
   // Replace agenda items
-  await db.delete(hearingAgendaItems).where(eq(hearingAgendaItems.eventId, eventId));
+  await db
+    .delete(hearingAgendaItems)
+    .where(eq(hearingAgendaItems.eventId, eventId));
 
   for (const item of parsed.agendaItems) {
     // Find or create bill record
@@ -798,7 +900,8 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
     if (cells.length < 2) return;
     const dateText = $(cells[0]).text().trim();
     const descText = $(cells[1]).text().trim();
-    if (!dateText || !descText || !dateText.match(/\d{1,2}\/\d{1,2}\/\d{4}/)) return;
+    if (!dateText || !descText || !dateText.match(/\d{1,2}\/\d{1,2}\/\d{4}/))
+      return;
 
     const [month, day, year] = dateText.split("/").map(Number);
     const actionAt = zonedWallTimeToUtc(year, month, day, 0, 0, TX_TIMEZONE);
@@ -832,7 +935,9 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
   if (inserted > 0) {
     const latestAction = rows[rows.length - 1];
     const alertTitle = `Bill Update: ${billNumber}`;
-    const alertBody = latestAction?.actionText?.slice(0, 120) ?? `${inserted} new action${inserted > 1 ? "s" : ""}`;
+    const alertBody =
+      latestAction?.actionText?.slice(0, 120) ??
+      `${inserted} new action${inserted > 1 ? "s" : ""}`;
     await db.insert(alerts).values({
       userId: "default",
       alertType: "BILL_ACTION",
@@ -841,9 +946,10 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
       title: alertTitle,
       body: alertBody,
     } satisfies InsertAlert);
-    sendPushToAll(alertTitle, alertBody, { alertType: "BILL_ACTION", entityId: billId }).catch(
-      (err) => console.error("[targetedRefresh] Push failed:", err),
-    );
+    sendPushToAll(alertTitle, alertBody, {
+      alertType: "BILL_ACTION",
+      entityId: billId,
+    }).catch((err) => console.error("[targetedRefresh] Push failed:", err));
   }
 
   console.log(`${tag} ${billNumber}: ${inserted} actions upserted`);

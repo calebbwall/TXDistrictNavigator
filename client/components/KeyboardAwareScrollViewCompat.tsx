@@ -14,7 +14,7 @@ type Props = KeyboardAwareScrollViewProps & ScrollViewProps;
 export const KeyboardAwareScrollViewCompat = forwardRef<ScrollView, Props>(
   function KeyboardAwareScrollViewCompat(
     { children, keyboardShouldPersistTaps = "handled", ...props },
-    ref
+    ref,
   ) {
     if (Platform.OS === "web") {
       return (
@@ -37,5 +37,5 @@ export const KeyboardAwareScrollViewCompat = forwardRef<ScrollView, Props>(
         {children}
       </KeyboardAwareScrollView>
     );
-  }
+  },
 );

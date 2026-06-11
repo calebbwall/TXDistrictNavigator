@@ -12,7 +12,11 @@ import { ThemedText } from "@/components/ThemedText";
 import { PartyBadge } from "@/components/PartyBadge";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
-import { type Official, getOfficeTypeLabel, type SourceType } from "@/lib/officials";
+import {
+  type Official,
+  getOfficeTypeLabel,
+  type SourceType,
+} from "@/lib/officials";
 import { getProxiedPhotoUrl } from "@/lib/photoProxy";
 
 interface OfficialCardProps {
@@ -29,7 +33,11 @@ const springConfig: WithSpringConfig = {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCardProps) {
+export function OfficialCard({
+  official,
+  onPress,
+  onDistrictPress,
+}: OfficialCardProps) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
   const isVacant = official.isVacant === true;
@@ -62,21 +70,36 @@ export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCar
       onPressOut={handlePressOut}
       style={[
         styles.container,
-        { 
-          backgroundColor: isVacant ? theme.backgroundDefault : theme.cardBackground, 
+        {
+          backgroundColor: isVacant
+            ? theme.backgroundDefault
+            : theme.cardBackground,
           borderColor: isVacant ? theme.warning : theme.border,
           borderStyle: isVacant ? "dashed" : "solid",
         },
         animatedStyle,
       ]}
     >
-      <View style={[styles.avatarContainer, isVacant && styles.vacantAvatarContainer]}>
+      <View
+        style={[
+          styles.avatarContainer,
+          isVacant && styles.vacantAvatarContainer,
+        ]}
+      >
         {isVacant ? (
-          <View style={[styles.vacantAvatar, { backgroundColor: theme.backgroundDefault }]}>
+          <View
+            style={[
+              styles.vacantAvatar,
+              { backgroundColor: theme.backgroundDefault },
+            ]}
+          >
             <Feather name="user-x" size={24} color={theme.secondaryText} />
           </View>
         ) : getProxiedPhotoUrl(official.photoUrl) ? (
-          <Image source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }} style={styles.avatar} />
+          <Image
+            source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }}
+            style={styles.avatar}
+          />
         ) : (
           <Image
             source={require("../../assets/images/default-avatar.png")}
@@ -86,10 +109,19 @@ export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCar
       </View>
       <View style={styles.info}>
         <View style={styles.nameRow}>
-          <ThemedText type="body" style={{ fontWeight: "600", fontStyle: isVacant ? "italic" : "normal", flex: 1 }}>
+          <ThemedText
+            type="body"
+            style={{
+              fontWeight: "600",
+              fontStyle: isVacant ? "italic" : "normal",
+              flex: 1,
+            }}
+          >
             {official.fullName || "Unknown"}
           </ThemedText>
-          {!isVacant && official.party ? <PartyBadge party={official.party} size="small" /> : null}
+          {!isVacant && official.party ? (
+            <PartyBadge party={official.party} size="small" />
+          ) : null}
         </View>
         {onDistrictPress && official.districtNumber ? (
           <Pressable onPress={handleDistrictPress} hitSlop={8}>
@@ -97,7 +129,12 @@ export function OfficialCard({ official, onPress, onDistrictPress }: OfficialCar
               <ThemedText type="caption" style={{ color: theme.primary }}>
                 {districtLabel}
               </ThemedText>
-              <Feather name="map-pin" size={12} color={theme.primary} style={{ marginLeft: 4 }} />
+              <Feather
+                name="map-pin"
+                size={12}
+                color={theme.primary}
+                style={{ marginLeft: 4 }}
+              />
             </View>
           </Pressable>
         ) : (

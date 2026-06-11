@@ -33,7 +33,9 @@ export async function seedLegislativeFeeds(): Promise<{
     .from(committees);
 
   if (allCommittees.length === 0) {
-    console.log(`${tag} No committees in DB yet — seed will run again after first committee refresh`);
+    console.log(
+      `${tag} No committees in DB yet — seed will run again after first committee refresh`,
+    );
     return { inserted: 0, skipped: 0 };
   }
 
@@ -41,12 +43,20 @@ export async function seedLegislativeFeeds(): Promise<{
   // chamber field. Older rows seeded before the chamber-dedupe code may have
   // only { committeeId, cmteCode }; without chamber, pollRssFeeds falls back
   // to per-committee refreshes (re-introducing the 71× amplification storm).
-  const committeeIdToChamber = new Map(allCommittees.map((c) => [c.id, c.chamber]));
+  const committeeIdToChamber = new Map(
+    allCommittees.map((c) => [c.id, c.chamber]),
+  );
   try {
-    const allFeeds = await db.select({ id: rssFeeds.id, scopeJson: rssFeeds.scopeJson }).from(rssFeeds);
+    const allFeeds = await db
+      .select({ id: rssFeeds.id, scopeJson: rssFeeds.scopeJson })
+      .from(rssFeeds);
     let backfilled = 0;
     for (const feed of allFeeds) {
-      const scope = feed.scopeJson as { committeeId?: string; chamber?: string; cmteCode?: string } | null;
+      const scope = feed.scopeJson as {
+        committeeId?: string;
+        chamber?: string;
+        cmteCode?: string;
+      } | null;
       if (scope?.committeeId && !scope.chamber) {
         const chamber = committeeIdToChamber.get(scope.committeeId);
         if (chamber) {
@@ -58,15 +68,14 @@ export async function seedLegislativeFeeds(): Promise<{
         }
       }
     }
-    if (backfilled > 0) console.log(`${tag} Backfilled chamber on ${backfilled} feed(s)`);
+    if (backfilled > 0)
+      console.log(`${tag} Backfilled chamber on ${backfilled} feed(s)`);
   } catch (err) {
     console.error(`${tag} chamber backfill failed (non-fatal):`, err);
   }
 
   // Get existing feed URLs to avoid re-querying DB per committee
-  const existingFeeds = await db
-    .select({ url: rssFeeds.url })
-    .from(rssFeeds);
+  const existingFeeds = await db.select({ url: rssFeeds.url }).from(rssFeeds);
   const existingUrls = new Set(existingFeeds.map((f) => f.url));
 
   let inserted = 0;
@@ -74,7 +83,9 @@ export async function seedLegislativeFeeds(): Promise<{
 
   for (const committee of allCommittees) {
     // Derive committee code from sourceUrl
-    const codeMatch = (committee.sourceUrl ?? "").match(/CmteCode=([A-Z0-9]+)/i);
+    const codeMatch = (committee.sourceUrl ?? "").match(
+      /CmteCode=([A-Z0-9]+)/i,
+    );
     if (!codeMatch) {
       skipped++;
       continue;
@@ -91,7 +102,11 @@ export async function seedLegislativeFeeds(): Promise<{
       await db.insert(rssFeeds).values({
         feedType: "HTML_PAGE",
         url,
-        scopeJson: { committeeId: committee.id, cmteCode, chamber: committee.chamber },
+        scopeJson: {
+          committeeId: committee.id,
+          cmteCode,
+          chamber: committee.chamber,
+        },
         enabled: true,
       } satisfies InsertRssFeed);
       inserted++;

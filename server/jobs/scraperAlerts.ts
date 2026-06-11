@@ -75,9 +75,14 @@ export async function recordScraperAlert(opts: RecordOpts): Promise<void> {
       lastSeenAt: now,
       occurrenceCount: 1,
     });
-    console.error(`[ScraperAlert] NEW ${severity} ${source}/${kind}: ${message}`);
+    console.error(
+      `[ScraperAlert] NEW ${severity} ${source}/${kind}: ${message}`,
+    );
   } catch (err) {
-    console.error(`[ScraperAlert] Failed to record alert ${source}/${kind}:`, err);
+    console.error(
+      `[ScraperAlert] Failed to record alert ${source}/${kind}:`,
+      err,
+    );
   }
 }
 
