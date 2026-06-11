@@ -786,77 +786,87 @@ export async function refreshHearingDetail(eventId: string): Promise<boolean> {
       ? currentTitle
       : parsed.title;
 
-  // Prefer the already-stored location (from meetings page, cleaner) over the
-  // notice page location which can include chair/boilerplate context.
-  await db
-    .update(legislativeEvents)
-    .set({
-      title: titleToStore,
-      location: event.location ?? parsed.location ?? undefined,
-      fingerprint: fp,
-      updatedAt: new Date(),
-    })
-    .where(eq(legislativeEvents.id, eventId));
-
-  // Replace agenda items
-  await db
-    .delete(hearingAgendaItems)
-    .where(eq(hearingAgendaItems.eventId, eventId));
-
+  // Resolve bill ids up front (find-or-create is idempotent) so the
+  // destructive replace below can run as a single transaction.
+  const agendaRows: InsertHearingAgendaItem[] = [];
   for (const item of parsed.agendaItems) {
-    // Find or create bill record
-    let billId: string | null = null;
-    if (item.billNumber) {
-      billId = await findOrCreateBill(item.billNumber);
-    }
-
-    await db.insert(hearingAgendaItems).values({
+    const billId = item.billNumber
+      ? await findOrCreateBill(item.billNumber)
+      : null;
+    agendaRows.push({
       eventId,
       billId: billId ?? undefined,
       billNumber: item.billNumber ?? undefined,
       itemText: item.itemText,
       sortOrder: item.sortOrder,
-    } satisfies InsertHearingAgendaItem);
+    });
   }
 
-  // Replace witnesses and update witness count
-  await db.delete(witnesses).where(eq(witnesses.eventId, eventId));
-
-  let insertedWitnessCount = 0;
+  const witnessRows: InsertWitness[] = [];
   for (const [idx, w] of parsed.witnesses.entries()) {
-    let billId: string | null = null;
-    if (w.billNumber) {
-      billId = await findOrCreateBill(w.billNumber);
-    }
-    await db.insert(witnesses).values({
+    const billId = w.billNumber ? await findOrCreateBill(w.billNumber) : null;
+    witnessRows.push({
       eventId,
       fullName: w.fullName,
       organization: w.organization ?? undefined,
       position: w.position ?? undefined,
       billId: billId ?? undefined,
       sortOrder: idx,
-    } satisfies InsertWitness);
-    insertedWitnessCount++;
+    });
   }
+  const insertedWitnessCount = witnessRows.length;
 
-  // Upsert hearing_details with accurate witnessCount
-  await db
-    .insert(hearingDetails)
-    .values({
-      eventId,
-      noticeText: parsed.noticeText,
-      meetingType: parsed.meetingType ?? undefined,
-      witnessCount: insertedWitnessCount,
-    } satisfies InsertHearingDetail)
-    .onConflictDoUpdate({
-      target: hearingDetails.eventId,
-      set: {
+  // All writes happen atomically. Previously the fingerprint was committed
+  // first and agenda/witnesses were delete-then-inserted without a
+  // transaction; a failure mid-way left the event marked fresh (fingerprint
+  // matches) with its agenda items and witnesses already deleted — and the
+  // unchanged-fingerprint guard above would then skip repairing it.
+  await db.transaction(async (tx) => {
+    // Prefer the already-stored location (from meetings page, cleaner) over
+    // the notice page location which can include chair/boilerplate context.
+    await tx
+      .update(legislativeEvents)
+      .set({
+        title: titleToStore,
+        location: event.location ?? parsed.location ?? undefined,
+        fingerprint: fp,
+        updatedAt: new Date(),
+      })
+      .where(eq(legislativeEvents.id, eventId));
+
+    // Replace agenda items
+    await tx
+      .delete(hearingAgendaItems)
+      .where(eq(hearingAgendaItems.eventId, eventId));
+    if (agendaRows.length > 0) {
+      await tx.insert(hearingAgendaItems).values(agendaRows);
+    }
+
+    // Replace witnesses and update witness count
+    await tx.delete(witnesses).where(eq(witnesses.eventId, eventId));
+    if (witnessRows.length > 0) {
+      await tx.insert(witnesses).values(witnessRows);
+    }
+
+    // Upsert hearing_details with accurate witnessCount
+    await tx
+      .insert(hearingDetails)
+      .values({
+        eventId,
         noticeText: parsed.noticeText,
         meetingType: parsed.meetingType ?? undefined,
         witnessCount: insertedWitnessCount,
-        updatedDate: new Date(),
-      },
-    });
+      } satisfies InsertHearingDetail)
+      .onConflictDoUpdate({
+        target: hearingDetails.eventId,
+        set: {
+          noticeText: parsed.noticeText,
+          meetingType: parsed.meetingType ?? undefined,
+          witnessCount: insertedWitnessCount,
+          updatedDate: new Date(),
+        },
+      });
+  });
 
   console.log(
     `${tag} Event ${eventId} updated: ${parsed.agendaItems.length} agenda items, ${insertedWitnessCount} witnesses`,
@@ -978,7 +988,17 @@ async function findOrCreateBill(billNumber: string): Promise<string | null> {
     .onConflictDoNothing()
     .returning({ id: bills.id });
 
-  return inserted?.id ?? null;
+  if (inserted?.id) return inserted.id;
+
+  // Lost a concurrent-insert race: onConflictDoNothing returned no row but the
+  // bill now exists. Re-select so callers still get the id instead of silently
+  // dropping the bill linkage.
+  const [winner] = await db
+    .select({ id: bills.id })
+    .from(bills)
+    .where(and(eq(bills.billNumber, clean), eq(bills.legSession, LEG_SESSION)))
+    .limit(1);
+  return winner?.id ?? null;
 }
 
 function parsedActionType(text: string): string {

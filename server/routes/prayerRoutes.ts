@@ -26,6 +26,7 @@ import {
 } from "drizzle-orm";
 import { processEventDateActions } from "../lib/prayerUtils";
 import { requireUser } from "../middleware/userAuth";
+import { zonedWallTimeToUtc } from "../lib/timezone";
 
 export { processEventDateActions };
 
@@ -199,9 +200,25 @@ export function registerPrayerRoutes(app: Express) {
         const userId = req.userId!;
         const { id } = req.params;
         const updates: any = { updatedAt: new Date() };
-        if (req.body.name !== undefined) updates.name = req.body.name.trim();
-        if (req.body.sortOrder !== undefined)
+        if (req.body.name !== undefined) {
+          if (
+            typeof req.body.name !== "string" ||
+            req.body.name.trim().length === 0
+          ) {
+            return res
+              .status(400)
+              .json({ error: "Category name must be a non-empty string" });
+          }
+          updates.name = req.body.name.trim();
+        }
+        if (req.body.sortOrder !== undefined) {
+          if (typeof req.body.sortOrder !== "number") {
+            return res
+              .status(400)
+              .json({ error: "sortOrder must be a number" });
+          }
           updates.sortOrder = req.body.sortOrder;
+        }
         const [cat] = await db
           .update(prayerCategories)
           .set(updates)
@@ -328,6 +345,7 @@ export function registerPrayerRoutes(app: Express) {
         body,
         categoryId,
         officialIds,
+        customPeopleNames,
         pinnedDaily,
         priority,
         eventDate,
@@ -342,6 +360,7 @@ export function registerPrayerRoutes(app: Express) {
           body,
           categoryId: categoryId ?? null,
           officialIds: officialIds ?? [],
+          customPeopleNames: customPeopleNames ?? [],
           pinnedDaily: pinnedDaily ?? false,
           priority: priority ?? 0,
           eventDate: eventDate ? new Date(eventDate) : null,
@@ -1088,8 +1107,19 @@ export function registerPrayerRoutes(app: Express) {
           if (todayPicks.length > 0) {
             const pickIds = todayPicks[0].prayerIds as string[];
             if (pickIds.length > 0) {
-              const todayStart = new Date();
-              todayStart.setHours(0, 0, 0, 0);
+              // Midnight in America/Chicago, not server-local midnight — on a
+              // UTC server the local midnight is 6-7 PM Chicago the previous
+              // day, which would skip lastPrayedAt updates for prayers prayed
+              // the previous Chicago evening.
+              const [ty, tm, td] = todayKey.split("-").map(Number);
+              const todayStart = zonedWallTimeToUtc(
+                ty,
+                tm,
+                td,
+                0,
+                0,
+                "America/Chicago",
+              );
               await db
                 .update(prayers)
                 .set({ lastPrayedAt: new Date(), updatedAt: new Date() })

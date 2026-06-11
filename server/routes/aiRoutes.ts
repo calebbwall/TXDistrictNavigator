@@ -43,14 +43,22 @@ export function registerAiRoutes(app: Express) {
     aiRateLimit,
     async (req: Request, res: Response) => {
       const { query } = req.body ?? {};
-      if (!query?.trim()) {
+      // typeof check matters: a non-string (number/array/object) would throw on
+      // .trim() before the try block, leaving the request hanging with no
+      // response (Express 4 does not catch async handler errors).
+      if (typeof query !== "string" || !query.trim()) {
         return res.status(400).json({ error: "query is required" });
+      }
+      if (query.length > 1000) {
+        return res
+          .status(400)
+          .json({ error: "query too long (max 1000 characters)" });
       }
       if (!process.env.GROQ_API_KEY) {
         return res.status(503).json({ error: "AI search is not configured" });
       }
       try {
-        const filters = await parseNaturalLanguageSearch(query as string);
+        const filters = await parseNaturalLanguageSearch(query);
         res.json(filters);
       } catch (err) {
         console.error("[/api/ai/parse-search] error:", err);
@@ -70,10 +78,28 @@ export function registerAiRoutes(app: Express) {
     aiRateLimit,
     async (req: Request, res: Response) => {
       const context = req.body as BillSummaryContext;
-      if (!context?.billNumber || !context?.session) {
+      if (
+        typeof context?.billNumber !== "string" ||
+        !context.billNumber.trim() ||
+        typeof context?.session !== "string" ||
+        !context.session.trim()
+      ) {
         return res
           .status(400)
           .json({ error: "billNumber and session are required" });
+      }
+      // Sanitize untyped optional fields so a malformed body can't throw
+      // outside the try block (which would hang the request) or inflate the
+      // prompt sent to the model.
+      if (context.actionHistory !== undefined) {
+        if (!Array.isArray(context.actionHistory)) {
+          return res
+            .status(400)
+            .json({ error: "actionHistory must be an array of strings" });
+        }
+        context.actionHistory = context.actionHistory
+          .filter((a): a is string => typeof a === "string")
+          .slice(0, 20);
       }
       if (!process.env.GROQ_API_KEY) {
         return res
@@ -107,15 +133,22 @@ export function registerAiRoutes(app: Express) {
     aiRateLimit,
     async (req: Request, res: Response) => {
       const { question } = req.body ?? {};
-      if (!question?.trim()) {
+      // typeof check matters: a non-string would throw on .trim() before the
+      // try block, leaving the request hanging with no response.
+      if (typeof question !== "string" || !question.trim()) {
         return res.status(400).json({ error: "question is required" });
+      }
+      if (question.length > 2000) {
+        return res
+          .status(400)
+          .json({ error: "question too long (max 2000 characters)" });
       }
       if (!process.env.GROQ_API_KEY) {
         return res.status(503).json({ error: "AI is not configured" });
       }
 
       try {
-        const classification = await classifyIntent(question as string);
+        const classification = await classifyIntent(question);
         const { intent, entities } = classification;
         let dataContext = "";
 
@@ -665,7 +698,7 @@ ${nextHearings.length > 0 ? `\nNext ${nextHearings.length} upcoming hearings:\n$
         }
 
         const answer = await answerQuestion(
-          question as string,
+          question,
           dataContext,
           webContext || undefined,
         );
