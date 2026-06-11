@@ -245,8 +245,19 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
-  app.get("/api/admin/officials-counts", async (_req, res) => {
+  app.get("/api/admin/officials-counts", async (req, res) => {
     try {
+      const adminToken = process.env.ADMIN_REFRESH_TOKEN;
+      const providedToken = req.headers["x-admin-token"];
+
+      if (!adminToken) {
+        return res.status(503).json({ error: "Admin not configured" });
+      }
+
+      if (!providedToken || providedToken !== adminToken) {
+        return res.status(401).json({ error: "Invalid or missing admin token" });
+      }
+
       const counts = await db
         .select({ source: officialPublic.source, count: sql<number>`count(*)::int` })
         .from(officialPublic)
@@ -649,15 +660,4 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
-  // Full legislative bootstrap: committees → RSS feeds → events
-  app.post("/api/admin/bootstrap-legislative", async (_req, res) => {
-    try {
-      const { triggerFullLegislativeBootstrap } = await import("../jobs/scheduler");
-      const result = await triggerFullLegislativeBootstrap();
-      res.json(result);
-    } catch (err) {
-      console.error("[Admin] Bootstrap legislative error:", err);
-      res.status(500).json({ error: "Bootstrap failed" });
-    }
-  });
 }

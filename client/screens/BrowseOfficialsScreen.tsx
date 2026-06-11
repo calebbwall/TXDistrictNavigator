@@ -88,7 +88,7 @@ export default function BrowseOfficialsScreen() {
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NavigationProp>();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const { isOffline } = useNetwork();
 
   const [selectedSource, setSelectedSource] = useState<SourceType>("TX_HOUSE");
@@ -439,7 +439,7 @@ export default function BrowseOfficialsScreen() {
       <View style={styles.emptyContainer}>
         <Image
           source={require("../../assets/images/empty-search.png")}
-          style={styles.emptyImage}
+          style={[styles.emptyImage, isDark ? { opacity: 0.35 } : null]}
           resizeMode="contain"
         />
         <ThemedText
@@ -450,7 +450,7 @@ export default function BrowseOfficialsScreen() {
         </ThemedText>
       </View>
     );
-  }, [isLoading, theme, debouncedSearch]);
+  }, [isLoading, theme, isDark, debouncedSearch]);
 
   const ListHeaderComponent = useMemo(() => (
     <View style={[styles.listHeader, { backgroundColor: theme.backgroundRoot }]}>

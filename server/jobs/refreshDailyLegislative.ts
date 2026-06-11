@@ -175,15 +175,22 @@ function sleep(ms: number): Promise<void> {
  */
 export function msUntilNext5amChicago(): number {
   const now = new Date();
-  // Get current time in Chicago as a string, parse hour/minute
-  const chicagoStr = now.toLocaleString("en-US", {
+  // Read Chicago wall-clock h/m/s via formatToParts rather than splitting a
+  // formatted string on ":". The string form is locale/runtime-dependent
+  // (e.g. en-US with hour12:false can emit "24" at midnight, and the separator
+  // is not guaranteed), which previously could yield NaN and silently break
+  // the 5 AM schedule.
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     hour12: false,
-  });
-  const [h, m, s] = chicagoStr.split(":").map(Number);
+  }).formatToParts(now);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  const h = get("hour") % 24; // normalize the "24" midnight quirk to 0
+  const m = get("minute");
+  const s = get("second");
   const secondsIntoDay = h * 3600 + m * 60 + (s || 0);
   const target5am = 5 * 3600; // 05:00:00
 

@@ -3311,7 +3311,7 @@ export default function MapScreen() {
       )}
 
       {!dataLoaded ? (
-        <View style={styles.loadingOverlay}>
+        <View style={[styles.loadingOverlay, { backgroundColor: theme.backgroundRoot }]}>
           <ActivityIndicator size="large" color={theme.primary} />
           <ThemedText type="small" style={{ color: theme.secondaryText, marginTop: Spacing.sm }}>
             Loading map data...
@@ -3668,7 +3668,6 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.8)",
     alignItems: "center",
     justifyContent: "center",
   },

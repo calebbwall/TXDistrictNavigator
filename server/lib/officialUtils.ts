@@ -17,8 +17,12 @@ export function sourceFromDistrictType(dt: DistrictType): DistrictSourceType {
   }
 }
 
-export function mergeOfficial(pub: OfficialPublic, _priv: OfficialPrivate | null): MergedOfficial {
+export function mergeOfficial(pub: OfficialPublic, priv: OfficialPrivate | null): MergedOfficial {
   const merged: MergedOfficial = { ...pub };
+  if (priv) {
+    const { id: _id, officialPublicId: _oid, personId: _pid, ...privData } = priv;
+    merged.private = privData;
+  }
   return merged;
 }
 

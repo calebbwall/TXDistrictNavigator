@@ -32,7 +32,15 @@ function getSecret(): string {
   const fromEnv = process.env.USER_TOKEN_SECRET;
   if (fromEnv && fromEnv.length >= 16) {
     cachedSecret = fromEnv;
-    return cachedSecret;
+    return fromEnv;
+  }
+  // Fail closed in production: a secret derived from DATABASE_URL is forgeable
+  // by anyone who learns the connection string, so never allow it for a
+  // production deploy. Dev/test may still derive a stable fallback.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "[userAuth] USER_TOKEN_SECRET must be set in production. Refusing to start with a derived fallback secret."
+    );
   }
   const dbUrl = process.env.DATABASE_URL ?? "";
   if (!dbUrl) {

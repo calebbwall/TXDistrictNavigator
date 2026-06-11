@@ -20,7 +20,7 @@ export function useNetwork(): NetworkState {
       const isInternetReachable = netState.isInternetReachable;
       const isOffline =
         isConnected === false || isInternetReachable === false ? true
-        : isConnected === true && isInternetReachable !== false ? false
+        : isConnected === true ? false
         : null;
       setState({ isConnected, isInternetReachable, isOffline });
     };

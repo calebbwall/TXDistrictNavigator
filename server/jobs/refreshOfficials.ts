@@ -1046,13 +1046,13 @@ function validateRefreshSanity(
     console.log(`[RefreshOfficials] ${result.source}: Allowing population growth from ${lastCount} to ${result.upsertedCount} (initial population)`);
   }
   
-  const expectedMins: Record<SourceType, number> = {
+  const expectedMins: Partial<Record<SourceType, number>> = {
     TX_HOUSE: 140,
     TX_SENATE: 25,
     US_HOUSE: 30,
   };
-  
-  const expectedMin = expectedMins[result.source];
+
+  const expectedMin = expectedMins[result.source] ?? 0;
   if (result.upsertedCount < expectedMin) {
     console.warn(`[RefreshOfficials] WARNING: ${result.source} has only ${result.upsertedCount} members, expected at least ${expectedMin}`);
   }

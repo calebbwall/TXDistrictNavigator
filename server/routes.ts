@@ -11,7 +11,7 @@ import { initUserAuth } from "./middleware/userAuth";
 import { officialPublic, type MergedOfficial } from "@shared/schema";
 import { committees, committeeMemberships } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
-import { mergeOfficial } from "./lib/officialUtils";
+import { mergeOfficial, type DistrictSourceType } from "./lib/officialUtils";
 import { maybeRunScheduledRefresh } from "./jobs/refreshOfficials";
 import { startOfficialsRefreshScheduler } from "./jobs/scheduler";
 import { maybeRunCommitteeRefresh } from "./jobs/refreshCommittees";

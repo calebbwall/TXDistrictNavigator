@@ -34,8 +34,13 @@ export function registerAiRoutes(app: Express) {
     if (!process.env.GROQ_API_KEY) {
       return res.status(503).json({ error: "AI search is not configured" });
     }
-    const filters = await parseNaturalLanguageSearch(query as string);
-    res.json(filters);
+    try {
+      const filters = await parseNaturalLanguageSearch(query as string);
+      res.json(filters);
+    } catch (err) {
+      console.error("[/api/ai/parse-search] error:", err);
+      res.status(500).json({ error: "Failed to parse search. Please try again." });
+    }
   });
 
   // POST /api/ai/summarize-bill
@@ -55,8 +60,13 @@ export function registerAiRoutes(app: Express) {
         /signed|enrolled|effective|chaptered/i.test(a)
       );
     }
-    const summary = await summarizeBill(context);
-    res.json({ summary });
+    try {
+      const summary = await summarizeBill(context);
+      res.json({ summary });
+    } catch (err) {
+      console.error("[/api/ai/summarize-bill] error:", err);
+      res.status(500).json({ error: "Failed to summarize bill. Please try again." });
+    }
   });
 
   // POST /api/ai/ask

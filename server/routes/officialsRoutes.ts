@@ -245,7 +245,47 @@ export function registerOfficialsRoutes(app: Express): void {
     }
   });
 
-  // IMPORTANT: This route must come BEFORE /api/officials/:id to avoid matching "with-addresses" as an ID
+  // IMPORTANT: These routes must come BEFORE /api/officials/:id to avoid matching their literal path
+  // segments as an ID. Keep all specific GET paths above the /:id catch-all.
+  app.get("/api/officials/by-district", async (req, res) => {
+    try {
+      const { district_type, district_number } = req.query;
+
+      if (!district_type || !district_number) {
+        return res.status(400).json({ error: "district_type and district_number are required" });
+      }
+
+      const validTypes: DistrictType[] = ["tx_house", "tx_senate", "us_congress"];
+      if (!validTypes.includes(district_type as DistrictType)) {
+        return res.status(400).json({ error: "Invalid district_type" });
+      }
+
+      const distNum = String(district_number);
+      const source = sourceFromDistrictType(district_type as DistrictType);
+
+      const [pub] = await db
+        .select()
+        .from(officialPublic)
+        .where(
+          and(
+            eq(officialPublic.source, source),
+            eq(officialPublic.district, distNum),
+            eq(officialPublic.active, true)
+          )
+        )
+        .limit(1);
+
+      if (!pub) {
+        return res.status(404).json({ error: "Official not found" });
+      }
+
+      res.json({ official: mergeOfficial(pub, null) });
+    } catch (err) {
+      console.error("[API] Error fetching official by district:", err);
+      res.status(500).json({ error: "Failed to fetch official" });
+    }
+  });
+
   app.get("/api/officials/with-addresses", async (req, res) => {
     if (!requireAdminToken(req, res)) return;
     try {
@@ -336,51 +376,16 @@ export function registerOfficialsRoutes(app: Express): void {
     }
   });
 
-  app.get("/api/officials/by-district", async (req, res) => {
-    try {
-      const { district_type, district_number } = req.query;
-
-      if (!district_type || !district_number) {
-        return res.status(400).json({ error: "district_type and district_number are required" });
-      }
-
-      const validTypes: DistrictType[] = ["tx_house", "tx_senate", "us_congress"];
-      if (!validTypes.includes(district_type as DistrictType)) {
-        return res.status(400).json({ error: "Invalid district_type" });
-      }
-
-      const distNum = String(district_number);
-      const source = sourceFromDistrictType(district_type as DistrictType);
-
-      const [pub] = await db
-        .select()
-        .from(officialPublic)
-        .where(
-          and(
-            eq(officialPublic.source, source),
-            eq(officialPublic.district, distNum),
-            eq(officialPublic.active, true)
-          )
-        )
-        .limit(1);
-
-      if (!pub) {
-        return res.status(404).json({ error: "Official not found" });
-      }
-
-      res.json({ official: mergeOfficial(pub, null) });
-    } catch (err) {
-      console.error("[API] Error fetching official by district:", err);
-      res.status(500).json({ error: "Failed to fetch official" });
-    }
-  });
-
   app.post("/api/officials/by-districts", async (req, res) => {
     try {
       const { districts } = req.body;
 
       if (!Array.isArray(districts) || districts.length === 0) {
         return res.status(400).json({ error: "districts array is required" });
+      }
+
+      if (districts.length > 500) {
+        return res.status(400).json({ error: "Too many districts requested (max 500)" });
       }
 
       const results: MergedOfficial[] = [];
@@ -488,7 +493,13 @@ export function registerOfficialsRoutes(app: Express): void {
         });
       }
 
-      res.json({ official: mergeOfficial(pub, null) });
+      const [savedPriv] = await db
+        .select()
+        .from(officialPrivate)
+        .where(and(eq(officialPrivate.officialPublicId, id), eq(officialPrivate.userId, userId)))
+        .limit(1);
+
+      res.json({ official: mergeOfficial(pub, savedPriv ?? null) });
     } catch (err) {
       console.error("[API] Error updating private data:", err);
       res.status(500).json({ error: "Failed to update private data" });
