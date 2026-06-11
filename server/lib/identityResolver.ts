@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { persons, officialPublic, personLinks } from "../../shared/schema";
-import { eq, and, isNull, isNotNull, sql } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql } from "drizzle-orm";
 import { createHash } from "crypto";
 
 /**
@@ -377,36 +377,97 @@ export async function resolveAllMissingPersonIds(): Promise<{
     `[Identity] Found ${officialsWithoutPerson.length} officials without personId`,
   );
 
-  let resolved = 0;
+  // Batched resolution: the previous loop called resolvePersonId + an UPDATE
+  // per official (~4 queries each), so a refresh with N unlinked officials
+  // cost ~4N round-trips. This path costs a constant ~5 queries.
 
-  // Count persons before/after instead of re-querying per official: the old
-  // per-iteration "is new" check selected the person that resolvePersonId had
-  // just returned, which always exists — so `created` always equaled
-  // `resolved` (and cost one extra query per official).
-  const countPersons = async () => {
-    const [row] = await db
-      .select({ cnt: sql<number>`count(*)::int` })
-      .from(persons);
-    return row?.cnt ?? 0;
-  };
-  const personsBefore = await countPersons();
+  // 1. Explicit admin links take precedence over name matching.
+  const officialIds = officialsWithoutPerson.map((o) => o.id);
+  const links = await db
+    .select({
+      officialPublicId: personLinks.officialPublicId,
+      personId: personLinks.personId,
+    })
+    .from(personLinks)
+    .where(inArray(personLinks.officialPublicId, officialIds));
+  const linkByOfficial = new Map(
+    links.map((l) => [l.officialPublicId, l.personId]),
+  );
 
-  for (const official of officialsWithoutPerson) {
-    const personId = await resolvePersonId(
-      official.fullName,
-      official.fullName,
-      official.id,
-    );
-
-    await db
-      .update(officialPublic)
-      .set({ personId })
-      .where(eq(officialPublic.id, official.id));
-
-    resolved++;
+  // 2. Name-based matching against existing persons (single lookup).
+  const canonicalByOfficial = new Map(
+    officialsWithoutPerson.map((o) => [o.id, normalizeName(o.fullName)]),
+  );
+  const wantedCanonicals = [
+    ...new Set(
+      officialsWithoutPerson
+        .filter((o) => !linkByOfficial.has(o.id))
+        .map((o) => canonicalByOfficial.get(o.id)!),
+    ),
+  ];
+  const personByCanonical = new Map<string, string>();
+  if (wantedCanonicals.length > 0) {
+    const existingPersons = await db
+      .select({ id: persons.id, fullNameCanonical: persons.fullNameCanonical })
+      .from(persons)
+      .where(inArray(persons.fullNameCanonical, wantedCanonicals));
+    for (const p of existingPersons) {
+      personByCanonical.set(p.fullNameCanonical, p.id);
+    }
   }
 
-  const created = Math.max(0, (await countPersons()) - personsBefore);
+  // 3. Batch-create persons that don't exist yet.
+  const toCreate: Array<{ fullNameCanonical: string; fullNameDisplay: string }> =
+    [];
+  const seenCanonical = new Set<string>();
+  for (const official of officialsWithoutPerson) {
+    if (linkByOfficial.has(official.id)) continue;
+    const canonical = canonicalByOfficial.get(official.id)!;
+    if (personByCanonical.has(canonical) || seenCanonical.has(canonical))
+      continue;
+    seenCanonical.add(canonical);
+    toCreate.push({
+      fullNameCanonical: canonical,
+      fullNameDisplay: official.fullName,
+    });
+  }
+  let created = 0;
+  if (toCreate.length > 0) {
+    const inserted = await db.insert(persons).values(toCreate).returning({
+      id: persons.id,
+      fullNameCanonical: persons.fullNameCanonical,
+    });
+    created = inserted.length;
+    for (const p of inserted) {
+      personByCanonical.set(p.fullNameCanonical, p.id);
+    }
+  }
+
+  // 4. Single bulk UPDATE linking every official to its resolved person.
+  const pairs = officialsWithoutPerson
+    .map((o) => ({
+      officialId: o.id,
+      personId:
+        linkByOfficial.get(o.id) ??
+        personByCanonical.get(canonicalByOfficial.get(o.id)!) ??
+        null,
+    }))
+    .filter((p): p is { officialId: string; personId: string } =>
+      Boolean(p.personId),
+    );
+  if (pairs.length > 0) {
+    const valuesSql = sql.join(
+      pairs.map((p) => sql`(${p.officialId}, ${p.personId})`),
+      sql`, `,
+    );
+    await db.execute(sql`
+      UPDATE official_public AS op
+      SET person_id = v.person_id
+      FROM (VALUES ${valuesSql}) AS v(id, person_id)
+      WHERE op.id = v.id
+    `);
+  }
+  const resolved = pairs.length;
 
   console.log(
     `[Identity] Resolved ${resolved} personIds, created ${created} new person records`,

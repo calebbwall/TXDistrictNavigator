@@ -967,8 +967,13 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
 }
 
 // ---------- helpers ----------
-async function findOrCreateBill(billNumber: string): Promise<string | null> {
-  const clean = billNumber.trim().toUpperCase();
+// Exported for integration tests (concurrent-insert race coverage).
+export async function findOrCreateBill(
+  billNumber: string,
+): Promise<string | null> {
+  // Strip ALL whitespace, not just the ends: "HB 9901" and "HB9901" refer to
+  // the same bill and must hit the same (billNumber, legSession) unique key.
+  const clean = billNumber.replace(/\s+/g, "").toUpperCase();
 
   const existing = await db
     .select({ id: bills.id })
