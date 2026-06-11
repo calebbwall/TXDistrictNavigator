@@ -10,7 +10,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { LegislativeStackParamList } from "@/navigation/LegislativeStackNavigator";
@@ -20,6 +19,7 @@ import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
 import { apiRequest } from "@/lib/query-client";
 import { addHearingToCalendar } from "@/lib/calendar";
+import { useTabBarHeightSafe } from "@/hooks/useTabBarHeightSafe";
 
 type RouteParams = RouteProp<LegislativeStackParamList, "HearingDetail">;
 type NavigationProp = NativeStackNavigationProp<LegislativeStackParamList>;
@@ -325,13 +325,7 @@ export default function HearingDetailScreen() {
   const route = useRoute<RouteParams>();
   const navigation = useNavigation<NavigationProp>();
   const headerHeight = useHeaderHeight();
-  let tabBarHeight = 0;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext-based; always called in the same order, only throws when rendered outside a tab navigator
-    tabBarHeight = useBottomTabBarHeight();
-  } catch {
-    tabBarHeight = 80;
-  }
+  const tabBarHeight = useTabBarHeightSafe(80);
 
   const { eventId } = route.params;
   const [showWitnesses, setShowWitnesses] = useState(false);

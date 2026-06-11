@@ -939,8 +939,14 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
         .onConflictDoNothing()
         .returning({ id: billActions.id });
       if (result.length > 0) inserted++;
-    } catch {
-      // duplicate, skip
+    } catch (err) {
+      // Duplicates are already absorbed by onConflictDoNothing, so anything
+      // landing here is a real failure (connection loss, constraint bug) —
+      // don't let it silently undercount or mask an outage.
+      console.warn(
+        `${tag} insert failed for ${billNumber} action "${row.externalId}":`,
+        err,
+      );
     }
   }
 

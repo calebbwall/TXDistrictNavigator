@@ -9,7 +9,6 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { PrayerStackParamList } from "@/navigation/PrayerStackNavigator";
@@ -20,6 +19,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
 import { invalidatePrayerQueries } from "@/lib/prayer-utils";
+import { useTabBarHeightSafe } from "@/hooks/useTabBarHeightSafe";
 
 type Prayer = {
   id: string;
@@ -98,13 +98,7 @@ export default function PrayerDashboardScreen() {
     useNavigation<NativeStackNavigationProp<PrayerStackParamList>>();
   const queryClient = useQueryClient();
 
-  let tabBarHeight = 0;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext-based; always called in the same order, only throws when rendered outside a tab navigator
-    tabBarHeight = useBottomTabBarHeight();
-  } catch {
-    tabBarHeight = 0;
-  }
+  const tabBarHeight = useTabBarHeightSafe();
 
   const [statusTab, setStatusTab] = useState<string>("OPEN");
   const [browseMode, setBrowseMode] = useState<string>("officials");

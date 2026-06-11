@@ -20,7 +20,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { LegislativeStackParamList } from "@/navigation/LegislativeStackNavigator";
@@ -28,6 +27,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
+import { useTabBarHeightSafe } from "@/hooks/useTabBarHeightSafe";
 
 type NavigationProp = NativeStackNavigationProp<LegislativeStackParamList>;
 
@@ -229,13 +229,7 @@ export default function LegislativeHomeScreen() {
   const { theme } = useTheme();
   const navigation = useNavigation<NavigationProp>();
   const headerHeight = useHeaderHeight();
-  let tabBarHeight = 0;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext-based; always called in the same order, only throws when rendered outside a tab navigator
-    tabBarHeight = useBottomTabBarHeight();
-  } catch {
-    tabBarHeight = 80;
-  }
+  const tabBarHeight = useTabBarHeightSafe(80);
 
   const [refreshing, setRefreshing] = useState(false);
 
