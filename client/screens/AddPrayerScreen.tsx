@@ -758,7 +758,7 @@ export default function AddPrayerScreen() {
         <View style={{ flex: 1 }}>
           <ThemedText type="body">Pin to Daily Picks</ThemedText>
           <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-            Always include in today's prayers
+            Always include in today&rsquo;s prayers
           </ThemedText>
         </View>
         <Switch value={pinnedDaily} onValueChange={setPinnedDaily} />

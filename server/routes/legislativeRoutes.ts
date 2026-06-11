@@ -45,6 +45,7 @@ import {
   triggerFullLegislativeBootstrap,
 } from "../jobs/scheduler";
 import { requireUser } from "../middleware/userAuth";
+import { secureCompare } from "../lib/secureCompare";
 
 function requireAdminSecret(req: Request, res: Response): boolean {
   const secret = process.env.ADMIN_CRON_SECRET;
@@ -56,8 +57,8 @@ function requireAdminSecret(req: Request, res: Response): boolean {
   }
   const provided =
     req.headers["x-admin-secret"] ??
-    req.headers["authorization"]?.replace("Bearer ", "");
-  if (provided !== secret) {
+    req.headers["authorization"]?.replace(/^Bearer\s+/i, "");
+  if (!secureCompare(provided, secret)) {
     res.status(401).json({ error: "Unauthorized" });
     return false;
   }

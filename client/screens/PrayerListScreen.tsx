@@ -111,6 +111,7 @@ export default function PrayerListScreen() {
 
   let tabBarHeight = 0;
   try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext-based; always called in the same order, only throws when rendered outside a tab navigator
     tabBarHeight = useBottomTabBarHeight();
   } catch {
     tabBarHeight = 0;

@@ -28,6 +28,7 @@ import {
   type MileageEntry,
 } from "@/lib/storage";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
+import { toISODateString } from "@/utils/validation";
 
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList>;
 
@@ -47,7 +48,9 @@ function getCurrentYear(): string {
 }
 
 function getToday(): string {
-  return new Date().toISOString().split("T")[0];
+  // Local date, not UTC — toISOString() would roll to tomorrow's date
+  // during evening hours in US timezones.
+  return toISODateString(new Date());
 }
 
 async function exportMileageToCsv(
@@ -268,7 +271,7 @@ export default function MileageTrackerScreen() {
               type="body"
               style={{ color: theme.secondaryText, textAlign: "center" }}
             >
-              Tap "Add" to log your first mileage trip.
+              Tap &ldquo;Add&rdquo; to log your first mileage trip.
             </ThemedText>
           </View>
         ) : (

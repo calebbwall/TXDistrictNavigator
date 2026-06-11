@@ -100,8 +100,9 @@ async function runRefreshCycle(): Promise<void> {
     // Step 6: Backfill hometowns from Texas Tribune
     console.log("[Scheduler] Step 6/6: Backfilling hometowns...");
     try {
-      const { bulkFillHometowns } =
-        await import("../scripts/bulkFillHometowns");
+      const { bulkFillHometowns } = await import(
+        "../scripts/bulkFillHometowns"
+      );
       const hometownResult = await bulkFillHometowns();
       console.log(
         `[Scheduler] Hometown backfill: filled=${hometownResult.filled}, skipped=${hometownResult.skipped}`,
@@ -549,8 +550,9 @@ export async function triggerFullLegislativeBootstrap(): Promise<{
   try {
     // Step 1: Force-refresh committees (both chambers)
     console.log("[Bootstrap] Step 1/3: Refreshing committees...");
-    const { checkAndRefreshCommitteesIfChanged } =
-      await import("./refreshCommittees");
+    const { checkAndRefreshCommitteesIfChanged } = await import(
+      "./refreshCommittees"
+    );
     const committeeResult = await checkAndRefreshCommitteesIfChanged(true);
 
     // Step 2: Seed RSS feeds (idempotent)

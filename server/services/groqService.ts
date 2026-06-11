@@ -7,7 +7,10 @@ function getClient(): Groq {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey)
       throw new Error("GROQ_API_KEY environment variable is not set");
-    _groq = new Groq({ apiKey });
+    // Bound each completion call: the SDK default timeout is 60s with 2
+    // retries, which can pin an HTTP request handler for minutes when Groq
+    // is degraded. All callers are interactive request handlers.
+    _groq = new Groq({ apiKey, timeout: 30_000, maxRetries: 1 });
   }
   return _groq;
 }
@@ -134,6 +137,8 @@ export async function searchWeb(query: string): Promise<string> {
     });
     const res = await fetch(
       `https://www.googleapis.com/customsearch/v1?${params}`,
+      // Web search is supplementary context — never let it hang the request.
+      { signal: AbortSignal.timeout(10_000) },
     );
     if (!res.ok) return "";
 

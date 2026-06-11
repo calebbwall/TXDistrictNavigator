@@ -145,7 +145,7 @@ export default function SavedOfficialsScreen() {
               marginTop: Spacing.xs,
             }}
           >
-            Tap the bookmark icon on an official's profile to save them
+            Tap the bookmark icon on an official&rsquo;s profile to save them
           </ThemedText>
         </Animated.View>
       )}

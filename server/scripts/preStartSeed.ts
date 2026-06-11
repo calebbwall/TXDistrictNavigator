@@ -61,14 +61,17 @@ async function main(): Promise<void> {
     console.log(
       "[PreStartSeed] Step 1/4: Officials table empty — running full refresh...",
     );
-    const { checkAndRefreshIfChanged } =
-      await import("../jobs/refreshOfficials");
+    const { checkAndRefreshIfChanged } = await import(
+      "../jobs/refreshOfficials"
+    );
     await checkAndRefreshIfChanged(true);
-    const { refreshOtherTexasOfficials } =
-      await import("../jobs/refreshOtherTexasOfficials");
+    const { refreshOtherTexasOfficials } = await import(
+      "../jobs/refreshOtherTexasOfficials"
+    );
     await refreshOtherTexasOfficials({ force: true });
-    const { resolveAllMissingPersonIds } =
-      await import("../lib/identityResolver");
+    const { resolveAllMissingPersonIds } = await import(
+      "../lib/identityResolver"
+    );
     await resolveAllMissingPersonIds();
   } else {
     console.log(
@@ -81,8 +84,9 @@ async function main(): Promise<void> {
     console.log(
       "[PreStartSeed] Step 2/4: Committees table empty — refreshing...",
     );
-    const { checkAndRefreshCommitteesIfChanged } =
-      await import("../jobs/refreshCommittees");
+    const { checkAndRefreshCommitteesIfChanged } = await import(
+      "../jobs/refreshCommittees"
+    );
     await checkAndRefreshCommitteesIfChanged(true);
   } else {
     console.log(
@@ -115,8 +119,9 @@ async function main(): Promise<void> {
     console.log(
       "[PreStartSeed] Step 4/4: No legislative events — seeding RSS feeds and running daily refresh...",
     );
-    const { seedLegislativeFeeds } =
-      await import("../jobs/seedLegislativeFeeds");
+    const { seedLegislativeFeeds } = await import(
+      "../jobs/seedLegislativeFeeds"
+    );
     const { inserted } = await seedLegislativeFeeds();
     if (inserted > 0)
       console.log(`[PreStartSeed] Seeded ${inserted} RSS feed(s)`);

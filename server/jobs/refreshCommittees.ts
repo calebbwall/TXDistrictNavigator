@@ -586,18 +586,16 @@ async function refreshChamberCommittees(
         ),
       );
 
-      await db
-        .delete(committeeMemberships)
-        .where(eq(committeeMemberships.committeeId, committeeId));
-
+      // Resolve official matches before the destructive replace so the
+      // delete + insert can run atomically below.
+      const membershipRows: InsertCommitteeMembership[] = [];
       for (const member of members) {
         const officialId = await matchMemberToOfficial(
           member.memberName,
           member.legCode,
           chamber,
         );
-
-        await db.insert(committeeMemberships).values({
+        membershipRows.push({
           committeeId,
           officialPublicId: officialId,
           memberName: member.memberName,
@@ -605,8 +603,21 @@ async function refreshChamberCommittees(
           sortOrder: String(member.sortOrder),
           legCode: member.legCode || null,
         });
-        membershipsCount++;
       }
+
+      // Atomic replace: previously this was an unwrapped delete followed by
+      // per-row inserts, so a failure mid-loop permanently dropped the rest
+      // of the roster (the unchanged upstream fingerprint then prevented a
+      // self-heal on the next run).
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(committeeMemberships)
+          .where(eq(committeeMemberships.committeeId, committeeId));
+        if (membershipRows.length > 0) {
+          await tx.insert(committeeMemberships).values(membershipRows);
+        }
+      });
+      membershipsCount += membershipRows.length;
 
       // Alert only when the roster actually changed (not on every routine refresh).
       // Distinguish true membership changes from role-only updates.

@@ -339,6 +339,7 @@ export function registerMapRoutes(app: Express): void {
       // an arbitrary (including internal) address, i.e. SSRF.
       const imageResponse = await fetch(url, {
         redirect: "manual",
+        signal: AbortSignal.timeout(15_000),
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -358,6 +359,7 @@ export function registerMapRoutes(app: Express): void {
         }
         const redirected = await fetch(new URL(location, url).toString(), {
           redirect: "manual",
+          signal: AbortSignal.timeout(15_000),
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

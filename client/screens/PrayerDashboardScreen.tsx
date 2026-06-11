@@ -100,6 +100,7 @@ export default function PrayerDashboardScreen() {
 
   let tabBarHeight = 0;
   try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext-based; always called in the same order, only throws when rendered outside a tab navigator
     tabBarHeight = useBottomTabBarHeight();
   } catch {
     tabBarHeight = 0;
@@ -298,7 +299,7 @@ export default function PrayerDashboardScreen() {
                 color={theme.primary}
                 style={{ marginRight: Spacing.sm }}
               />
-              <ThemedText type="h3">Today's 3</ThemedText>
+              <ThemedText type="h3">Today&rsquo;s 3</ThemedText>
             </View>
             {streak ? (
               streak.currentStreak > 0 ? (

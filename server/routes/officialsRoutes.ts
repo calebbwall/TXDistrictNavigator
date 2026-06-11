@@ -6,7 +6,7 @@ import {
   updateOfficialPrivateSchema,
   type MergedOfficial,
 } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import {
   mergeOfficial,
   createVacantOfficial,
@@ -17,6 +17,7 @@ import {
   type DistrictType,
 } from "../lib/officialUtils";
 import { requireUser } from "../middleware/userAuth";
+import { secureCompare } from "../lib/secureCompare";
 
 function requireAdminToken(
   req: import("express").Request,
@@ -28,7 +29,7 @@ function requireAdminToken(
     return false;
   }
   const provided = req.headers["x-admin-token"];
-  if (!provided || provided !== adminToken) {
+  if (!secureCompare(provided, adminToken)) {
     res.status(401).json({ error: "Unauthorized" });
     return false;
   }
@@ -436,30 +437,49 @@ export function registerOfficialsRoutes(app: Express): void {
           .json({ error: "Too many districts requested (max 500)" });
       }
 
-      const results: MergedOfficial[] = [];
-
+      const validSources: DistrictSourceType[] = [
+        "TX_HOUSE",
+        "TX_SENATE",
+        "US_HOUSE",
+      ];
+      const wanted: {
+        source: DistrictSourceType;
+        districtNumber: number | string;
+      }[] = [];
       for (const dist of districts) {
+        if (!dist || typeof dist !== "object") continue;
         const { source, districtNumber } = dist;
         if (!source || districtNumber === undefined) continue;
-
-        const [pub] = await db
-          .select()
-          .from(officialPublic)
-          .where(
-            and(
-              eq(officialPublic.source, source),
-              eq(officialPublic.district, String(districtNumber)),
-              eq(officialPublic.active, true),
-            ),
-          )
-          .limit(1);
-
-        if (pub) {
-          results.push(mergeOfficial(pub, null));
-        } else {
-          results.push(createVacantOfficial(source, districtNumber));
-        }
+        // An unvalidated source previously hit the DB as an invalid enum value
+        // and 500'd the entire request.
+        if (!validSources.includes(source)) continue;
+        wanted.push({ source, districtNumber });
       }
+
+      // One batched query instead of a sequential round-trip per district
+      // (this endpoint accepts up to 500 districts per request).
+      const pairConditions = wanted.map((w) =>
+        and(
+          eq(officialPublic.source, w.source),
+          eq(officialPublic.district, String(w.districtNumber)),
+        ),
+      );
+      const rows = pairConditions.length
+        ? await db
+            .select()
+            .from(officialPublic)
+            .where(and(eq(officialPublic.active, true), or(...pairConditions)))
+        : [];
+      const bySourceDistrict = new Map(
+        rows.map((r) => [`${r.source}:${r.district}`, r]),
+      );
+
+      const results: MergedOfficial[] = wanted.map((w) => {
+        const pub = bySourceDistrict.get(`${w.source}:${w.districtNumber}`);
+        return pub
+          ? mergeOfficial(pub, null)
+          : createVacantOfficial(w.source, Number(w.districtNumber));
+      });
 
       res.json({ officials: results });
     } catch (err) {
@@ -528,8 +548,9 @@ export function registerOfficialsRoutes(app: Express): void {
             `[API] Auto-fill: Looking up hometown for new private notes record for "${pub.fullName}"`,
           );
           try {
-            const { lookupHometownFromTexasTribune } =
-              await import("../lib/texasTribuneLookup");
+            const { lookupHometownFromTexasTribune } = await import(
+              "../lib/texasTribuneLookup"
+            );
             const result = await lookupHometownFromTexasTribune(pub.fullName);
             if (result.success && result.hometown) {
               console.log(

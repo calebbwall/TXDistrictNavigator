@@ -378,7 +378,18 @@ export async function resolveAllMissingPersonIds(): Promise<{
   );
 
   let resolved = 0;
-  let created = 0;
+
+  // Count persons before/after instead of re-querying per official: the old
+  // per-iteration "is new" check selected the person that resolvePersonId had
+  // just returned, which always exists — so `created` always equaled
+  // `resolved` (and cost one extra query per official).
+  const countPersons = async () => {
+    const [row] = await db
+      .select({ cnt: sql<number>`count(*)::int` })
+      .from(persons);
+    return row?.cnt ?? 0;
+  };
+  const personsBefore = await countPersons();
 
   for (const official of officialsWithoutPerson) {
     const personId = await resolvePersonId(
@@ -393,14 +404,9 @@ export async function resolveAllMissingPersonIds(): Promise<{
       .where(eq(officialPublic.id, official.id));
 
     resolved++;
-    const isNew = await db
-      .select()
-      .from(persons)
-      .where(eq(persons.id, personId));
-    if (isNew.length > 0) {
-      created++;
-    }
   }
+
+  const created = Math.max(0, (await countPersons()) - personsBefore);
 
   console.log(
     `[Identity] Resolved ${resolved} personIds, created ${created} new person records`,

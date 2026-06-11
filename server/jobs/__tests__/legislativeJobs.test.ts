@@ -5,6 +5,8 @@
  */
 import * as crypto from "crypto";
 import * as cheerio from "cheerio";
+import { zonedWallTimeToUtc } from "../../lib/timezone";
+import { secureCompare } from "../../lib/secureCompare";
 
 // ── tiny assertion helper ──
 let passed = 0;
@@ -423,6 +425,78 @@ function testWitnessParsingText(): void {
   assertEqual(wEmpty.length, 0, "no witness section → empty array");
 }
 
+// ── zonedWallTimeToUtc (server/lib/timezone.ts) — DST correctness ──
+function testZonedWallTimeToUtc() {
+  console.log("\n[test] zonedWallTimeToUtc() — America/Chicago DST handling");
+
+  // CST (UTC-6): Jan 15 2026 midnight Chicago = 06:00 UTC
+  const cst = zonedWallTimeToUtc(2026, 1, 15, 0, 0, "America/Chicago");
+  assertEqual(
+    cst.toISOString(),
+    "2026-01-15T06:00:00.000Z",
+    "CST midnight → 06:00 UTC",
+  );
+
+  // CDT (UTC-5): Jun 15 2026 midnight Chicago = 05:00 UTC
+  const cdt = zonedWallTimeToUtc(2026, 6, 15, 0, 0, "America/Chicago");
+  assertEqual(
+    cdt.toISOString(),
+    "2026-06-15T05:00:00.000Z",
+    "CDT midnight → 05:00 UTC",
+  );
+
+  // Spring-forward day (Mar 8 2026): midnight is still CST
+  const springForward = zonedWallTimeToUtc(2026, 3, 8, 0, 0, "America/Chicago");
+  assertEqual(
+    springForward.toISOString(),
+    "2026-03-08T06:00:00.000Z",
+    "spring-forward day midnight → 06:00 UTC (still CST)",
+  );
+
+  // Fall-back day (Nov 1 2026): midnight is still CDT
+  const fallBack = zonedWallTimeToUtc(2026, 11, 1, 0, 0, "America/Chicago");
+  assertEqual(
+    fallBack.toISOString(),
+    "2026-11-01T05:00:00.000Z",
+    "fall-back day midnight → 05:00 UTC (still CDT)",
+  );
+
+  // Afternoon wall time round-trips to the same Chicago wall clock
+  const afternoon = zonedWallTimeToUtc(2026, 6, 11, 14, 30, "America/Chicago");
+  const back = afternoon.toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  assertEqual(back, "14:30", "wall time round-trips through UTC");
+}
+
+// ── secureCompare (server/lib/secureCompare.ts) ──
+function testSecureCompare() {
+  console.log("\n[test] secureCompare()");
+
+  assertEqual(secureCompare("secret-token", "secret-token"), true, "match");
+  assertEqual(secureCompare("wrong-token", "secret-token"), false, "mismatch");
+  assertEqual(
+    secureCompare("secret-token-x", "secret-token"),
+    false,
+    "different lengths",
+  );
+  assertEqual(secureCompare(undefined, "secret-token"), false, "undefined");
+  assertEqual(secureCompare("", "secret-token"), false, "empty provided");
+  assertEqual(
+    secureCompare("anything", ""),
+    false,
+    "empty expected never matches (unconfigured secret fails closed)",
+  );
+  assertEqual(
+    secureCompare(["secret-token"], "secret-token"),
+    false,
+    "array header value rejected",
+  );
+}
+
 // ── main ──
 console.log("======================================");
 console.log("Legislative Jobs — Runtime Assertions");
@@ -436,6 +510,8 @@ testParsedActionType();
 testFingerprintDateParsing();
 testWitnessParsingTable();
 testWitnessParsingText();
+testZonedWallTimeToUtc();
+testSecureCompare();
 
 console.log("\n======================================");
 console.log(`Results: ${passed} passed, ${failed} failed`);
