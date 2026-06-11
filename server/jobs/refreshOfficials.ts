@@ -208,8 +208,9 @@ async function applyTribuneContactFallback(
   if (!needsAny) return false;
 
   try {
-    const { lookupContactInfoFromTexasTribune } =
-      await import("../lib/texasTribuneLookup");
+    const { lookupContactInfoFromTexasTribune } = await import(
+      "../lib/texasTribuneLookup"
+    );
     const info = await lookupContactInfoFromTexasTribune(fullName);
     if (!info.success) return false;
 
@@ -891,8 +892,9 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
             (source === "TX_HOUSE" || source === "TX_SENATE")
           ) {
             try {
-              const { lookupHeadshotFromTexasTribune } =
-                await import("../lib/texasTribuneLookup");
+              const { lookupHeadshotFromTexasTribune } = await import(
+                "../lib/texasTribuneLookup"
+              );
               const headshot = await lookupHeadshotFromTexasTribune(
                 record.fullName,
               );
@@ -915,8 +917,9 @@ async function refreshTLO(chamber: "house" | "senate"): Promise<RefreshResult> {
         } else {
           if (!insertData.photoUrl) {
             try {
-              const { lookupHeadshotFromTexasTribune } =
-                await import("../lib/texasTribuneLookup");
+              const { lookupHeadshotFromTexasTribune } = await import(
+                "../lib/texasTribuneLookup"
+              );
               const headshot = await lookupHeadshotFromTexasTribune(
                 record.fullName,
               );

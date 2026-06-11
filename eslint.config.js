@@ -7,6 +7,7 @@ module.exports = defineConfig([
   expoConfig,
   eslintPluginPrettierRecommended,
   {
-    ignores: ["dist/*"],
+    // Generated/build artifacts — never lint minified bundles or server builds.
+    ignores: ["dist/*", "static-build/**", "server_dist/**"],
   },
 ]);
