@@ -18,7 +18,6 @@ import {
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useHeaderHeight } from "@react-navigation/elements";
 import {
   useNavigation,
@@ -35,6 +34,7 @@ import { getApiUrl, apiRequest } from "@/lib/query-client";
 import { invalidatePrayerQueries } from "@/lib/prayer-utils";
 import { useToast } from "@/components/Toast";
 import * as WebBrowser from "expo-web-browser";
+import { useTabBarHeightSafe } from "@/hooks/useTabBarHeightSafe";
 
 type Prayer = {
   id: string;
@@ -109,13 +109,7 @@ export default function PrayerListScreen() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  let tabBarHeight = 0;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext-based; always called in the same order, only throws when rendered outside a tab navigator
-    tabBarHeight = useBottomTabBarHeight();
-  } catch {
-    tabBarHeight = 0;
-  }
+  const tabBarHeight = useTabBarHeightSafe();
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

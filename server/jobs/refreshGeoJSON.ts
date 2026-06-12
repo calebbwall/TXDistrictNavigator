@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { SCRAPER_FETCH_TIMEOUT_MS } from "../lib/timeouts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,6 +60,7 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetch(url, {
+        signal: AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
         headers: {
           "User-Agent": "TexasDistrictsApp/1.0 (GeoJSON Sync)",
           Accept: "application/json",

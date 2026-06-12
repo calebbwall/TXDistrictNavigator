@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { GROQ_TIMEOUT_MS, WEB_SEARCH_TIMEOUT_MS } from "../lib/timeouts";
 
 let _groq: Groq | null = null;
 
@@ -10,7 +11,7 @@ function getClient(): Groq {
     // Bound each completion call: the SDK default timeout is 60s with 2
     // retries, which can pin an HTTP request handler for minutes when Groq
     // is degraded. All callers are interactive request handlers.
-    _groq = new Groq({ apiKey, timeout: 30_000, maxRetries: 1 });
+    _groq = new Groq({ apiKey, timeout: GROQ_TIMEOUT_MS, maxRetries: 1 });
   }
   return _groq;
 }
@@ -138,7 +139,7 @@ export async function searchWeb(query: string): Promise<string> {
     const res = await fetch(
       `https://www.googleapis.com/customsearch/v1?${params}`,
       // Web search is supplementary context — never let it hang the request.
-      { signal: AbortSignal.timeout(10_000) },
+      { signal: AbortSignal.timeout(WEB_SEARCH_TIMEOUT_MS) },
     );
     if (!res.ok) return "";
 

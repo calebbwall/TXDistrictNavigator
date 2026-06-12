@@ -25,6 +25,7 @@ import {
   forceResetIsRefreshingCommittees,
   backfillMissingCommitteeMembers,
 } from "../jobs/refreshCommittees";
+import { SCRAPER_FETCH_TIMEOUT_MS } from "../lib/timeouts";
 
 export function registerAdminRoutes(app: Express): void {
   app.post("/api/refresh", async (req, res) => {
@@ -232,7 +233,9 @@ export function registerAdminRoutes(app: Express): void {
       const results = await Promise.all(
         sources.map(async (source) => {
           try {
-            const response = await fetch(source.url);
+            const response = await fetch(source.url, {
+              signal: AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
+            });
             const data = (await response.json()) as {
               features?: Array<{ properties?: Record<string, unknown> }>;
             };
@@ -242,7 +245,9 @@ export function registerAdminRoutes(app: Express): void {
               "resultRecordCount=1",
               "returnCountOnly=true",
             );
-            const countResponse = await fetch(countUrl);
+            const countResponse = await fetch(countUrl, {
+              signal: AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
+            });
             const countData = (await countResponse.json()) as {
               count?: number;
             };
