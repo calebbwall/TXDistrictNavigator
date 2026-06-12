@@ -79,10 +79,17 @@ function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origins = new Set<string>();
 
+    // Generic comma-separated full origins, e.g. https://myapp.up.railway.app
+    if (process.env.ALLOWED_ORIGINS) {
+      process.env.ALLOWED_ORIGINS.split(",").forEach((o: string) => {
+        origins.add(o.trim());
+      });
+    }
+
+    // Legacy Replit env vars — kept so the app keeps working during migration
     if (process.env.REPLIT_DEV_DOMAIN) {
       origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
     }
-
     if (process.env.REPLIT_DOMAINS) {
       process.env.REPLIT_DOMAINS.split(",").forEach((d: string) => {
         origins.add(`https://${d.trim()}`);
