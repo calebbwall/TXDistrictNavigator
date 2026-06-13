@@ -41,7 +41,7 @@ type OfficialItem = {
 };
 
 export default function AddPrayerScreen() {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -618,7 +618,7 @@ export default function AddPrayerScreen() {
                 if (Platform.OS === "android") setShowDatePicker(false);
                 if (date) setEventDate(date);
               }}
-              themeVariant="dark"
+              themeVariant={isDark ? "dark" : "light"}
             />
           )
         ) : null}

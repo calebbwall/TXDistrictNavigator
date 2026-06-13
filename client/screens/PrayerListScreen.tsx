@@ -64,7 +64,7 @@ type PrayerCategory = {
 const STATUS_TABS = [
   { key: "OPEN", label: "Active" },
   { key: "ANSWERED", label: "Answered" },
-  { key: "ARCHIVED", label: "Archive" },
+  { key: "ARCHIVED", label: "Archived" },
   { key: "ALL", label: "All" },
 ] as const;
 
@@ -172,6 +172,7 @@ export default function PrayerListScreen() {
   const {
     data: rawPrayers = [],
     isLoading,
+    isRefetching,
     refetch,
   } = useQuery<Prayer[]>({
     queryKey: [prayersUrl],
@@ -845,7 +846,10 @@ export default function PrayerListScreen() {
             </View>
           }
           refreshControl={
-            <RefreshControl refreshing={false} onRefresh={() => refetch()} />
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => refetch()}
+            />
           }
         />
       )}
@@ -950,7 +954,9 @@ const styles = StyleSheet.create({
   checkbox: { marginRight: Spacing.sm, paddingTop: 2 },
   fab: {
     position: "absolute",
-    right: Spacing.lg,
+    // Sits bottom-left so it doesn't collide with the app-wide "Ask AI"
+    // floating button (bottom-right), matching the Prayer dashboard.
+    left: Spacing.lg,
     width: 56,
     height: 56,
     borderRadius: 28,

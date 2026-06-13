@@ -83,6 +83,7 @@ export function OfficialCard({
       <View
         style={[
           styles.avatarContainer,
+          { backgroundColor: theme.backgroundSecondary },
           isVacant && styles.vacantAvatarContainer,
         ]}
       >
@@ -167,7 +168,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: BorderRadius.full,
     overflow: "hidden",
-    backgroundColor: "#E0E0E0",
   },
   avatar: {
     width: 56,

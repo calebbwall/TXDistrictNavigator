@@ -460,7 +460,7 @@ export default function HearingDetailScreen() {
                 {
                   backgroundColor:
                     hearing.status === "POSTED"
-                      ? "#28A74520"
+                      ? theme.success + "20"
                       : theme.backgroundSecondary,
                 },
               ]}

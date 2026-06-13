@@ -7,6 +7,7 @@ import {
   Pressable,
   FlatList,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -35,6 +36,8 @@ export default function ManageCategoriesScreen() {
   const queryClient = useQueryClient();
 
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [renameTarget, setRenameTarget] = useState<PrayerCategory | null>(null);
+  const [renameText, setRenameText] = useState("");
 
   const {
     data: categories = [],
@@ -102,23 +105,17 @@ export default function ManageCategoriesScreen() {
   };
 
   const handleRenameCategory = (category: PrayerCategory) => {
-    Alert.prompt(
-      "Rename Category",
-      "Enter new category name:",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Rename",
-          onPress: (newName: string | undefined) => {
-            if (newName && newName.trim().length > 0) {
-              renameMutation.mutate({ id: category.id, name: newName });
-            }
-          },
-        },
-      ],
-      "plain-text",
-      category.name,
-    );
+    setRenameTarget(category);
+    setRenameText(category.name);
+  };
+
+  const submitRename = () => {
+    const name = renameText.trim();
+    if (renameTarget && name.length > 0 && name !== renameTarget.name) {
+      renameMutation.mutate({ id: renameTarget.id, name });
+    }
+    setRenameTarget(null);
+    setRenameText("");
   };
 
   const handleDeleteCategory = (category: PrayerCategory) => {
@@ -223,6 +220,66 @@ export default function ManageCategoriesScreen() {
           </ThemedText>
         </View>
       )}
+
+      <Modal
+        visible={renameTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameTarget(null)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setRenameTarget(null)}
+        >
+          <Pressable
+            style={[
+              styles.modalContent,
+              { backgroundColor: theme.backgroundDefault },
+            ]}
+            onPress={() => {}}
+          >
+            <ThemedText type="h3" style={{ marginBottom: Spacing.md }}>
+              Rename Category
+            </ThemedText>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.inputBackground,
+                  color: theme.text,
+                  borderColor: theme.border,
+                },
+              ]}
+              placeholder="Category name..."
+              placeholderTextColor={theme.secondaryText}
+              value={renameText}
+              onChangeText={setRenameText}
+              autoFocus
+              onSubmitEditing={submitRename}
+              returnKeyType="done"
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                style={[styles.modalCancelBtn, { borderColor: theme.border }]}
+                onPress={() => setRenameTarget(null)}
+              >
+                <ThemedText type="body" style={{ color: theme.text }}>
+                  Cancel
+                </ThemedText>
+              </Pressable>
+              <Button
+                onPress={submitRename}
+                disabled={
+                  renameText.trim().length === 0 || renameMutation.isPending
+                }
+                style={{ flex: 1 }}
+              >
+                {renameMutation.isPending ? "Saving..." : "Rename"}
+              </Button>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAwareScrollViewCompat>
   );
 }
@@ -275,5 +332,31 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: Spacing.md,
     textAlign: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.lg,
+  },
+  modalContent: {
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

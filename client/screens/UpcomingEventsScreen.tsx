@@ -84,6 +84,7 @@ export default function UpcomingEventsScreen() {
   const {
     data: prayers = [],
     isLoading,
+    isRefetching,
     refetch,
   } = useQuery<Prayer[]>({
     queryKey: ["/api/prayers/upcoming"],
@@ -194,7 +195,10 @@ export default function UpcomingEventsScreen() {
             </View>
           }
           refreshControl={
-            <RefreshControl refreshing={false} onRefresh={() => refetch()} />
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => refetch()}
+            />
           }
         />
       )}

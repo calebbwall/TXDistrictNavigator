@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -166,46 +166,52 @@ export default function AskAIScreen() {
 
   const keyExtractor = useCallback((item: Message) => item.id, []);
 
-  const EmptyState = (
-    <View style={styles.emptyContainer}>
-      <View
-        style={[
-          styles.emptyIconContainer,
-          { backgroundColor: theme.primary + "18" },
-        ]}
-      >
-        <Ionicons name="sparkles" size={32} color={theme.primary} />
+  const EmptyState = useMemo(
+    () => (
+      <View style={styles.emptyContainer}>
+        <View
+          style={[
+            styles.emptyIconContainer,
+            { backgroundColor: theme.primary + "18" },
+          ]}
+        >
+          <Ionicons name="sparkles" size={32} color={theme.primary} />
+        </View>
+        <ThemedText
+          type="h3"
+          style={[styles.emptyTitle, { color: theme.text }]}
+        >
+          Ask anything
+        </ThemedText>
+        <ThemedText
+          type="body"
+          style={[styles.emptySubtitle, { color: theme.secondaryText }]}
+        >
+          Ask dynamic questions about Texas legislators and legislation
+        </ThemedText>
+        <View style={styles.suggestionsGrid}>
+          {SUGGESTIONS.map((s) => (
+            <Pressable
+              key={s}
+              style={({ pressed }) => [
+                styles.suggestionChip,
+                {
+                  backgroundColor: theme.inputBackground,
+                  borderColor: theme.border,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+              onPress={() => handleSuggestion(s)}
+            >
+              <ThemedText type="caption" style={{ color: theme.text }}>
+                {s}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
       </View>
-      <ThemedText type="h3" style={[styles.emptyTitle, { color: theme.text }]}>
-        Ask anything
-      </ThemedText>
-      <ThemedText
-        type="body"
-        style={[styles.emptySubtitle, { color: theme.secondaryText }]}
-      >
-        Ask dynamic questions about Texas legislators and legislation
-      </ThemedText>
-      <View style={styles.suggestionsGrid}>
-        {SUGGESTIONS.map((s) => (
-          <Pressable
-            key={s}
-            style={({ pressed }) => [
-              styles.suggestionChip,
-              {
-                backgroundColor: theme.inputBackground,
-                borderColor: theme.border,
-                opacity: pressed ? 0.7 : 1,
-              },
-            ]}
-            onPress={() => handleSuggestion(s)}
-          >
-            <ThemedText type="caption" style={{ color: theme.text }}>
-              {s}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </View>
-    </View>
+    ),
+    [theme, handleSuggestion],
   );
 
   return (
