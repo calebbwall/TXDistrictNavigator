@@ -81,8 +81,8 @@ export function Card({
         {
           backgroundColor: cardBackgroundColor,
         },
-        animatedStyle,
         style,
+        animatedStyle,
       ]}
     >
       {title ? (

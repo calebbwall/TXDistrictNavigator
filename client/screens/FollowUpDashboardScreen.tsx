@@ -58,18 +58,22 @@ export default function FollowUpDashboardScreen() {
   const loadFollowUps = useCallback(async () => {
     try {
       const data = await getAllFollowUps(showArchived);
-      const enriched = data.map((item) => {
-        const official = officialsCache?.officials?.find(
-          (o: Official) =>
-            o.source === item.source &&
-            o.districtNumber === item.districtNumber,
-        );
-        return {
-          ...item,
-          officialName: official?.fullName || undefined,
-          isVacant: official?.isVacant || !official,
-        };
-      });
+      // Drop items with no entries: they have nothing to render and would
+      // break the empty-array reduce/Math.max below.
+      const enriched = data
+        .filter((item) => item.entries && item.entries.length > 0)
+        .map((item) => {
+          const official = officialsCache?.officials?.find(
+            (o: Official) =>
+              o.source === item.source &&
+              o.districtNumber === item.districtNumber,
+          );
+          return {
+            ...item,
+            officialName: official?.fullName || undefined,
+            isVacant: official?.isVacant || !official,
+          };
+        });
       const now = new Date();
       const isOverdue = (entries: NotePrayerEntry[]) =>
         entries.some(

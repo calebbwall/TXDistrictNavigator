@@ -1,4 +1,4 @@
-import { FETCH_TIMEOUT_LOOKUP_MS } from "./lib/httpTimeouts";
+import { GEONAMES_TIMEOUT_MS } from "./lib/timeouts";
 
 const GEONAMES_BASE = "http://api.geonames.org";
 
@@ -100,7 +100,7 @@ async function lookupZIP(
   );
 
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_LOOKUP_MS),
+    signal: AbortSignal.timeout(GEONAMES_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
@@ -150,7 +150,7 @@ async function lookupCity(
   );
 
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_LOOKUP_MS),
+    signal: AbortSignal.timeout(GEONAMES_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
@@ -284,7 +284,7 @@ async function lookupZIPMulti(
   );
 
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_LOOKUP_MS),
+    signal: AbortSignal.timeout(GEONAMES_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);
@@ -335,7 +335,7 @@ async function lookupCityMulti(
   );
 
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_LOOKUP_MS),
+    signal: AbortSignal.timeout(GEONAMES_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`GeoNames API returned ${response.status}`);

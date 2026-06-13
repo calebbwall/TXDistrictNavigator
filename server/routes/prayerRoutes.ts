@@ -30,18 +30,33 @@ import { zonedWallTimeToUtc, zonedDateKey } from "../lib/timezone";
 
 export { processEventDateActions };
 
-const APP_TIMEZONE = "America/Chicago";
-
-function getTodayDateKey(): string {
-  return zonedDateKey(APP_TIMEZONE);
+// The optional `now` parameter exists for tests (DST and midnight-boundary
+// coverage); production callers always use the real clock.
+export function getTodayDateKey(now: Date = new Date()): string {
+  const chicagoStr = now.toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+  });
+  const chicagoDate = new Date(chicagoStr);
+  const y = chicagoDate.getFullYear();
+  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
+  const d = String(chicagoDate.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-function getYesterdayDateKey(): string {
-  return zonedDateKey(APP_TIMEZONE, new Date(), -1);
+function getYesterdayDateKey(now: Date = new Date()): string {
+  return getDateKeyNDaysAgo(1, now);
 }
 
-function getDateKeyNDaysAgo(n: number): string {
-  return zonedDateKey(APP_TIMEZONE, new Date(), -n);
+export function getDateKeyNDaysAgo(n: number, now: Date = new Date()): string {
+  const chicagoStr = now.toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+  });
+  const chicagoDate = new Date(chicagoStr);
+  chicagoDate.setDate(chicagoDate.getDate() - n);
+  const y = chicagoDate.getFullYear();
+  const m = String(chicagoDate.getMonth() + 1).padStart(2, "0");
+  const d = String(chicagoDate.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 async function getAutoArchiveEnabled(): Promise<boolean> {

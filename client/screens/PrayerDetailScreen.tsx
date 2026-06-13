@@ -59,7 +59,7 @@ type PrayerCategory = {
 };
 
 export default function PrayerDetailScreen() {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const { showToast } = useToast();
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
@@ -716,7 +716,7 @@ export default function PrayerDetailScreen() {
                   markChanged();
                 }
               }}
-              themeVariant="dark"
+              themeVariant={isDark ? "dark" : "light"}
             />
           )
         ) : null}

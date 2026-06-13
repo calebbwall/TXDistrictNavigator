@@ -30,10 +30,10 @@ import {
   type InsertBillAction,
   type InsertAlert,
 } from "@shared/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { sendPushToAll } from "../lib/expoPush";
 import { zonedWallTimeToUtc } from "../lib/timezone";
-import { FETCH_TIMEOUT_SCRAPE_MS } from "../lib/httpTimeouts";
+import { SCRAPER_FETCH_TIMEOUT_MS } from "../lib/timeouts";
 
 const TX_TIMEZONE = "America/Chicago";
 const MONTH_NAMES: Record<string, number> = {
@@ -63,9 +63,9 @@ export async function fetchWithRetry(
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await fetch(url, {
-        // Per-attempt timeout; callers may still pass their own signal.
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_SCRAPE_MS),
         ...options,
+        // Fresh signal per attempt so a hung TLO socket can't stall a refresh.
+        signal: options.signal ?? AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
         headers: {
           "User-Agent": "TXDistrictNavigator/1.0 (Legislative Data Sync)",
           ...options.headers,
@@ -939,8 +939,14 @@ export async function refreshBillHistory(billNumber: string): Promise<number> {
         .onConflictDoNothing()
         .returning({ id: billActions.id });
       if (result.length > 0) inserted++;
-    } catch {
-      // duplicate, skip
+    } catch (err) {
+      // Duplicates are already absorbed by onConflictDoNothing, so anything
+      // landing here is a real failure (connection loss, constraint bug) —
+      // don't let it silently undercount or mask an outage.
+      console.warn(
+        `${tag} insert failed for ${billNumber} action "${row.externalId}":`,
+        err,
+      );
     }
   }
 

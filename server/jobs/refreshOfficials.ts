@@ -14,6 +14,7 @@ import {
   fetchTexasHouseParties,
   fetchTexasSenateParties,
 } from "../lib/partyLookup";
+import { SCRAPER_FETCH_TIMEOUT_MS } from "../lib/timeouts";
 
 const TLO_BASE_URL = "https://capitol.texas.gov";
 const CONGRESS_API_BASE = "https://api.congress.gov/v3";
@@ -83,6 +84,8 @@ async function fetchWithRetry(
         // Per-attempt timeout; callers may still pass their own signal.
         signal: AbortSignal.timeout(FETCH_TIMEOUT_SCRAPE_MS),
         ...options,
+        // Fresh signal per attempt so a hung upstream can't stall a refresh.
+        signal: options.signal ?? AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
         headers: {
           "User-Agent": "TexasDistrictsApp/1.0 (Official Data Sync)",
           ...options.headers,

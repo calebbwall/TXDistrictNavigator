@@ -1,7 +1,7 @@
-import { FETCH_TIMEOUT_EXTERNAL_MS } from "./httpTimeouts";
 // @ts-ignore - node-fetch types not installed
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
+import { TRIBUNE_FETCH_TIMEOUT_MS } from "./timeouts";
 
 interface HometownResult {
   hometown: string | null;
@@ -268,7 +268,7 @@ export async function lookupHometownFromTexasTribune(
           Accept: "text/html",
         },
         redirect: "follow",
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTERNAL_MS),
+        signal: AbortSignal.timeout(TRIBUNE_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -334,7 +334,7 @@ export async function lookupHeadshotFromTexasTribune(
           Accept: "text/html",
         },
         redirect: "follow",
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTERNAL_MS),
+        signal: AbortSignal.timeout(TRIBUNE_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) continue;
@@ -454,7 +454,7 @@ export async function lookupContactInfoFromTexasTribune(
           Accept: "text/html",
         },
         redirect: "follow",
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTERNAL_MS),
+        signal: AbortSignal.timeout(TRIBUNE_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) continue;

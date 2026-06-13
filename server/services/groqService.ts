@@ -1,5 +1,5 @@
 import Groq from "groq-sdk";
-import { GROQ_TIMEOUT_MS, WEB_SEARCH_TIMEOUT_MS } from "../lib/httpTimeouts";
+import { GROQ_TIMEOUT_MS, WEB_SEARCH_TIMEOUT_MS } from "../lib/timeouts";
 
 let _groq: Groq | null = null;
 

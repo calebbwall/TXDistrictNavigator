@@ -497,7 +497,7 @@ export default function MileageEntryScreen() {
                     color: theme.text,
                     borderColor:
                       endMileage && !isNaN(endNum) && endNum < startNum
-                        ? "#FF3B30"
+                        ? theme.error
                         : theme.border,
                   },
                 ]}
@@ -546,7 +546,7 @@ export default function MileageEntryScreen() {
                 <ThemedText
                   type="caption"
                   style={{
-                    color: "#FF3B30",
+                    color: theme.error,
                     marginBottom: Spacing.md,
                     textAlign: "center",
                   }}

@@ -2710,12 +2710,14 @@ export default function MapScreen() {
       });
 
       // Clear highlight after 3 seconds
-      setTimeout(() => {
+      const highlightTimer = setTimeout(() => {
         setHighlightedDistrict(null);
       }, 3000);
 
       // Clear the navigation params to avoid re-triggering
       navigation.setParams({ focusDistrict: undefined });
+
+      return () => clearTimeout(highlightTimer);
     }
   }, [
     route.params?.focusDistrict,

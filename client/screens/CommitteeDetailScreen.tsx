@@ -426,28 +426,7 @@ export default function CommitteeDetailScreen() {
   }, [refetch]);
 
   const renderItem = ({ item }: { item: CommitteeMember }) => (
-    <MemberRow member={item} chamber={data?.committee.chamber || "TX_HOUSE"} />
-  );
-
-  const renderHeader = () => (
-    <View style={styles.headerContainer}>
-      <View
-        style={[
-          styles.committeeIcon,
-          { backgroundColor: theme.primary + "20" },
-        ]}
-      >
-        <Feather name="briefcase" size={24} color={theme.primary} />
-      </View>
-      <ThemedText type="h3" style={styles.committeeName}>
-        {data?.committee.name}
-      </ThemedText>
-      <ThemedText type="caption" style={{ color: theme.secondaryText }}>
-        {data?.members.length || 0} member
-        {data?.members.length !== 1 ? "s" : ""}
-      </ThemedText>
-      <View style={styles.divider} />
-    </View>
+    <MemberRow member={item} chamber={data?.committee?.chamber || "TX_HOUSE"} />
   );
 
   const renderEmpty = () => (
@@ -610,12 +589,6 @@ const styles = StyleSheet.create({
   committeeName: {
     textAlign: "center",
     marginBottom: Spacing.xs,
-  },
-  divider: {
-    width: "100%",
-    height: 1,
-    backgroundColor: "#E0E0E0",
-    marginTop: Spacing.lg,
   },
   memberRow: {
     flexDirection: "row",

@@ -19,11 +19,11 @@ import {
   type RssFeed,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { FETCH_TIMEOUT_SCRAPE_MS } from "../lib/httpTimeouts";
 import {
   refreshCommitteeHearings,
   refreshChamberUpcomingHearings,
 } from "./targetedRefresh";
+import { SCRAPER_FETCH_TIMEOUT_MS } from "../lib/timeouts";
 
 const MAX_CONCURRENT = 5;
 let isPolling = false;
@@ -60,7 +60,7 @@ async function conditionalFetch(feed: RssFeed): Promise<FetchResult> {
     try {
       const res = await fetch(feed.url, {
         headers,
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_SCRAPE_MS),
+        signal: AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
       });
       const etag = res.headers.get("etag");
       const lastModified = res.headers.get("last-modified");

@@ -97,7 +97,12 @@ export function DistrictCard({
 
       {official ? (
         <View style={styles.officialRow}>
-          <View style={styles.avatarContainer}>
+          <View
+            style={[
+              styles.avatarContainer,
+              { backgroundColor: theme.backgroundSecondary },
+            ]}
+          >
             {getProxiedPhotoUrl(official.photoUrl) ? (
               <Image
                 source={{ uri: getProxiedPhotoUrl(official.photoUrl)! }}
@@ -159,7 +164,6 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: BorderRadius.full,
     overflow: "hidden",
-    backgroundColor: "#E0E0E0",
   },
   avatar: {
     width: 48,

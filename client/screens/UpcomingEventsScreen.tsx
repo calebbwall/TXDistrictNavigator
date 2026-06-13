@@ -9,7 +9,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { PrayerStackParamList } from "@/navigation/PrayerStackNavigator";
@@ -17,6 +16,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing } from "@/constants/theme";
+import { useTabBarHeightSafe } from "@/hooks/useTabBarHeightSafe";
 
 type Prayer = {
   id: string;
@@ -79,17 +79,12 @@ export default function UpcomingEventsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<PrayerStackParamList>>();
 
-  let tabBarHeight = 0;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext-based; always called in the same order, only throws when rendered outside a tab navigator
-    tabBarHeight = useBottomTabBarHeight();
-  } catch {
-    tabBarHeight = 0;
-  }
+  const tabBarHeight = useTabBarHeightSafe();
 
   const {
     data: prayers = [],
     isLoading,
+    isRefetching,
     refetch,
   } = useQuery<Prayer[]>({
     queryKey: ["/api/prayers/upcoming"],
@@ -200,7 +195,10 @@ export default function UpcomingEventsScreen() {
             </View>
           }
           refreshControl={
-            <RefreshControl refreshing={false} onRefresh={() => refetch()} />
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={() => refetch()}
+            />
           }
         />
       )}

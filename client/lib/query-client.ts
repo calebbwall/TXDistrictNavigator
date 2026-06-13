@@ -19,7 +19,7 @@ export function getApiUrl(): string {
   }
 
   const extraApiUrl = Constants.expoConfig?.extra?.API_BASE_URL;
-  if (extraApiUrl && extraApiUrl !== "YOUR_DEPLOYED_REPLIT_URL_HERE") {
+  if (extraApiUrl && !extraApiUrl.startsWith("YOUR_")) {
     return extraApiUrl;
   }
 

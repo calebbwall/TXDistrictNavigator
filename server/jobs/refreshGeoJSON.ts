@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
-import { FETCH_TIMEOUT_GEOJSON_MS } from "../lib/httpTimeouts";
+import { SCRAPER_FETCH_TIMEOUT_MS } from "../lib/timeouts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,9 +64,7 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
           "User-Agent": "TexasDistrictsApp/1.0 (GeoJSON Sync)",
           Accept: "application/json",
         },
-        // District GeoJSON downloads run to tens of MB; the signal also bounds
-        // the body read, so use the large-payload budget.
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_GEOJSON_MS),
+        signal: AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
       });
       if (response.ok) return response;
       if (response.status === 429) {
