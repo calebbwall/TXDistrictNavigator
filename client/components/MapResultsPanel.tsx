@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -129,6 +129,18 @@ export function MapResultsPanel({
   const panelHeight = useSharedValue(
     officials.length > 2 ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT,
   );
+
+  // The panel is reused across district selections, so reset the expanded
+  // state to the count-based default whenever a new result set arrives.
+  const officialsCount = officials.length;
+  useEffect(() => {
+    const expanded = officialsCount > 2;
+    isExpanded.value = expanded;
+    panelHeight.value = withTiming(
+      expanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT,
+      { duration: ANIMATION_DURATION, easing: Easing.out(Easing.cubic) },
+    );
+  }, [officialsCount, isExpanded, panelHeight]);
 
   const toggleExpand = useCallback(() => {
     const newExpanded = !isExpanded.value;

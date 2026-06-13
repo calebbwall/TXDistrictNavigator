@@ -48,7 +48,7 @@ import Animated, {
   FadeIn,
   WithSpringConfig,
 } from "react-native-reanimated";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ThemedText } from "@/components/ThemedText";
@@ -721,7 +721,10 @@ export default function OfficialProfileScreen() {
             <View
               style={[
                 styles.vacantAvatarContainer,
-                { borderColor: theme.warning },
+                {
+                  borderColor: theme.warning,
+                  backgroundColor: theme.backgroundSecondary,
+                },
               ]}
             >
               <Feather name="user-x" size={40} color={theme.secondaryText} />
@@ -824,7 +827,10 @@ export default function OfficialProfileScreen() {
               onPress={() => setShowPhotoModal(true)}
               style={({ pressed }) => [
                 styles.avatarContainer,
-                { opacity: pressed ? 0.8 : 1 },
+                {
+                  opacity: pressed ? 0.8 : 1,
+                  backgroundColor: theme.backgroundSecondary,
+                },
               ]}
               accessibilityRole="button"
               accessibilityLabel="View photo"
@@ -835,7 +841,12 @@ export default function OfficialProfileScreen() {
               />
             </Pressable>
           ) : (
-            <View style={styles.avatarContainer}>
+            <View
+              style={[
+                styles.avatarContainer,
+                { backgroundColor: theme.backgroundSecondary },
+              ]}
+            >
               <Image
                 source={require("../../assets/images/default-avatar.png")}
                 style={styles.avatar}
@@ -900,8 +911,8 @@ export default function OfficialProfileScreen() {
                 { opacity: pressed ? 0.7 : 1 },
               ]}
             >
-              <Feather
-                name={isSaved ? "bookmark" : "bookmark"}
+              <Ionicons
+                name={isSaved ? "bookmark" : "bookmark-outline"}
                 size={24}
                 color={isSaved ? theme.primary : theme.secondaryText}
                 style={{ opacity: isSaved ? 1 : 0.5 }}
@@ -2434,7 +2445,6 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: BorderRadius.full,
     overflow: "hidden",
-    backgroundColor: "#E0E0E0",
   },
   avatar: {
     width: 80,
@@ -2556,7 +2566,6 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F5F5F5",
   },
   vacantCard: {
     flexDirection: "row",
