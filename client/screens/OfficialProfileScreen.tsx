@@ -244,7 +244,7 @@ export default function OfficialProfileScreen() {
   const district = official ? getDistrictById(official.districtId) : undefined;
 
   const [activeTab, setActiveTab] = useState<TabType>(
-    initialTab || (initialSection === "privateNotes" ? "private" : "private"),
+    initialTab || (initialSection === "privateNotes" ? "private" : "public"),
   );
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [showAnniversaryPicker, setShowAnniversaryPicker] = useState(false);

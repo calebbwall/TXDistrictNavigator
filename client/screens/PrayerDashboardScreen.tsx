@@ -18,7 +18,12 @@ import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
-import { invalidatePrayerQueries } from "@/lib/prayer-utils";
+import {
+  invalidatePrayerQueries,
+  prayerStatusLabel,
+  getDateKey,
+  getTodayDateKey,
+} from "@/lib/prayer-utils";
 import { useTabBarHeightSafe } from "@/hooks/useTabBarHeightSafe";
 
 type Prayer = {
@@ -69,7 +74,7 @@ type OfficialItem = {
 };
 
 const STATUS_TABS = [
-  { key: "OPEN", label: "Open" },
+  { key: "OPEN", label: "Active" },
   { key: "ANSWERED", label: "Answered" },
   { key: "ARCHIVED", label: "Archived" },
   { key: "ALL", label: "All" },
@@ -79,17 +84,6 @@ const BROWSE_MODES = [
   { key: "officials", label: "Officials" },
   { key: "categories", label: "Categories" },
 ] as const;
-
-function getTodayDateKey(): string {
-  const localeStr = new Date().toLocaleDateString("en-US", {
-    timeZone: "America/Chicago",
-  });
-  const parts = localeStr.split("/");
-  const month = parts[0].padStart(2, "0");
-  const day = parts[1].padStart(2, "0");
-  const year = parts[2];
-  return `${year}-${month}-${day}`;
-}
 
 export default function PrayerDashboardScreen() {
   const { theme } = useTheme();
@@ -188,13 +182,7 @@ export default function PrayerDashboardScreen() {
 
   const isPrayedToday = (prayer: Prayer): boolean => {
     if (!prayer.lastPrayedAt) return false;
-    const prayedDate = new Date(prayer.lastPrayedAt);
-    const prayedKey = prayedDate
-      .toLocaleDateString("en-US", { timeZone: "America/Chicago" })
-      .split("/")
-      .map((p, i) => (i === 2 ? p : p.padStart(2, "0")))
-      .reduce((_, __, i, arr) => `${arr[2]}-${arr[0]}-${arr[1]}`);
-    return prayedKey === todayKey;
+    return getDateKey(new Date(prayer.lastPrayedAt)) === todayKey;
   };
 
   const getPeopleLabel = (prayer: Prayer): string | null => {
@@ -206,10 +194,6 @@ export default function PrayerDashboardScreen() {
     if (allNames.length <= 2) return allNames.join(", ");
     return `${allNames[0]} +${allNames.length - 1} more`;
   };
-
-  const completedToday = streak
-    ? streak.lastCompletedDateKey === todayKey
-    : false;
 
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -470,8 +454,7 @@ export default function PrayerDashboardScreen() {
               {showCompletedPicks
                 ? dailyPicks.prayers
                     .filter((p) => isPrayedToday(p))
-                    .map((prayer, _idx) => {
-                      const originalIndex = dailyPicks.prayers.indexOf(prayer);
+                    .map((prayer) => {
                       const peopleLabel = getPeopleLabel(prayer);
                       return (
                         <Card
@@ -738,7 +721,10 @@ export default function PrayerDashboardScreen() {
                 style={{ color: theme.secondaryText, textAlign: "center" }}
               >
                 No {browseMode === "officials" ? "officials" : "categories"}{" "}
-                with {statusTab === "ALL" ? "" : statusTab.toLowerCase() + " "}
+                with{" "}
+                {statusTab === "ALL"
+                  ? ""
+                  : prayerStatusLabel(statusTab).toLowerCase() + " "}
                 prayers
               </ThemedText>
             </View>
@@ -914,7 +900,7 @@ const styles = StyleSheet.create({
   segmentItem: {
     flex: 1,
     paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.full,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -923,7 +909,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.full,
     alignItems: "center",
     justifyContent: "center",
   },

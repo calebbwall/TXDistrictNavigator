@@ -21,6 +21,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useToast } from "@/components/Toast";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
+import { prayerStatusLabel } from "@/lib/prayer-utils";
 import * as WebBrowser from "expo-web-browser";
 import {
   requestNotificationPermissions,
@@ -404,7 +405,7 @@ export default function PrayerSettingsScreen() {
                         fontWeight: isSelected ? "700" : "400",
                       }}
                     >
-                      {s}
+                      {prayerStatusLabel(s)}
                     </ThemedText>
                   </Pressable>
                 );
