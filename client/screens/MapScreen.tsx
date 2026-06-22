@@ -46,6 +46,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing, Shadows } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
+import { getAuthHeaders } from "@/lib/userAuth";
 import { getProxiedPhotoUrl } from "@/lib/photoProxy";
 import {
   getOverlayPreferences,
@@ -2075,7 +2076,8 @@ export default function MapScreen() {
 
           try {
             const url = new URL("/api/officials/with-addresses", getApiUrl());
-            const response = await fetch(url.toString());
+            const authHeaders = await getAuthHeaders();
+            const response = await fetch(url.toString(), { headers: authHeaders });
             if (response.ok) {
               const data = await response.json();
               console.log(

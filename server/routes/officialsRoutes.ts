@@ -324,8 +324,7 @@ export function registerOfficialsRoutes(app: Express): void {
     }
   });
 
-  app.get("/api/officials/with-addresses", async (req, res) => {
-    if (!requireAdminToken(req, res)) return;
+  app.get("/api/officials/with-addresses", requireUser, async (req, res) => {
     try {
       const results = await db
         .select({
