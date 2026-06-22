@@ -3,3 +3,4 @@
 - [Map dots need a PUBLIC endpoint](perf-and-server-notes.md) — purple hometown dots must use a public city-level route; admin-guarded routes 401/503 the unauthenticated app.
 - [Simplified GeoJSON boots EMPTY](perf-and-server-notes.md) — bindings are empty for ~500ms; consumers must await whenSimplifiedReady() & never serve/cache empty, else blank overlays / false "no district".
 - [/api/officials has no private data](perf-and-server-notes.md) — mergeOfficial(pub,null) strips private; use public /api/officials/hometowns for personalAddress/hometown, not the full roster.
+- [SO_REUSEPORT zombie dev servers](perf-and-server-notes.md) — restart can orphan tsx grandchildren that keep binding 8081; same URL flaps old/new code. Check ps, pkill -9, then one restart.

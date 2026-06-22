@@ -4,16 +4,10 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
-    />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="/vendor/leaflet-draw/leaflet.draw.css" />
+    <script src="/vendor/leaflet/leaflet.js"></script>
+    <script src="/vendor/leaflet-draw/leaflet.draw.js"></script>
     <style>
       * {
         margin: 0;
@@ -213,6 +207,19 @@
         return layer;
       }
 
+      // Serialize the giant (~69 MB) full-file downloads so a simplified outage
+      // never triggers three concurrent downloads that saturate a slow link and
+      // all time out, leaving the map blank. At most one full fetch runs at once.
+      var fullFetchChain = Promise.resolve();
+      function runWithFullFetchLock(task) {
+        var result = fullFetchChain.then(task, task);
+        fullFetchChain = result.then(
+          function () {},
+          function () {},
+        );
+        return result;
+      }
+
       async function fetchAndSetGeoJSON(layerType) {
         if (loadStatus[layerType].loaded || loadStatus[layerType].loading) {
           console.log("[OVERLAY]", layerType, "already loaded or loading");
@@ -285,7 +292,9 @@
               layerType,
               "simplified exhausted retries, falling back to full version",
             );
-            data = await fetchOnce("/api/geojson/" + layerType + "_full", 30000);
+            data = await runWithFullFetchLock(function () {
+              return fetchOnce("/api/geojson/" + layerType + "_full", 30000);
+            });
           }
 
           var featureCount = data.features?.length || 0;

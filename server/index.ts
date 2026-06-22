@@ -399,6 +399,13 @@ function configureExpoAndLanding(app: express.Application) {
     next();
   });
 
+  app.use(
+    "/vendor",
+    express.static(path.resolve(process.cwd(), "server", "vendor"), {
+      maxAge: "30d",
+      immutable: true,
+    }),
+  );
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 

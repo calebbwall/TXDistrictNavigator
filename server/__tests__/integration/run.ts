@@ -59,6 +59,7 @@ const SUITES = [
   { name: "adminAuth", path: "./adminAuth.test" },
   { name: "validation", path: "./validation.test" },
   { name: "timeouts", path: "./timeouts.test" },
+  { name: "mapRoutes", path: "./mapRoutes.test" },
 ];
 
 async function main() {

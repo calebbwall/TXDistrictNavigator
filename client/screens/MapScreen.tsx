@@ -100,10 +100,10 @@ const MAP_HTML = `
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/vendor/leaflet-draw/leaflet.draw.css" />
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script src="/vendor/leaflet-draw/leaflet.draw.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; }
@@ -1894,6 +1894,21 @@ interface GeoJSONLoadStatus {
 const geoJSONCache: Record<string, { data: any; timestamp: number }> = {};
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+// Serialize the giant (~69 MB) full-file GeoJSON downloads. If the simplified
+// files fail for all three layers at once (e.g. a degraded connection), firing
+// three concurrent 69 MB downloads saturates the link and they all time out,
+// leaving the map blank. This lock guarantees at most one full download runs at
+// a time, so the queue drains one layer after another instead of stalling.
+let fullFetchChain: Promise<unknown> = Promise.resolve();
+function runWithFullFetchLock<T>(task: () => Promise<T>): Promise<T> {
+  const result = fullFetchChain.then(task, task);
+  fullFetchChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -1901,6 +1916,17 @@ export default function MapScreen() {
   const route = useRoute<MapRouteProp>();
   const { theme } = useTheme();
   const webViewRef = useRef<WebView>(null);
+
+  // The native WebView loads MAP_HTML inline, so relative /vendor asset URLs
+  // need an origin to resolve against. Anchor the document to the API base URL
+  // so self-hosted Leaflet loads instead of the old unpkg CDN.
+  const webViewBaseUrl = useMemo(() => {
+    try {
+      return getApiUrl();
+    } catch {
+      return "";
+    }
+  }, []);
 
   const [overlays, setOverlays] = useState<OverlayPreferences>({
     senate: true, // Default to showing TX Senate overlay
@@ -2379,7 +2405,9 @@ export default function MapScreen() {
           `[MapScreen] ${layerType} simplified exhausted retries, falling back to full version`,
         );
         const fullUrl = new URL(`/api/geojson/${layerType}_full`, baseUrl);
-        data = await fetchFromEndpoint(fullUrl.toString(), 30000);
+        data = await runWithFullFetchLock(() =>
+          fetchFromEndpoint(fullUrl.toString(), 30000),
+        );
         usedFallback = true;
 
         if (!validateGeoJSON(data)) {
@@ -2587,46 +2615,45 @@ export default function MapScreen() {
         congress: { loaded: false, features: 0, error: null },
       });
 
-      const [senate, house, congress] = await Promise.all([
-        fetchGeoJSON("tx_senate"),
-        fetchGeoJSON("tx_house"),
-        fetchGeoJSON("us_congress"),
-      ]);
+      // Fetch each layer and push it into the WebView the moment it resolves so
+      // one slow/failed layer can't stall the whole map. Enabled overlays go
+      // first: they appear soonest and, on a degraded connection, win the
+      // serialized full-file download queue ahead of disabled layers.
+      let anyLayerShown = false;
+      const sendLayer = (layerType: DistrictType, data: any) => {
+        if (!data) return;
+        console.log(
+          `[MapScreen] native: sending ${layerType} (${data.features?.length} features)`,
+        );
+        sendToWebView({ type: "setGeoJSON", layerType, geojson: data });
+        if (!anyLayerShown) {
+          anyLayerShown = true;
+          setDataLoaded(true);
+        }
+      };
 
-      console.log(
-        "[MapScreen] native: GeoJSON fetch complete, sending to WebView",
+      const loadAndSendLayer = async (layerType: DistrictType) => {
+        const data = await fetchGeoJSON(layerType);
+        sendLayer(layerType, data);
+        return data;
+      };
+
+      const loadOrder: DistrictType[] = [];
+      const queueLayer = (layerType: DistrictType, enabled: boolean) => {
+        if (enabled) loadOrder.push(layerType);
+      };
+      queueLayer("tx_senate", currentOverlays.senate);
+      queueLayer("tx_house", currentOverlays.house);
+      queueLayer("us_congress", currentOverlays.congress);
+      (["tx_senate", "tx_house", "us_congress"] as DistrictType[]).forEach(
+        (layerType) => {
+          if (!loadOrder.includes(layerType)) loadOrder.push(layerType);
+        },
       );
 
-      if (senate) {
-        console.log(
-          `[MapScreen] native: sending tx_senate (${senate.features?.length} features)`,
-        );
-        sendToWebView({
-          type: "setGeoJSON",
-          layerType: "tx_senate",
-          geojson: senate,
-        });
-      }
-      if (house) {
-        console.log(
-          `[MapScreen] native: sending tx_house (${house.features?.length} features)`,
-        );
-        sendToWebView({
-          type: "setGeoJSON",
-          layerType: "tx_house",
-          geojson: house,
-        });
-      }
-      if (congress) {
-        console.log(
-          `[MapScreen] native: sending us_congress (${congress.features?.length} features)`,
-        );
-        sendToWebView({
-          type: "setGeoJSON",
-          layerType: "us_congress",
-          geojson: congress,
-        });
-      }
+      await Promise.all(loadOrder.map(loadAndSendLayer));
+
+      console.log("[MapScreen] native: GeoJSON fetch complete, all layers sent");
 
       setDataLoaded(true);
       console.log("[MapScreen] native: DataLoaded set to true");
@@ -3817,7 +3844,7 @@ export default function MapScreen() {
       ) : (
         <WebView
           ref={webViewRef}
-          source={{ html: MAP_HTML, baseUrl: "" }}
+          source={{ html: MAP_HTML, baseUrl: webViewBaseUrl }}
           style={styles.map}
           onMessage={handleWebViewMessage}
           onError={(syntheticEvent) => {
