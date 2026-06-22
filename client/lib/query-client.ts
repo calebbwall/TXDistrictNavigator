@@ -68,7 +68,7 @@ export const getQueryFn: <T>(options: {
     const url = new URL(queryKey.join("/") as string, baseUrl);
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
+    const timer = setTimeout(() => controller.abort(), 12000);
     // Honour React Query's own cancellation signal too
     signal?.addEventListener("abort", () => controller.abort());
 
@@ -99,8 +99,8 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       staleTime: 5 * 60 * 1000,
       gcTime: 24 * 60 * 60 * 1000,
-      retry: 3,
-      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15000),
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 3000),
       networkMode: "offlineFirst",
     },
     mutations: {

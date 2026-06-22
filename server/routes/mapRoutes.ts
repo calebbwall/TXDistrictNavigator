@@ -8,6 +8,7 @@ import {
   getTxHouseGeoJSONFull,
   getTxSenateGeoJSONFull,
   getUsCongressGeoJSONFull,
+  whenSimplifiedReady,
 } from "../data/geojson";
 import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
@@ -28,23 +29,34 @@ const cachedGeoJSON: {
   us_congress: FeatureCollection | null;
 } = { tx_house: null, tx_senate: null, us_congress: null };
 
+// Memoizes the live GeoJSON binding per overlay. Callers should first
+// `await whenSimplifiedReady()` so the binding is populated; we additionally
+// only cache a collection once it actually has features, so a request that
+// somehow arrives before the binding is filled never freezes an EMPTY object
+// into the cache (which would make point/area lookups falsely report "no
+// district" until the process restarts).
 function getGeoJSONForOverlay(overlayType: string): FeatureCollection | null {
   if (overlayType === "house" || overlayType === "tx_house") {
-    if (!cachedGeoJSON.tx_house) {
-      cachedGeoJSON.tx_house = txHouseGeoJSON as unknown as FeatureCollection;
+    if (!cachedGeoJSON.tx_house?.features?.length) {
+      const live = txHouseGeoJSON as unknown as FeatureCollection;
+      if (live?.features?.length) cachedGeoJSON.tx_house = live;
+      return live;
     }
     return cachedGeoJSON.tx_house;
   }
   if (overlayType === "senate" || overlayType === "tx_senate") {
-    if (!cachedGeoJSON.tx_senate) {
-      cachedGeoJSON.tx_senate = txSenateGeoJSON as unknown as FeatureCollection;
+    if (!cachedGeoJSON.tx_senate?.features?.length) {
+      const live = txSenateGeoJSON as unknown as FeatureCollection;
+      if (live?.features?.length) cachedGeoJSON.tx_senate = live;
+      return live;
     }
     return cachedGeoJSON.tx_senate;
   }
   if (overlayType === "congress" || overlayType === "us_congress") {
-    if (!cachedGeoJSON.us_congress) {
-      cachedGeoJSON.us_congress =
-        usCongressGeoJSON as unknown as FeatureCollection;
+    if (!cachedGeoJSON.us_congress?.features?.length) {
+      const live = usCongressGeoJSON as unknown as FeatureCollection;
+      if (live?.features?.length) cachedGeoJSON.us_congress = live;
+      return live;
     }
     return cachedGeoJSON.us_congress;
   }
@@ -65,16 +77,38 @@ function getDistrictNumber(feature: Feature): number | null {
 }
 
 export function registerMapRoutes(app: Express): void {
-  app.get("/api/geojson/tx_house", (_req, res) => {
-    res.json(txHouseGeoJSON);
+  // Simplified-overlay endpoints. These await the one-time boot load so a
+  // request that lands during the brief startup window never receives an empty
+  // FeatureCollection (which the client would treat as failure and escalate to
+  // the ~69 MB full file). If the file genuinely failed to load we return 503
+  // so the client retries / falls back deliberately, rather than caching empty
+  // data as if it were valid.
+  type GeoJSONLike = { features?: unknown[] };
+  const serveSimplified = async (
+    res: import("express").Response,
+    getCollection: () => GeoJSONLike,
+    label: string,
+  ) => {
+    await whenSimplifiedReady();
+    const collection = getCollection();
+    if (!collection?.features?.length) {
+      console.error(`[GeoJSON] ${label} simplified unavailable after load`);
+      res.status(503).json({ error: `${label} not ready` });
+      return;
+    }
+    res.json(collection);
+  };
+
+  app.get("/api/geojson/tx_house", async (_req, res) => {
+    await serveSimplified(res, () => txHouseGeoJSON, "tx_house");
   });
 
-  app.get("/api/geojson/tx_senate", (_req, res) => {
-    res.json(txSenateGeoJSON);
+  app.get("/api/geojson/tx_senate", async (_req, res) => {
+    await serveSimplified(res, () => txSenateGeoJSON, "tx_senate");
   });
 
-  app.get("/api/geojson/us_congress", (_req, res) => {
-    res.json(usCongressGeoJSON);
+  app.get("/api/geojson/us_congress", async (_req, res) => {
+    await serveSimplified(res, () => usCongressGeoJSON, "us_congress");
   });
 
   app.get("/api/geojson/tx_house_full", async (_req, res) => {
@@ -160,7 +194,7 @@ export function registerMapRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/lookup/districts-at-point", (req, res) => {
+  app.post("/api/lookup/districts-at-point", async (req, res) => {
     try {
       const { lat, lng } = req.body;
 
@@ -171,6 +205,11 @@ export function registerMapRoutes(app: Express): void {
       }
 
       console.log(`[Lookup] Districts at point: (${lat}, ${lng})`);
+
+      // Ensure the simplified collections are loaded before we test the point
+      // against them — otherwise a boot-window tap would falsely return "no
+      // district" against empty bindings.
+      await whenSimplifiedReady();
 
       const point = turf.point([lng, lat]);
       const hits: { source: SourceType; districtNumber: number }[] = [];
@@ -217,7 +256,7 @@ export function registerMapRoutes(app: Express): void {
     res.json(getCacheStats());
   });
 
-  app.post("/api/map/area-hits", (req, res) => {
+  app.post("/api/map/area-hits", async (req, res) => {
     try {
       const { geometry, overlays } = req.body;
 
@@ -257,6 +296,10 @@ export function registerMapRoutes(app: Express): void {
         "[API] /api/map/area-hits - overlays:",
         JSON.stringify(overlays),
       );
+
+      // Wait for the simplified collections so a boot-window draw-to-search
+      // never intersects against empty bindings and falsely returns no hits.
+      await whenSimplifiedReady();
 
       const drawnPolygon = turf.polygon(geometry.coordinates);
       const hits: { source: SourceType; districtNumber: number }[] = [];

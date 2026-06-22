@@ -66,7 +66,14 @@ export let usCongressGeoJSON: GeoJSONCollection = EMPTY;
 // Non-blocking — the HTTP server can start and pass health checks while
 // this runs.  By the time any real API request arrives the files will
 // already be populated (typical async I/O finishes in <500 ms).
-(async () => {
+//
+// A request that lands in that <500 ms boot window used to receive an EMPTY
+// FeatureCollection, which the map client treats as "validation failed" and
+// escalates to the ~69 MB full file. To close that race, route handlers can
+// await `whenSimplifiedReady()` before responding so a boot-window request
+// gets real data instead of an empty collection.
+let simplifiedReady = false;
+const simplifiedReadyPromise: Promise<void> = (async () => {
   const [senate, house, congress] = await Promise.all([
     loadGeoJSONAsync("tx_senate_simplified.geojson"),
     loadGeoJSONAsync("tx_house_simplified.geojson"),
@@ -75,7 +82,19 @@ export let usCongressGeoJSON: GeoJSONCollection = EMPTY;
   txSenateGeoJSON = senate;
   txHouseGeoJSON = house;
   usCongressGeoJSON = congress;
+  simplifiedReady = true;
 })();
+
+/** Resolves once the simplified GeoJSON files have finished loading (or failed
+ *  and fallen back to EMPTY). Always resolves — never rejects. */
+export function whenSimplifiedReady(): Promise<void> {
+  return simplifiedReadyPromise;
+}
+
+/** True once the simplified files have been read into the live bindings. */
+export function isSimplifiedReady(): boolean {
+  return simplifiedReady;
+}
 
 // Full-resolution files are large (~69 MB combined) and are ONLY served by the
 // /api/geojson/*_full fallback endpoints, which the client requests rarely

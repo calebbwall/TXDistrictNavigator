@@ -226,15 +226,68 @@
           "fetching from /api/geojson/" + layerType,
         );
 
-        try {
-          var response = await fetch("/api/geojson/" + layerType);
-          console.log("[OVERLAY]", layerType, "status=" + response.status);
+        var sleep = function (ms) {
+          return new Promise(function (r) {
+            setTimeout(r, ms);
+          });
+        };
 
-          if (!response.ok) {
-            throw new Error("HTTP " + response.status);
+        // Fetch the small simplified file with retries before ever touching the
+        // ~69 MB full file. A transient failure or a brief cold-start 503 must
+        // not leave the overlay silently blank — retry, then fall back to full.
+        var fetchOnce = async function (url, timeoutMs) {
+          var controller = new AbortController();
+          var timer = setTimeout(function () {
+            controller.abort();
+          }, timeoutMs);
+          try {
+            var resp = await fetch(url, { signal: controller.signal });
+            if (!resp.ok) {
+              throw new Error("HTTP " + resp.status);
+            }
+            var parsed = await resp.json();
+            if (!parsed || !parsed.features || parsed.features.length === 0) {
+              throw new Error("empty/invalid response");
+            }
+            return parsed;
+          } finally {
+            clearTimeout(timer);
+          }
+        };
+
+        try {
+          var data = null;
+          var SIMPLIFIED_ATTEMPTS = 3;
+          for (var attempt = 1; attempt <= SIMPLIFIED_ATTEMPTS; attempt++) {
+            try {
+              data = await fetchOnce("/api/geojson/" + layerType, 8000);
+              break;
+            } catch (attemptErr) {
+              console.warn(
+                "[OVERLAY]",
+                layerType,
+                "simplified attempt " +
+                  attempt +
+                  "/" +
+                  SIMPLIFIED_ATTEMPTS +
+                  " failed: " +
+                  attemptErr.message,
+              );
+              if (attempt < SIMPLIFIED_ATTEMPTS) {
+                await sleep(400 * attempt);
+              }
+            }
           }
 
-          var data = await response.json();
+          if (!data) {
+            console.log(
+              "[OVERLAY]",
+              layerType,
+              "simplified exhausted retries, falling back to full version",
+            );
+            data = await fetchOnce("/api/geojson/" + layerType + "_full", 30000);
+          }
+
           var featureCount = data.features?.length || 0;
           console.log("[OVERLAY]", layerType, "features=" + featureCount);
 

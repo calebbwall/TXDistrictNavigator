@@ -2304,18 +2304,21 @@ export default function MapScreen() {
       return cached.data;
     }
 
-    const fetchFromEndpoint = async (endpoint: string) => {
+    const fetchFromEndpoint = async (endpoint: string, timeoutMs: number) => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      const response = await fetch(endpoint, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      try {
+        const response = await fetch(endpoint, { signal: controller.signal });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        return await response.json();
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      return await response.json();
     };
 
     const validateGeoJSON = (data: unknown): boolean => {
@@ -2325,6 +2328,8 @@ export default function MapScreen() {
         return false;
       return true;
     };
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
       const baseUrl = getApiUrl();
@@ -2336,21 +2341,45 @@ export default function MapScreen() {
       let data;
       let usedFallback = false;
 
-      try {
-        data = await fetchFromEndpoint(simplifiedUrl.toString());
-
-        if (!validateGeoJSON(data)) {
-          console.warn(
-            `[MapScreen] ${layerType} simplified GeoJSON failed validation, trying full version`,
+      // The simplified file is small (a few hundred KB gzipped), so retry it a
+      // few times before ever touching the ~69 MB full file. A transient blip,
+      // a slow tunnel, or a brief cold-start 503 must NOT escalate straight to a
+      // huge download that times out and leaves the overlay blank.
+      const SIMPLIFIED_ATTEMPTS = 3;
+      const SIMPLIFIED_TIMEOUT_MS = 8000;
+      for (let attempt = 1; attempt <= SIMPLIFIED_ATTEMPTS; attempt++) {
+        try {
+          const candidate = await fetchFromEndpoint(
+            simplifiedUrl.toString(),
+            SIMPLIFIED_TIMEOUT_MS,
           );
-          throw new Error("Validation failed");
+          if (!validateGeoJSON(candidate)) {
+            throw new Error("empty/invalid simplified response");
+          }
+          data = candidate;
+          break;
+        } catch (simplifiedError) {
+          const msg =
+            simplifiedError instanceof Error
+              ? simplifiedError.message
+              : String(simplifiedError);
+          console.warn(
+            `[MapScreen] ${layerType} simplified attempt ${attempt}/${SIMPLIFIED_ATTEMPTS} failed: ${msg}`,
+          );
+          if (attempt < SIMPLIFIED_ATTEMPTS) {
+            await sleep(400 * attempt);
+          }
         }
-      } catch (simplifiedError) {
+      }
+
+      // Last resort only: the simplified file never came back valid after
+      // retries. Pull the full version with a generous timeout (it is large).
+      if (!data) {
         console.log(
-          `[MapScreen] ${layerType} simplified failed, falling back to full version`,
+          `[MapScreen] ${layerType} simplified exhausted retries, falling back to full version`,
         );
         const fullUrl = new URL(`/api/geojson/${layerType}_full`, baseUrl);
-        data = await fetchFromEndpoint(fullUrl.toString());
+        data = await fetchFromEndpoint(fullUrl.toString(), 30000);
         usedFallback = true;
 
         if (!validateGeoJSON(data)) {
