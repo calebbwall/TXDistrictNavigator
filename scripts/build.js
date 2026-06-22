@@ -39,22 +39,35 @@ function stripProtocol(domain) {
   return new URL(urlString).host;
 }
 
+// Ephemeral Replit *workspace* domains (e.g. *.spock.replit.dev) change on every
+// restart and only respond while the dev workspace is running. A published bundle
+// must never bake one in — it leaves the shipped app pointing at a dead/dev API,
+// which is exactly how committee hearings stopped populating on the APK.
+function isEphemeralDevDomain(domain) {
+  return /\.replit\.dev$/i.test(domain);
+}
+
 function getDeploymentDomain() {
-  // Check Replit deployment environment variables first
-  if (process.env.REPLIT_INTERNAL_APP_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
-  }
-
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
-  }
-
+  // An explicitly provided domain always wins. This is how a production build is
+  // pinned to the stable deployment domain (e.g. EXPO_PUBLIC_DOMAIN=
+  // tx-district-navigator.replit.app node scripts/build.js) instead of whatever
+  // ephemeral workspace URL happens to be in the environment.
   if (process.env.EXPO_PUBLIC_DOMAIN) {
     return stripProtocol(process.env.EXPO_PUBLIC_DOMAIN);
   }
 
+  // Stable Replit deployment domain.
+  if (process.env.REPLIT_INTERNAL_APP_DOMAIN) {
+    return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
+  }
+
+  // Ephemeral dev-workspace domain — last resort, and never safe to publish.
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
+  }
+
   console.error(
-    "ERROR: No deployment domain found. Set REPLIT_INTERNAL_APP_DOMAIN, REPLIT_DEV_DOMAIN, or EXPO_PUBLIC_DOMAIN",
+    "ERROR: No deployment domain found. Set EXPO_PUBLIC_DOMAIN to your stable deployment domain (e.g. tx-district-navigator.replit.app).",
   );
   process.exit(1);
 }
@@ -517,6 +530,22 @@ async function main() {
   setupSignalHandlers();
 
   const domain = getDeploymentDomain();
+
+  // Guard against the bug that pointed the published APK at the dev workspace:
+  // an ephemeral *.replit.dev domain dies on restart and never runs the always-on
+  // legislative refresh, so hearings show up empty. Refuse to bake one in unless
+  // the caller explicitly opts in (ALLOW_DEV_DOMAIN=1) for a throwaway dev build.
+  if (isEphemeralDevDomain(domain) && process.env.ALLOW_DEV_DOMAIN !== "1") {
+    exitWithError(
+      `ERROR: Refusing to build a published bundle against the ephemeral dev domain "${domain}".\n` +
+        `This URL changes on every workspace restart and does not run the legislative\n` +
+        `refresh scheduler, so committee hearings will not populate in the app.\n\n` +
+        `Set EXPO_PUBLIC_DOMAIN to the stable deployment domain, e.g.:\n` +
+        `  EXPO_PUBLIC_DOMAIN=tx-district-navigator.replit.app node scripts/build.js\n\n` +
+        `(For a throwaway dev build only, re-run with ALLOW_DEV_DOMAIN=1.)`,
+    );
+  }
+
   const baseUrl = `https://${domain}`;
   const timestamp = `${Date.now()}-${process.pid}`;
 
