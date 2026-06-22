@@ -1,0 +1,3 @@
+- [Official tables are tiny](perf-and-server-notes.md) — official_public/official_private are ~247 rows each; Postgres seq-scans optimally, don't add indexes there.
+- [res.json is multi-wrapped](perf-and-server-notes.md) — request-logging + gzip both override res.json; registration order = active wrapper; gzip bypasses logger body capture by design.
+- [Map dots need a PUBLIC endpoint](perf-and-server-notes.md) — purple hometown dots must use a public city-level route; admin-guarded routes 401/503 the unauthenticated app.

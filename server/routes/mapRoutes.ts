@@ -5,9 +5,9 @@ import {
   txHouseGeoJSON,
   txSenateGeoJSON,
   usCongressGeoJSON,
-  txHouseGeoJSONFull,
-  txSenateGeoJSONFull,
-  usCongressGeoJSONFull,
+  getTxHouseGeoJSONFull,
+  getTxSenateGeoJSONFull,
+  getUsCongressGeoJSONFull,
 } from "../data/geojson";
 import * as turf from "@turf/turf";
 import booleanIntersects from "@turf/boolean-intersects";
@@ -77,16 +77,16 @@ export function registerMapRoutes(app: Express): void {
     res.json(usCongressGeoJSON);
   });
 
-  app.get("/api/geojson/tx_house_full", (_req, res) => {
-    res.json(txHouseGeoJSONFull);
+  app.get("/api/geojson/tx_house_full", async (_req, res) => {
+    res.json(await getTxHouseGeoJSONFull());
   });
 
-  app.get("/api/geojson/tx_senate_full", (_req, res) => {
-    res.json(txSenateGeoJSONFull);
+  app.get("/api/geojson/tx_senate_full", async (_req, res) => {
+    res.json(await getTxSenateGeoJSONFull());
   });
 
-  app.get("/api/geojson/us_congress_full", (_req, res) => {
-    res.json(usCongressGeoJSONFull);
+  app.get("/api/geojson/us_congress_full", async (_req, res) => {
+    res.json(await getUsCongressGeoJSONFull());
   });
 
   app.get("/api/map.html", (_req, res) => {

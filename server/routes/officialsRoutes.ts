@@ -36,6 +36,30 @@ function requireAdminToken(
   return true;
 }
 
+// Reduce a stored address to city/region granularity only. The public map
+// (purple hometown dots) must never expose street-level personal addresses —
+// see threat_model.md → Information Disclosure. Stored hometowns are already
+// city-level (e.g. "Austin, TX"), but this is defense-in-depth in case a full
+// street address is ever persisted: strip ZIP codes and street-number / PO-box
+// segments, then keep only the trailing "City, ST" components.
+function toCityRegion(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  // Remove ZIP / ZIP+4 codes.
+  s = s.replace(/\b\d{5}(?:-\d{4})?\b/g, " ");
+  const parts = s
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    // Drop street-number segments ("123 Main St", "5 Oak Ave") and PO boxes.
+    .filter((p) => !/^\d/.test(p) && !/^p\.?\s*o\.?\s*box/i.test(p));
+  if (parts.length === 0) return null;
+  // Keep only the trailing city + state so street/suite names cannot leak.
+  const tail = parts.slice(-2).join(", ").replace(/\s+/g, " ").trim();
+  return tail || null;
+}
+
 export function registerOfficialsRoutes(app: Express): void {
   app.get("/api/officials", async (req, res) => {
     try {
@@ -162,7 +186,23 @@ export function registerOfficialsRoutes(app: Express): void {
 
       const vacancyCount = officials.filter((o) => o.isVacant).length;
 
-      res.json({ officials, count: officials.length, vacancyCount });
+      // Strip the heavy search-only fields from the roster payload. searchZips
+      // and searchCities exist purely to power server-side city/ZIP filtering
+      // (already applied above) and are never read by the client, yet together
+      // they add ~200 KB to every roster response. Omitting them noticeably
+      // speeds up the Browse and Map loads.
+      const slimOfficials = officials.map((o) => {
+        const copy = { ...o } as Partial<MergedOfficial>;
+        delete copy.searchZips;
+        delete copy.searchCities;
+        return copy;
+      });
+
+      res.json({
+        officials: slimOfficials,
+        count: slimOfficials.length,
+        vacancyCount,
+      });
     } catch (err) {
       console.error("[API] Error fetching officials:", err);
       res.status(500).json({ error: "Failed to fetch officials" });
@@ -358,6 +398,53 @@ export function registerOfficialsRoutes(app: Express): void {
     } catch (err) {
       console.error("[API] Error fetching addresses:", err);
       res.status(500).json({ error: "Failed to fetch addresses" });
+    }
+  });
+
+  // Public, city-level hometowns for the map's purple dots. Unlike
+  // /api/officials/with-addresses (admin-only, returns raw addresses), this
+  // endpoint is reachable by anonymous map clients and therefore exposes ONLY
+  // city/region granularity — street-level personal addresses are never
+  // returned (see threat_model.md → Information Disclosure).
+  app.get("/api/officials/hometowns", async (_req, res) => {
+    try {
+      const results = await db
+        .select({
+          officialId: officialPublic.id,
+          fullName: officialPublic.fullName,
+          source: officialPublic.source,
+          personalAddress: officialPrivate.personalAddress,
+        })
+        .from(officialPublic)
+        .innerJoin(
+          officialPrivate,
+          eq(officialPublic.id, officialPrivate.officialPublicId),
+        )
+        .where(
+          and(
+            eq(officialPublic.active, true),
+            eq(officialPrivate.userId, "default"),
+            sql`${officialPrivate.personalAddress} IS NOT NULL AND ${officialPrivate.personalAddress} != ''`,
+          ),
+        );
+
+      const addresses = results
+        .map((r) => {
+          const cityRegion = toCityRegion(r.personalAddress);
+          if (!cityRegion) return null;
+          return {
+            officialId: r.officialId,
+            officialName: r.fullName,
+            source: r.source,
+            personalAddress: cityRegion,
+          };
+        })
+        .filter((a): a is NonNullable<typeof a> => a !== null);
+
+      res.json({ addresses });
+    } catch (err) {
+      console.error("[API] Error fetching hometowns:", err);
+      res.status(500).json({ error: "Failed to fetch hometowns" });
     }
   });
 

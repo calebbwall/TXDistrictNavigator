@@ -2074,14 +2074,17 @@ export default function MapScreen() {
           >();
 
           try {
-            const url = new URL("/api/officials/with-addresses", getApiUrl());
+            // Public, city-level hometowns endpoint (no auth). The older
+            // /api/officials/with-addresses route is admin-only and returns
+            // 401 to the app, which is why the purple dots had disappeared.
+            const url = new URL("/api/officials/hometowns", getApiUrl());
             const response = await fetch(url.toString());
             if (response.ok) {
               const data = await response.json();
               console.log(
                 "[MapScreen] Fetched",
                 data.addresses?.length || 0,
-                "addresses from server",
+                "hometowns from server",
               );
               for (const addr of data.addresses || []) {
                 addressMap.set(addr.officialId, {

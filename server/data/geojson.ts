@@ -56,31 +56,56 @@ async function loadGeoJSONAsync(filename: string): Promise<GeoJSONCollection> {
 
 // Exported as `let` so the live binding is updated once files are read.
 // Starts as empty — populated asynchronously before any real request arrives.
+// Simplified files are small and are read on every map interaction (overlay
+// rendering, point-in-district lookup, draw-to-search), so load them eagerly.
 export let txSenateGeoJSON: GeoJSONCollection = EMPTY;
 export let txHouseGeoJSON: GeoJSONCollection = EMPTY;
 export let usCongressGeoJSON: GeoJSONCollection = EMPTY;
-export let txSenateGeoJSONFull: GeoJSONCollection = EMPTY;
-export let txHouseGeoJSONFull: GeoJSONCollection = EMPTY;
-export let usCongressGeoJSONFull: GeoJSONCollection = EMPTY;
 
-// Load all six files concurrently in the background.
+// Load the three simplified files concurrently in the background.
 // Non-blocking — the HTTP server can start and pass health checks while
 // this runs.  By the time any real API request arrives the files will
 // already be populated (typical async I/O finishes in <500 ms).
 (async () => {
-  const [senate, house, congress, senateFull, houseFull, congressFull] =
-    await Promise.all([
-      loadGeoJSONAsync("tx_senate_simplified.geojson"),
-      loadGeoJSONAsync("tx_house_simplified.geojson"),
-      loadGeoJSONAsync("us_congress_simplified.geojson"),
-      loadGeoJSONAsync("tx_senate.geojson"),
-      loadGeoJSONAsync("tx_house.geojson"),
-      loadGeoJSONAsync("us_congress.geojson"),
-    ]);
+  const [senate, house, congress] = await Promise.all([
+    loadGeoJSONAsync("tx_senate_simplified.geojson"),
+    loadGeoJSONAsync("tx_house_simplified.geojson"),
+    loadGeoJSONAsync("us_congress_simplified.geojson"),
+  ]);
   txSenateGeoJSON = senate;
   txHouseGeoJSON = house;
   usCongressGeoJSON = congress;
-  txSenateGeoJSONFull = senateFull;
-  txHouseGeoJSONFull = houseFull;
-  usCongressGeoJSONFull = congressFull;
 })();
+
+// Full-resolution files are large (~69 MB combined) and are ONLY served by the
+// /api/geojson/*_full fallback endpoints, which the client requests rarely
+// (only when simplified validation fails on-device). Loading them at boot
+// wasted memory and slowed startup, so load each lazily on first request and
+// cache the parsed result for subsequent calls.
+const fullCache: Record<string, GeoJSONCollection> = {};
+const fullLoading: Record<string, Promise<GeoJSONCollection>> = {};
+
+function loadFullOnce(
+  key: string,
+  filename: string,
+): Promise<GeoJSONCollection> {
+  if (fullCache[key]) return Promise.resolve(fullCache[key]);
+  if (!fullLoading[key]) {
+    fullLoading[key] = loadGeoJSONAsync(filename).then((data) => {
+      fullCache[key] = data;
+      delete fullLoading[key];
+      return data;
+    });
+  }
+  return fullLoading[key];
+}
+
+export function getTxSenateGeoJSONFull(): Promise<GeoJSONCollection> {
+  return loadFullOnce("tx_senate", "tx_senate.geojson");
+}
+export function getTxHouseGeoJSONFull(): Promise<GeoJSONCollection> {
+  return loadFullOnce("tx_house", "tx_house.geojson");
+}
+export function getUsCongressGeoJSONFull(): Promise<GeoJSONCollection> {
+  return loadFullOnce("us_congress", "us_congress.geojson");
+}
