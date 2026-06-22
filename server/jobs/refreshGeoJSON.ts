@@ -60,11 +60,11 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
         headers: {
           "User-Agent": "TexasDistrictsApp/1.0 (GeoJSON Sync)",
           Accept: "application/json",
         },
+        signal: AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
       });
       if (response.ok) return response;
       if (response.status === 429) {

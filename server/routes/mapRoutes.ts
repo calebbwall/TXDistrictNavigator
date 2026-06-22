@@ -335,6 +335,12 @@ export function registerMapRoutes(app: Express): void {
         return res.status(403).json({ error: "Domain not allowed" });
       }
 
+      // Hostname allowlisting alone still admits ftp:// etc., which fetch()
+      // rejects with an opaque 500. Only proxy web URLs.
+      if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+        return res.status(403).json({ error: "Protocol not allowed" });
+      }
+
       // redirect: "manual" — the allowlist above only validates the initial URL.
       // Following redirects would let an allowlisted host bounce this request to
       // an arbitrary (including internal) address, i.e. SSRF.

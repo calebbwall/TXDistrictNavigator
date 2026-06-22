@@ -428,7 +428,6 @@ export async function resolveAllMissingPersonIds(): Promise<{
       fullNameDisplay: o.fullName,
     });
   }
-
   let created = 0;
   if (toCreate.length > 0) {
     const inserted = await db.insert(persons).values(toCreate).returning({
