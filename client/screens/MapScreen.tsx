@@ -2077,7 +2077,9 @@ export default function MapScreen() {
           try {
             const url = new URL("/api/officials/with-addresses", getApiUrl());
             const authHeaders = await getAuthHeaders();
-            const response = await fetch(url.toString(), { headers: authHeaders });
+            const response = await fetch(url.toString(), {
+              headers: authHeaders,
+            });
             if (response.ok) {
               const data = await response.json();
               console.log(
