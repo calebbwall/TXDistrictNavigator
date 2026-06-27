@@ -26,7 +26,7 @@ import {
 } from "drizzle-orm";
 import { processEventDateActions } from "../lib/prayerUtils";
 import { requireUser } from "../middleware/userAuth";
-import { zonedWallTimeToUtc } from "../lib/timezone";
+import { zonedWallTimeToUtc, zonedDateKey } from "../lib/timezone";
 
 export { processEventDateActions };
 

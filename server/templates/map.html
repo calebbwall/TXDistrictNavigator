@@ -4,16 +4,10 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
-    />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="/vendor/leaflet-draw/leaflet.draw.css" />
+    <script src="/vendor/leaflet/leaflet.js"></script>
+    <script src="/vendor/leaflet-draw/leaflet.draw.js"></script>
     <style>
       * {
         margin: 0;
@@ -213,6 +207,19 @@
         return layer;
       }
 
+      // Serialize the giant (~69 MB) full-file downloads so a simplified outage
+      // never triggers three concurrent downloads that saturate a slow link and
+      // all time out, leaving the map blank. At most one full fetch runs at once.
+      var fullFetchChain = Promise.resolve();
+      function runWithFullFetchLock(task) {
+        var result = fullFetchChain.then(task, task);
+        fullFetchChain = result.then(
+          function () {},
+          function () {},
+        );
+        return result;
+      }
+
       async function fetchAndSetGeoJSON(layerType) {
         if (loadStatus[layerType].loaded || loadStatus[layerType].loading) {
           console.log("[OVERLAY]", layerType, "already loaded or loading");
@@ -226,15 +233,70 @@
           "fetching from /api/geojson/" + layerType,
         );
 
-        try {
-          var response = await fetch("/api/geojson/" + layerType);
-          console.log("[OVERLAY]", layerType, "status=" + response.status);
+        var sleep = function (ms) {
+          return new Promise(function (r) {
+            setTimeout(r, ms);
+          });
+        };
 
-          if (!response.ok) {
-            throw new Error("HTTP " + response.status);
+        // Fetch the small simplified file with retries before ever touching the
+        // ~69 MB full file. A transient failure or a brief cold-start 503 must
+        // not leave the overlay silently blank — retry, then fall back to full.
+        var fetchOnce = async function (url, timeoutMs) {
+          var controller = new AbortController();
+          var timer = setTimeout(function () {
+            controller.abort();
+          }, timeoutMs);
+          try {
+            var resp = await fetch(url, { signal: controller.signal });
+            if (!resp.ok) {
+              throw new Error("HTTP " + resp.status);
+            }
+            var parsed = await resp.json();
+            if (!parsed || !parsed.features || parsed.features.length === 0) {
+              throw new Error("empty/invalid response");
+            }
+            return parsed;
+          } finally {
+            clearTimeout(timer);
+          }
+        };
+
+        try {
+          var data = null;
+          var SIMPLIFIED_ATTEMPTS = 3;
+          for (var attempt = 1; attempt <= SIMPLIFIED_ATTEMPTS; attempt++) {
+            try {
+              data = await fetchOnce("/api/geojson/" + layerType, 8000);
+              break;
+            } catch (attemptErr) {
+              console.warn(
+                "[OVERLAY]",
+                layerType,
+                "simplified attempt " +
+                  attempt +
+                  "/" +
+                  SIMPLIFIED_ATTEMPTS +
+                  " failed: " +
+                  attemptErr.message,
+              );
+              if (attempt < SIMPLIFIED_ATTEMPTS) {
+                await sleep(400 * attempt);
+              }
+            }
           }
 
-          var data = await response.json();
+          if (!data) {
+            console.log(
+              "[OVERLAY]",
+              layerType,
+              "simplified exhausted retries, falling back to full version",
+            );
+            data = await runWithFullFetchLock(function () {
+              return fetchOnce("/api/geojson/" + layerType + "_full", 30000);
+            });
+          }
+
           var featureCount = data.features?.length || 0;
           console.log("[OVERLAY]", layerType, "features=" + featureCount);
 

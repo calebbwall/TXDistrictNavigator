@@ -55,17 +55,22 @@ export async function runStartupBackfill(): Promise<BackfillResult> {
     console.log("[Backfill] Starting hometown backfill check...");
 
     const baseUrl = getApiUrl();
-    const officialsRes = await fetch(
-      new URL("/api/officials", baseUrl).toString(),
+    // Use the lightweight PUBLIC hometowns endpoint instead of the full roster.
+    // The full /api/officials response merges with null private data, so it
+    // never carried personalAddress — this fetch was heavy AND filled nothing.
+    // /api/officials/hometowns returns only the (city-level) hometowns the
+    // client is allowed to see, which is exactly what backfill needs.
+    const hometownsRes = await fetch(
+      new URL("/api/officials/hometowns", baseUrl).toString(),
     );
-    if (!officialsRes.ok) {
-      console.error("[Backfill] Failed to fetch officials");
+    if (!hometownsRes.ok) {
+      console.error("[Backfill] Failed to fetch hometowns");
       return result;
     }
-    const { officials } = await officialsRes.json();
+    const { addresses } = await hometownsRes.json();
 
-    if (!officials || !Array.isArray(officials)) {
-      console.error("[Backfill] Invalid officials response");
+    if (!addresses || !Array.isArray(addresses)) {
+      console.error("[Backfill] Invalid hometowns response");
       return result;
     }
 
@@ -75,9 +80,15 @@ export async function runStartupBackfill(): Promise<BackfillResult> {
       ? JSON.parse(allNotesRaw)
       : {};
 
-    for (const official of officials) {
+    for (const addr of addresses) {
       result.checked++;
-      const localNotes = allNotes[official.id];
+      const officialId = addr.officialId;
+      if (!officialId) {
+        result.noDataAvailable++;
+        continue;
+      }
+
+      const localNotes = allNotes[officialId];
       const localAddress = localNotes?.personalAddress;
 
       if (!isEffectivelyEmpty(localAddress)) {
@@ -85,15 +96,15 @@ export async function runStartupBackfill(): Promise<BackfillResult> {
         continue;
       }
 
-      const serverAddress = official.private?.personalAddress;
+      const serverAddress = addr.personalAddress;
       if (!isEffectivelyEmpty(serverAddress)) {
         console.log(
-          `[Backfill] Filling hometown for ${official.fullName}: "${serverAddress}"`,
+          `[Backfill] Filling hometown for ${addr.officialName}: "${serverAddress}"`,
         );
-        if (!allNotes[official.id]) {
-          allNotes[official.id] = {};
+        if (!allNotes[officialId]) {
+          allNotes[officialId] = {};
         }
-        allNotes[official.id].personalAddress = serverAddress;
+        allNotes[officialId].personalAddress = serverAddress;
         result.hometownFilled++;
       } else {
         result.noDataAvailable++;

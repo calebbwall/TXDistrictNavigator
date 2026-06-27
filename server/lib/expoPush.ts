@@ -33,12 +33,12 @@ async function sendChunk(messages: ExpoPushMessage[]): Promise<void> {
   try {
     const res = await fetch(EXPO_PUSH_URL, {
       method: "POST",
-      signal: AbortSignal.timeout(EXPO_PUSH_TIMEOUT_MS),
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
       body: JSON.stringify(messages),
+      signal: AbortSignal.timeout(EXPO_PUSH_TIMEOUT_MS),
     });
 
     if (!res.ok) {

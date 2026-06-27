@@ -46,7 +46,6 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing, Shadows } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
-import { getAuthHeaders } from "@/lib/userAuth";
 import { getProxiedPhotoUrl } from "@/lib/photoProxy";
 import {
   getOverlayPreferences,
@@ -101,10 +100,10 @@ const MAP_HTML = `
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/vendor/leaflet-draw/leaflet.draw.css" />
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script src="/vendor/leaflet-draw/leaflet.draw.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; }
@@ -1895,6 +1894,21 @@ interface GeoJSONLoadStatus {
 const geoJSONCache: Record<string, { data: any; timestamp: number }> = {};
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+// Serialize the giant (~69 MB) full-file GeoJSON downloads. If the simplified
+// files fail for all three layers at once (e.g. a degraded connection), firing
+// three concurrent 69 MB downloads saturates the link and they all time out,
+// leaving the map blank. This lock guarantees at most one full download runs at
+// a time, so the queue drains one layer after another instead of stalling.
+let fullFetchChain: Promise<unknown> = Promise.resolve();
+function runWithFullFetchLock<T>(task: () => Promise<T>): Promise<T> {
+  const result = fullFetchChain.then(task, task);
+  fullFetchChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -1902,6 +1916,17 @@ export default function MapScreen() {
   const route = useRoute<MapRouteProp>();
   const { theme } = useTheme();
   const webViewRef = useRef<WebView>(null);
+
+  // The native WebView loads MAP_HTML inline, so relative /vendor asset URLs
+  // need an origin to resolve against. Anchor the document to the API base URL
+  // so self-hosted Leaflet loads instead of the old unpkg CDN.
+  const webViewBaseUrl = useMemo(() => {
+    try {
+      return getApiUrl();
+    } catch {
+      return "";
+    }
+  }, []);
 
   const [overlays, setOverlays] = useState<OverlayPreferences>({
     senate: true, // Default to showing TX Senate overlay
@@ -2075,17 +2100,17 @@ export default function MapScreen() {
           >();
 
           try {
-            const url = new URL("/api/officials/with-addresses", getApiUrl());
-            const authHeaders = await getAuthHeaders();
-            const response = await fetch(url.toString(), {
-              headers: authHeaders,
-            });
+            // Public, city-level hometowns endpoint (no auth). The older
+            // /api/officials/with-addresses route is admin-only and returns
+            // 401 to the app, which is why the purple dots had disappeared.
+            const url = new URL("/api/officials/hometowns", getApiUrl());
+            const response = await fetch(url.toString());
             if (response.ok) {
               const data = await response.json();
               console.log(
                 "[MapScreen] Fetched",
                 data.addresses?.length || 0,
-                "addresses from server",
+                "hometowns from server",
               );
               for (const addr of data.addresses || []) {
                 addressMap.set(addr.officialId, {
@@ -2305,18 +2330,21 @@ export default function MapScreen() {
       return cached.data;
     }
 
-    const fetchFromEndpoint = async (endpoint: string) => {
+    const fetchFromEndpoint = async (endpoint: string, timeoutMs: number) => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      const response = await fetch(endpoint, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      try {
+        const response = await fetch(endpoint, { signal: controller.signal });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        return await response.json();
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      return await response.json();
     };
 
     const validateGeoJSON = (data: unknown): boolean => {
@@ -2326,6 +2354,8 @@ export default function MapScreen() {
         return false;
       return true;
     };
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
       const baseUrl = getApiUrl();
@@ -2337,21 +2367,47 @@ export default function MapScreen() {
       let data;
       let usedFallback = false;
 
-      try {
-        data = await fetchFromEndpoint(simplifiedUrl.toString());
-
-        if (!validateGeoJSON(data)) {
-          console.warn(
-            `[MapScreen] ${layerType} simplified GeoJSON failed validation, trying full version`,
+      // The simplified file is small (a few hundred KB gzipped), so retry it a
+      // few times before ever touching the ~69 MB full file. A transient blip,
+      // a slow tunnel, or a brief cold-start 503 must NOT escalate straight to a
+      // huge download that times out and leaves the overlay blank.
+      const SIMPLIFIED_ATTEMPTS = 3;
+      const SIMPLIFIED_TIMEOUT_MS = 8000;
+      for (let attempt = 1; attempt <= SIMPLIFIED_ATTEMPTS; attempt++) {
+        try {
+          const candidate = await fetchFromEndpoint(
+            simplifiedUrl.toString(),
+            SIMPLIFIED_TIMEOUT_MS,
           );
-          throw new Error("Validation failed");
+          if (!validateGeoJSON(candidate)) {
+            throw new Error("empty/invalid simplified response");
+          }
+          data = candidate;
+          break;
+        } catch (simplifiedError) {
+          const msg =
+            simplifiedError instanceof Error
+              ? simplifiedError.message
+              : String(simplifiedError);
+          console.warn(
+            `[MapScreen] ${layerType} simplified attempt ${attempt}/${SIMPLIFIED_ATTEMPTS} failed: ${msg}`,
+          );
+          if (attempt < SIMPLIFIED_ATTEMPTS) {
+            await sleep(400 * attempt);
+          }
         }
-      } catch (simplifiedError) {
+      }
+
+      // Last resort only: the simplified file never came back valid after
+      // retries. Pull the full version with a generous timeout (it is large).
+      if (!data) {
         console.log(
-          `[MapScreen] ${layerType} simplified failed, falling back to full version`,
+          `[MapScreen] ${layerType} simplified exhausted retries, falling back to full version`,
         );
         const fullUrl = new URL(`/api/geojson/${layerType}_full`, baseUrl);
-        data = await fetchFromEndpoint(fullUrl.toString());
+        data = await runWithFullFetchLock(() =>
+          fetchFromEndpoint(fullUrl.toString(), 30000),
+        );
         usedFallback = true;
 
         if (!validateGeoJSON(data)) {
@@ -2559,46 +2615,47 @@ export default function MapScreen() {
         congress: { loaded: false, features: 0, error: null },
       });
 
-      const [senate, house, congress] = await Promise.all([
-        fetchGeoJSON("tx_senate"),
-        fetchGeoJSON("tx_house"),
-        fetchGeoJSON("us_congress"),
-      ]);
+      // Fetch each layer and push it into the WebView the moment it resolves so
+      // one slow/failed layer can't stall the whole map. Enabled overlays go
+      // first: they appear soonest and, on a degraded connection, win the
+      // serialized full-file download queue ahead of disabled layers.
+      let anyLayerShown = false;
+      const sendLayer = (layerType: DistrictType, data: any) => {
+        if (!data) return;
+        console.log(
+          `[MapScreen] native: sending ${layerType} (${data.features?.length} features)`,
+        );
+        sendToWebView({ type: "setGeoJSON", layerType, geojson: data });
+        if (!anyLayerShown) {
+          anyLayerShown = true;
+          setDataLoaded(true);
+        }
+      };
 
-      console.log(
-        "[MapScreen] native: GeoJSON fetch complete, sending to WebView",
+      const loadAndSendLayer = async (layerType: DistrictType) => {
+        const data = await fetchGeoJSON(layerType);
+        sendLayer(layerType, data);
+        return data;
+      };
+
+      const loadOrder: DistrictType[] = [];
+      const queueLayer = (layerType: DistrictType, enabled: boolean) => {
+        if (enabled) loadOrder.push(layerType);
+      };
+      queueLayer("tx_senate", currentOverlays.senate);
+      queueLayer("tx_house", currentOverlays.house);
+      queueLayer("us_congress", currentOverlays.congress);
+      (["tx_senate", "tx_house", "us_congress"] as DistrictType[]).forEach(
+        (layerType) => {
+          if (!loadOrder.includes(layerType)) loadOrder.push(layerType);
+        },
       );
 
-      if (senate) {
-        console.log(
-          `[MapScreen] native: sending tx_senate (${senate.features?.length} features)`,
-        );
-        sendToWebView({
-          type: "setGeoJSON",
-          layerType: "tx_senate",
-          geojson: senate,
-        });
-      }
-      if (house) {
-        console.log(
-          `[MapScreen] native: sending tx_house (${house.features?.length} features)`,
-        );
-        sendToWebView({
-          type: "setGeoJSON",
-          layerType: "tx_house",
-          geojson: house,
-        });
-      }
-      if (congress) {
-        console.log(
-          `[MapScreen] native: sending us_congress (${congress.features?.length} features)`,
-        );
-        sendToWebView({
-          type: "setGeoJSON",
-          layerType: "us_congress",
-          geojson: congress,
-        });
-      }
+      await Promise.all(loadOrder.map(loadAndSendLayer));
+
+      console.log(
+        "[MapScreen] native: GeoJSON fetch complete, all layers sent",
+      );
 
       setDataLoaded(true);
       console.log("[MapScreen] native: DataLoaded set to true");
@@ -3789,7 +3846,7 @@ export default function MapScreen() {
       ) : (
         <WebView
           ref={webViewRef}
-          source={{ html: MAP_HTML, baseUrl: "" }}
+          source={{ html: MAP_HTML, baseUrl: webViewBaseUrl }}
           style={styles.map}
           onMessage={handleWebViewMessage}
           onError={(syntheticEvent) => {

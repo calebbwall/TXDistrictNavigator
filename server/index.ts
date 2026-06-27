@@ -1,6 +1,7 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import { createServer } from "node:http";
+import * as zlib from "node:zlib";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
@@ -154,6 +155,52 @@ function setupRequestLogging(app: express.Application) {
 
       console.log(logLine);
     });
+
+    next();
+  });
+}
+
+function setupCompression(app: express.Application) {
+  // Dependency-free gzip for JSON responses. Every large payload (GeoJSON
+  // layers, the officials roster, legislative lists) is emitted via res.json,
+  // so wrapping res.json is sufficient — there is no need to intercept the raw
+  // response stream. Compression runs asynchronously so gzipping a multi-MB
+  // GeoJSON body never blocks the event loop, and only kicks in above a small
+  // size threshold to avoid overhead on tiny responses.
+  const MIN_GZIP_BYTES = 1024;
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const accept = String(req.headers["accept-encoding"] || "");
+    if (!/\bgzip\b/.test(accept)) return next();
+
+    const originalJson = res.json.bind(res);
+    res.json = function (body: unknown) {
+      try {
+        if (res.headersSent || res.getHeader("Content-Encoding")) {
+          return originalJson(body);
+        }
+        const json = JSON.stringify(body);
+        if (Buffer.byteLength(json) < MIN_GZIP_BYTES) {
+          return originalJson(body);
+        }
+        zlib.gzip(json, (err, compressed) => {
+          if (err || res.writableEnded || res.headersSent) {
+            if (!err && !res.writableEnded && !res.headersSent) {
+              originalJson(body);
+            }
+            return;
+          }
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.setHeader("Content-Encoding", "gzip");
+          res.setHeader("Content-Length", compressed.length);
+          res.setHeader("Vary", "Accept-Encoding");
+          res.removeHeader("ETag");
+          res.end(compressed);
+        });
+        return res;
+      } catch {
+        return originalJson(body);
+      }
+    } as typeof res.json;
 
     next();
   });
@@ -352,6 +399,13 @@ function configureExpoAndLanding(app: express.Application) {
     next();
   });
 
+  app.use(
+    "/vendor",
+    express.static(path.resolve(process.cwd(), "server", "vendor"), {
+      maxAge: "30d",
+      immutable: true,
+    }),
+  );
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
@@ -446,6 +500,7 @@ server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
     setupCors(app);
     setupBodyParsing(app);
     setupRequestLogging(app);
+    setupCompression(app);
 
     configureExpoAndLanding(app);
     // Run schema migrations BEFORE registerRoutes (which starts the schedulers
