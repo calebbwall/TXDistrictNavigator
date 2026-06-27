@@ -44,6 +44,12 @@ async function loadGeoJSONAsync(filename: string): Promise<GeoJSONCollection> {
     console.log(`[GeoJSON] Loading ${filename} from: ${filePath}`);
     const data = await fs.promises.readFile(filePath, "utf8");
     const parsed = JSON.parse(data) as GeoJSONCollection;
+    if (!parsed || !Array.isArray(parsed.features)) {
+      console.error(
+        `[GeoJSON] Invalid structure in ${filename}: missing "features" array`,
+      );
+      return EMPTY;
+    }
     console.log(
       `[GeoJSON] Successfully loaded ${filename}: ${parsed.features.length} features`,
     );
