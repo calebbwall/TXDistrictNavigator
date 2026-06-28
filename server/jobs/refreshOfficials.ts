@@ -82,6 +82,7 @@ async function fetchWithRetry(
       const response = await fetch(url, {
         ...options,
         // Fresh signal per attempt so a hung upstream can't stall a refresh.
+        // Callers may still pass their own signal to override the default.
         signal: options.signal ?? AbortSignal.timeout(SCRAPER_FETCH_TIMEOUT_MS),
         headers: {
           "User-Agent": "TexasDistrictsApp/1.0 (Official Data Sync)",

@@ -1674,6 +1674,18 @@ const MAP_HTML = `
       return parts[0][0].toUpperCase();
     }
 
+    // Escape dynamic values before interpolating into marker HTML so an
+    // official's photoUrl/name (scraped upstream) can't break out of the
+    // attribute or inject script into the WebView.
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function setHeadshotMarkers(markers, selectionOrigin, selectionMode, drawnPolygon) {
       headshotMarkersLayer.clearLayers();
       activeMarkerState = null;
@@ -1734,9 +1746,9 @@ const MAP_HTML = `
         var m = entry.m;
         var pos = entry.pos;
 
-        var initials = getInitials(m.name);
+        var initials = escapeHtml(getInitials(m.name));
         var photoHtml = m.photoUrl
-          ? '<img src="' + m.photoUrl + '" onerror="this.parentElement.innerHTML=\\'<div class=headshot-initials>' + initials + '</div>\\'" />'
+          ? '<img src="' + escapeHtml(m.photoUrl) + '" onerror="this.parentElement.innerHTML=\\'<div class=headshot-initials>' + initials + '</div>\\'" />'
           : '<div class="headshot-initials">' + initials + '</div>';
 
         var html = '<div class="headshot-marker">' +

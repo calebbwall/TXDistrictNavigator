@@ -743,6 +743,18 @@
         ).toUpperCase();
       }
 
+      // Escape dynamic values before interpolating into marker HTML so an
+      // official's photoUrl/name (scraped upstream) can't break out of the
+      // attribute or inject script.
+      function escapeHtml(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
       function getBoundaryRings(feature) {
         var rings = [];
         if (feature.geometry.type === "Polygon") {
@@ -1319,14 +1331,14 @@
           if (em.photoUrl) {
             innerHtml =
               '<img src="' +
-              em.photoUrl +
+              escapeHtml(em.photoUrl) +
               '" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'" /><div class="headshot-initials" style="display:none">' +
-              getInitials(em.name) +
+              escapeHtml(getInitials(em.name)) +
               "</div>";
           } else {
             innerHtml =
               '<div class="headshot-initials">' +
-              getInitials(em.name) +
+              escapeHtml(getInitials(em.name)) +
               "</div>";
           }
 
