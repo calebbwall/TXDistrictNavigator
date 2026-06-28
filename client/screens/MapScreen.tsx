@@ -2665,7 +2665,9 @@ export default function MapScreen() {
 
       await Promise.all(loadOrder.map(loadAndSendLayer));
 
-      console.log("[MapScreen] native: GeoJSON fetch complete, all layers sent");
+      console.log(
+        "[MapScreen] native: GeoJSON fetch complete, all layers sent",
+      );
 
       setDataLoaded(true);
       console.log("[MapScreen] native: DataLoaded set to true");
