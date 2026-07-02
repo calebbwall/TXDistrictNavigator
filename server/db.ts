@@ -6,12 +6,14 @@ const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
   console.error(
-    "[DB] DATABASE_URL is not set — database queries will fail. Add it to your Replit Secrets.",
+    "[DB] DATABASE_URL is not set — database queries will fail. Set it in your environment variables.",
   );
 }
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  // Supabase (and most managed Postgres) requires SSL in production.
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
   connectionTimeoutMillis: 30000,
   idleTimeoutMillis: 30000,
   keepAlive: true,

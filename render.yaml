@@ -1,0 +1,54 @@
+services:
+  # ── Express API server ──────────────────────────────────────────────────────
+  - type: web
+    name: txdistrictnavigator-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run server:build
+    startCommand: node server_dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: America/Chicago
+      # Set these in the Render dashboard (not here — they contain secrets):
+      # DATABASE_URL, USER_TOKEN_SECRET, ADMIN_CRON_SECRET, ADMIN_REFRESH_TOKEN,
+      # ALLOWED_ORIGINS, GROQ_API_KEY, CONGRESS_API_KEY, GEONAMES_USERNAME,
+      # GOOGLE_SEARCH_API_KEY, GOOGLE_SEARCH_CX
+
+  # ── Hourly legislative refresh ──────────────────────────────────────────────
+  - type: cron
+    name: txdistrictnavigator-hourly
+    runtime: node
+    plan: free
+    schedule: "0 * * * *"
+    buildCommand: npm ci
+    startCommand: >
+      node -e "
+        fetch('https://txdistrictnavigator-api.onrender.com/api/admin/run-hourly', {
+          method: 'POST',
+          headers: { 'x-admin-secret': process.env.ADMIN_CRON_SECRET }
+        }).then(r => console.log('hourly:', r.status)).catch(console.error)
+      "
+    envVars:
+      - key: ADMIN_CRON_SECRET
+        sync: false
+
+  # ── Daily legislative refresh ───────────────────────────────────────────────
+  - type: cron
+    name: txdistrictnavigator-daily
+    runtime: node
+    plan: free
+    schedule: "0 12 * * *"
+    buildCommand: npm ci
+    startCommand: >
+      node -e "
+        fetch('https://txdistrictnavigator-api.onrender.com/api/admin/run-daily', {
+          method: 'POST',
+          headers: { 'x-admin-secret': process.env.ADMIN_CRON_SECRET }
+        }).then(r => console.log('daily:', r.status)).catch(console.error)
+      "
+    envVars:
+      - key: ADMIN_CRON_SECRET
+        sync: false

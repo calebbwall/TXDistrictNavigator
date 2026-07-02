@@ -59,6 +59,12 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerAdminRoutes(app);
   registerOfficialsRoutes(app);
 
+  // Lightweight ping endpoint for Render keep-alive (UptimeRobot, etc.).
+  // No DB query — just confirms the process is up.
+  app.get("/health", (_req, res) => {
+    res.json({ ok: true, ts: Date.now() });
+  });
+
   app.get("/api/stats", async (_req, res) => {
     try {
       const counts = await db
