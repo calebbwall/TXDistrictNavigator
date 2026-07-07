@@ -106,6 +106,46 @@ async function exportMileageToCsv(
   }
 }
 
+async function exportMileageToJson(entries: MileageEntry[]): Promise<void> {
+  if (entries.length === 0) {
+    Alert.alert("No Entries", "There are no mileage entries to export.");
+    return;
+  }
+
+  // A versioned wrapper so the v2 importer can recognise the file and we have
+  // room to evolve the format later. v2 also accepts a bare array.
+  const payload = {
+    app: "tx-district-navigator",
+    type: "mileage-entries",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    entries,
+  };
+  const json = JSON.stringify(payload, null, 2);
+
+  try {
+    const file = new File(Paths.cache, "mileage-backup.json");
+    await file.write(json);
+
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (isAvailable) {
+      await Sharing.shareAsync(file.uri, {
+        mimeType: "application/json",
+        dialogTitle: "Export Mileage (JSON)",
+        UTI: "public.json",
+      });
+    } else {
+      await Share.share({ message: json, title: "Mileage Export" });
+    }
+  } catch (error) {
+    Alert.alert(
+      "Export Failed",
+      "Could not export mileage data. Please try again.",
+    );
+    console.error("[Mileage] JSON export error:", error);
+  }
+}
+
 export default function MileageTrackerScreen() {
   const navigation = useNavigation<NavigationProp>();
   const headerHeight = useHeaderHeight();
@@ -161,6 +201,11 @@ export default function MileageTrackerScreen() {
     setShowExportModal(false);
     await exportMileageToCsv(entries, exportFrom, exportTo);
   }, [entries, exportFrom, exportTo]);
+
+  const handleExportJson = useCallback(async () => {
+    setShowExportModal(false);
+    await exportMileageToJson(entries);
+  }, [entries]);
 
   const totalMilesAll = entries.reduce(
     (sum, e) => sum + (e.status === "completed" ? (e.totalMiles ?? 0) : 0),
@@ -478,6 +523,35 @@ export default function MileageTrackerScreen() {
                 </ThemedText>
               </Pressable>
             </View>
+
+            <ThemedText
+              type="caption"
+              style={{
+                color: theme.secondaryText,
+                marginTop: Spacing.lg,
+                marginBottom: Spacing.sm,
+              }}
+            >
+              Moving to the new app? Export a backup of all entries and import
+              it there.
+            </ThemedText>
+            <Pressable
+              style={[
+                styles.modalBtn,
+                { borderColor: theme.border, borderWidth: 1 },
+              ]}
+              onPress={handleExportJson}
+            >
+              <Feather
+                name="save"
+                size={16}
+                color={theme.primary}
+                style={{ marginRight: 6 }}
+              />
+              <ThemedText type="body" style={{ color: theme.primary }}>
+                Export Backup (JSON)
+              </ThemedText>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
