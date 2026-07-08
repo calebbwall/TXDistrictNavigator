@@ -112,16 +112,35 @@ async function exportMileageToJson(entries: MileageEntry[]): Promise<void> {
     return;
   }
 
+  // Odometer photos live as files in this app's private sandbox, which the new
+  // app can't read. Embed each one as a base64 data URI keyed by its original
+  // path so the importer can rewrite it into its own storage.
+  const photos: Record<string, string> = {};
+  for (const entry of entries) {
+    for (const uri of [entry.startPhotoUri, entry.endPhotoUri]) {
+      if (uri && !photos[uri]) {
+        try {
+          const base64 = await new File(uri).base64();
+          photos[uri] = `data:image/jpeg;base64,${base64}`;
+        } catch (e) {
+          console.warn("[Mileage] Could not embed photo:", uri, e);
+        }
+      }
+    }
+  }
+
   // A versioned wrapper so the v2 importer can recognise the file and we have
   // room to evolve the format later. v2 also accepts a bare array.
+  // version 2 = entries carry embedded photo bytes in `photos`.
   const payload = {
     app: "tx-district-navigator",
     type: "mileage-entries",
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     entries,
+    photos,
   };
-  const json = JSON.stringify(payload, null, 2);
+  const json = JSON.stringify(payload);
 
   try {
     const file = new File(Paths.cache, "mileage-backup.json");
